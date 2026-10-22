@@ -326,6 +326,8 @@ struct App {
     net: Option<net::Net>,
     name: String,
     remote: entities::Entities,
+    /// Inventory as last synced, to send creative edits (C10) for what changed.
+    creative_sync: Option<([Option<mc_gui::ItemStack>; 36], [Option<mc_gui::ItemStack>; 4])>,
     /// The open server window (`openContainer` other than the player's).
     open_window: Option<Arc<std::sync::Mutex<container::Window>>>,
     /// Tab list names by profile UUID (`playerInfoMap`).
@@ -404,6 +406,7 @@ impl App {
             net: None,
             name: "Player".into(),
             remote: entities::Entities::default(),
+            creative_sync: None,
             open_window: None,
             player_names: Default::default(),
             sound: None,
@@ -565,6 +568,7 @@ impl App {
     fn update(&mut self, dt: f32) {
         self.process_net();
         self.flush_window();
+        self.sync_creative();
         if !self.ui.sounds.is_empty() {
             self.flush_sounds();
         }
@@ -1057,6 +1061,33 @@ impl App {
         }
     }
 
+    /// `PlayerControllerMP.sendSlotPacket`: in creative the client owns the inventory and
+    /// reports each changed slot (container numbering) with C10; thrown stacks use slot -1.
+    fn sync_creative(&mut self) {
+        if self.net.is_none() || !self.entity.creative {
+            self.creative_sync = None;
+            return;
+        }
+        let now = (self.ui.inventory, self.ui.armor);
+        let Some((inv, armor)) = self.creative_sync.replace(now) else { return };
+        let mut packets = Vec::new();
+        for i in 0..36 {
+            if inv[i] != now.0[i] {
+                let slot = if i < 9 { 36 + i } else { i };
+                packets.push((slot as i16, now.0[i]));
+            }
+        }
+        for i in 0..4 {
+            if armor[i] != now.1[i] {
+                packets.push((5 + i as i16, now.1[i]));
+            }
+        }
+        for (slot, st) in packets {
+            let item = net::stack_slot(&self.catalogue, st);
+            self.send(mc_protocol::packets::PlayServerbound::CreativeInventoryAction(mc_protocol::packets::CreativeInventoryAction { slot, item }));
+        }
+    }
+
     /// Sends the open window's queued clicks (`PlayerControllerMP.windowClick`) and its close.
     fn flush_window(&mut self) {
         let Some(w) = self.open_window.clone() else { return };
@@ -1222,6 +1253,15 @@ impl App {
 
     /// `EntityPlayer.dropItem(stack, false, true)`
     fn throw_stack(&mut self, stack: mc_gui::ItemStack) {
+        if self.net.is_some() {
+            // The server spawns the item: creative throws use sendPacketDropItem (C10 slot -1);
+            // survival throws already went out as window clicks.
+            if self.entity.creative {
+                let item = net::stack_slot(&self.catalogue, Some(stack));
+                self.send(mc_protocol::packets::PlayServerbound::CreativeInventoryAction(mc_protocol::packets::CreativeInventoryAction { slot: -1, item }));
+            }
+            return;
+        }
         let id = self.alloc_entity_id();
         let e = &self.entity;
         let item = mc_entity::item::ItemEntity::thrown(id, e.pos, e.eye_height(), e.yaw, e.pitch, (stack.item, stack.count), &mut self.rand);
