@@ -15,7 +15,7 @@ import net.minecraft.init.Bootstrap;
 public final class Main {
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("usage: Main <out dir> [blocks]");
+            System.err.println("usage: Main <out dir> [blocks|state_ids|materials]...");
             System.exit(2);
         }
         File outDir = new File(args[0]);
@@ -25,6 +25,12 @@ public final class Main {
         boolean all = args.length == 1;
         if (all || contains(args, "blocks")) {
             write(new File(outDir, "blocks.json"), DumpBlocks.dump());
+        }
+        if (all || contains(args, "state_ids")) {
+            write(new File(outDir, "state_ids.json"), DumpStateIds.dump());
+        }
+        if (all || contains(args, "materials")) {
+            write(new File(outDir, "materials.json"), DumpMaterials.dump());
         }
     }
 

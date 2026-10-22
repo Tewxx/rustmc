@@ -1,0 +1,9 @@
+[package]
+name = "mc-data"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }

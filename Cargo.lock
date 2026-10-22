@@ -489,6 +489,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gen-data"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "gethostname"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -874,6 +881,13 @@ name = "mc-core"
 version = "0.1.0"
 
 [[package]]
+name = "mc-data"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "mc-gui"
 version = "0.1.0"
 dependencies = [
@@ -903,6 +917,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "mc-core",
+ "mc-data",
  "serde_json",
 ]
 

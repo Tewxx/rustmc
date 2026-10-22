@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 mc-core = { path = "../mc-core" }
+mc-data = { path = "../mc-data" }
 flate2 = "1"
 
 [dev-dependencies]

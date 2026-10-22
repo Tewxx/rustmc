@@ -7,11 +7,17 @@ import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.TreeMap;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockLeaves;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.properties.IProperty;
+import net.minecraft.block.properties.PropertyBool;
+import net.minecraft.block.properties.PropertyDirection;
+import net.minecraft.block.properties.PropertyEnum;
+import net.minecraft.block.properties.PropertyInteger;
 import net.minecraft.block.state.IBlockState;
 
 /** Block registry: ids, names, every state with its meta, meta→state, and static block properties. */
+/** Floats are written widened to double (exact), so readers recover the same f32 bits. */
 public final class DumpBlocks {
     private DumpBlocks() {}
 
@@ -37,13 +43,63 @@ public final class DumpBlocks {
             o.addProperty("use_neighbor_brightness", b.getUseNeighborBrightness());
             o.addProperty("light_opacity", b.getLightOpacity());
             o.addProperty("light_value", b.getLightValue());
-            o.addProperty("hardness", hardness.getFloat(b));
-            o.addProperty("resistance", resistance.getFloat(b));
-            o.addProperty("slipperiness", b.slipperiness);
+            o.addProperty("hardness", (double) hardness.getFloat(b));
+            o.addProperty("resistance", (double) resistance.getFloat(b));
+            o.addProperty("slipperiness", (double) b.slipperiness);
             o.addProperty("ticks_randomly", b.getTickRandomly());
             o.addProperty("render_type", b.getRenderType());
             o.addProperty("layer", b.getBlockLayer().name());
-            o.addProperty("ao_light_value", b.getAmbientOcclusionLightValue());
+            o.addProperty("ao_light_value", (double) b.getAmbientOcclusionLightValue());
+            // Leaves are the only blocks whose opacity/layer follow the graphics setting
+            // (RenderGlobal.loadRenderers calls setGraphicsLevel); record the fancy values too.
+            if (b instanceof BlockLeaves) {
+                ((BlockLeaves) b).setGraphicsLevel(true);
+                o.addProperty("opaque_cube_fancy", b.isOpaqueCube());
+                o.addProperty("layer_fancy", b.getBlockLayer().name());
+                ((BlockLeaves) b).setGraphicsLevel(false);
+            } else {
+                o.addProperty("opaque_cube_fancy", b.isOpaqueCube());
+                o.addProperty("layer_fancy", b.getBlockLayer().name());
+            }
+
+            o.addProperty("unlocalized_name", b.getUnlocalizedName());
+            o.addProperty("collidable", b.isCollidable());
+            o.addProperty("enable_stats", b.getEnableStats());
+            o.addProperty("mobility", b.getMobilityFlag());
+            o.addProperty("has_tile_entity", b.hasTileEntity());
+            o.addProperty("can_provide_power", b.canProvidePower());
+            o.addProperty("comparator_override", b.hasComparatorInputOverride());
+            o.addProperty("requires_updates", b.requiresUpdates());
+            o.addProperty("can_spawn_in", b.canSpawnInBlock());
+
+            Material mt = b.getMaterial();
+            JsonObject mat = new JsonObject();
+            mat.addProperty("liquid", mt.isLiquid());
+            mat.addProperty("solid", mt.isSolid());
+            mat.addProperty("blocks_light", mt.blocksLight());
+            mat.addProperty("blocks_movement", mt.blocksMovement());
+            mat.addProperty("can_burn", mt.getCanBurn());
+            mat.addProperty("replaceable", mt.isReplaceable());
+            mat.addProperty("opaque", mt.isOpaque());
+            mat.addProperty("tool_not_required", mt.isToolNotRequired());
+            mat.addProperty("mobility", mt.getMaterialMobility());
+            mat.addProperty("map_color", mt.getMaterialMapColor().colorIndex);
+            o.add("material_props", mat);
+
+            JsonObject sound = new JsonObject();
+            sound.addProperty("name", b.stepSound.soundName);
+            sound.addProperty("volume", (double) b.stepSound.volume);
+            sound.addProperty("frequency", (double) b.stepSound.frequency);
+            sound.addProperty("break", b.stepSound.getBreakSound());
+            sound.addProperty("step", b.stepSound.getStepSound());
+            sound.addProperty("place", b.stepSound.getPlaceSound());
+            o.add("sound", sound);
+
+            JsonArray propDefs = new JsonArray();
+            for (IProperty p : b.getBlockState().getProperties()) {
+                propDefs.add(propertyDef(p));
+            }
+            o.add("properties", propDefs);
 
             JsonArray bounds = new JsonArray();
             for (double d : new double[] {b.getBlockBoundsMinX(), b.getBlockBoundsMinY(), b.getBlockBoundsMinZ(),
@@ -86,6 +142,25 @@ public final class DumpBlocks {
         for (Map.Entry<String, String> e : sorted.entrySet()) {
             o.addProperty(e.getKey(), e.getValue());
         }
+        return o;
+    }
+
+    /** Name, kind and allowed values in `getAllowedValues()` order (which fixes state order). */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static JsonObject propertyDef(IProperty p) {
+        JsonObject o = new JsonObject();
+        o.addProperty("name", p.getName());
+        String kind = p instanceof PropertyBool ? "bool"
+                : p instanceof PropertyInteger ? "int"
+                : p instanceof PropertyDirection ? "direction"
+                : p instanceof PropertyEnum ? "enum" : "?";
+        o.addProperty("kind", kind);
+        o.addProperty("value_class", p.getValueClass().getSimpleName());
+        JsonArray values = new JsonArray();
+        for (Object v : p.getAllowedValues()) {
+            values.add(Json.str(p.getName((Comparable) v)));
+        }
+        o.add("values", values);
         return o;
     }
 

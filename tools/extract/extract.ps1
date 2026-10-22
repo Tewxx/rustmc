@@ -1,6 +1,7 @@
 # Compiles the golden-data extractor against the MCP 1.8.9 classes and writes dumps to <repo>/golden.
 # Usage: powershell -File tools/extract/extract.ps1 [-Mcp ..\MCP-919] [dump names...]
 # Needs a JDK 8 (what 1.8.9 ships with): $env:JAVA8_HOME, or one of the usual install paths.
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Mcp = "",
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Dumps = @()

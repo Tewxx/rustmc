@@ -2,6 +2,9 @@
 //!
 //! Vanilla derives these from `Block.registerBlocks` and each block's state mapper.
 //! This table covers common terrain and building blocks; unknown ids render nothing.
+//! Light/AO properties come from the `mc-data` registry for every block.
+
+use mc_data::StateId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tint {
@@ -49,8 +52,6 @@ pub struct LightProps {
 
 impl LightProps {
     pub const AIR: LightProps = LightProps { full_cube: false, normal_cube: false, translucent: true, opacity: 0, emission: 0 };
-    const SOLID: LightProps = LightProps { full_cube: true, normal_cube: true, translucent: false, opacity: 255, emission: 0 };
-    const PLANT: LightProps = LightProps { full_cube: false, normal_cube: false, translucent: true, opacity: 0, emission: 0 };
 
     /// `getAmbientOcclusionLightValue`
     pub fn ao_value(&self) -> f32 {
@@ -58,12 +59,19 @@ impl LightProps {
     }
 }
 
-/// Lighting properties for any id; ids outside the table act like air.
+/// Lighting properties of the state chunk storage resolves `id/meta` to (unregistered pairs are air).
 pub fn props(id: u16, meta: u8) -> LightProps {
-    if id == 0 {
+    if id > 0xFFF || meta > 15 {
         return LightProps::AIR;
     }
-    lookup(id, meta).map_or(LightProps::AIR, |b| b.props)
+    let b = StateId::from_raw(id << 4 | meta as u16).block();
+    LightProps {
+        full_cube: b.full_cube,
+        normal_cube: b.block_normal_cube,
+        translucent: b.translucent,
+        opacity: b.light_opacity,
+        emission: b.light_value,
+    }
 }
 
 const COLORS: [&str; 16] = [
@@ -79,7 +87,7 @@ fn solid(bs: &str) -> BlockInfo {
         opaque: true,
         tint: Tint::None,
         layer: Layer::Solid,
-        props: LightProps::SOLID,
+        props: LightProps::AIR,
     }
 }
 
@@ -91,13 +99,8 @@ fn cutout(bs: &str, variant: &str) -> BlockInfo {
         opaque: false,
         tint: Tint::None,
         layer: Layer::Cutout,
-        props: LightProps::PLANT,
+        props: LightProps::AIR,
     }
-}
-
-fn emitting(mut b: BlockInfo, level: u8) -> BlockInfo {
-    b.props.emission = level;
-    b
 }
 
 fn log_axis(meta: u8) -> &'static str {
@@ -113,40 +116,18 @@ fn log_axis(meta: u8) -> &'static str {
 fn leaves(wood: &str, tint: Tint) -> BlockInfo {
     BlockInfo {
         tint,
-        props: LightProps { opacity: 1, ..LightProps::SOLID },
         ..cutout(&format!("{wood}_leaves"), "normal")
     }
 }
 
-/// Metas that `getMetaFromState` produces for the blocks in this table, as a bit mask.
-/// Chunks store raw `id << 4 | meta`, but `ExtendedBlockStorage.get` resolves only these
-/// (`Block.BLOCK_STATE_IDS`); any other pair reads as air.
-fn registered_metas(id: u16) -> u16 {
-    const fn upto(n: u16) -> u16 {
-        (1 << (n + 1)) - 1
-    }
-    match id {
-        1 => upto(6),
-        3 | 24 | 31 | 168 => upto(2),
-        5 => upto(5),
-        12 | 19 => upto(1),
-        17 | 18 | 35 | 159 => 0xFFFF,
-        38 => upto(8),
-        86 | 98 => upto(3),
-        155 => upto(4),
-        // Acacia/dark oak only: variant bits 0–1 of each axis/decay group.
-        161 | 162 => 0x3333,
-        170 => 1 | 1 << 4 | 1 << 8,
-        _ => 1,
-    }
-}
-
 pub fn lookup(id: u16, meta: u8) -> Option<BlockInfo> {
-    if meta > 15 || registered_metas(id) & (1 << meta) == 0 {
+    // Chunks store raw `id << 4 | meta`, but `ExtendedBlockStorage.get` resolves only registered
+    // pairs (`Block.BLOCK_STATE_IDS`); anything else reads as air.
+    if id > 0xFFF || meta > 15 || StateId::try_from_raw(id << 4 | meta as u16).is_none() {
         return None;
     }
     let m = meta as usize;
-    Some(match id {
+    let mut info = match id {
         1 => solid(["stone", "granite", "smooth_granite", "diorite", "smooth_diorite", "andesite", "smooth_andesite"].get(m)?),
         // BlockGrass renders in CUTOUT_MIPPED for its tinted side overlay.
         2 => BlockInfo { variant: "snowy=false".into(), tint: Tint::Grass, layer: Layer::Cutout, ..solid("grass") },
@@ -170,8 +151,7 @@ pub fn lookup(id: u16, meta: u8) -> Option<BlockInfo> {
             w => leaves(WOODS[w as usize], Tint::Foliage),
         },
         19 => solid("sponge"),
-        // BlockGlass: not a full cube, but its material blocks light.
-        20 => BlockInfo { props: LightProps { translucent: false, ..LightProps::PLANT }, ..cutout("glass", "normal") },
+        20 => cutout("glass", "normal"),
         21 => solid("lapis_ore"),
         22 => solid("lapis_block"),
         24 => solid(["sandstone", "chiseled_sandstone", "smooth_sandstone"].get(m)?),
@@ -188,7 +168,7 @@ pub fn lookup(id: u16, meta: u8) -> Option<BlockInfo> {
                 .get(m)?,
             "normal",
         ),
-        39 => emitting(cutout("brown_mushroom", "normal"), 1),
+        39 => cutout("brown_mushroom", "normal"),
         40 => cutout("red_mushroom", "normal"),
         41 => solid("gold_block"),
         42 => solid("iron_block"),
@@ -200,11 +180,10 @@ pub fn lookup(id: u16, meta: u8) -> Option<BlockInfo> {
         57 => solid("diamond_block"),
         58 => solid("crafting_table"),
         73 => solid("redstone_ore"),
-        74 => emitting(solid("redstone_ore"), 9),
+        74 => solid("redstone_ore"),
         79 => BlockInfo {
             layer: Layer::Translucent,
             opaque: false,
-            props: LightProps { opacity: 3, ..LightProps::SOLID },
             ..solid("ice")
         },
         80 => solid("snow"),
@@ -213,7 +192,7 @@ pub fn lookup(id: u16, meta: u8) -> Option<BlockInfo> {
         86 => BlockInfo { variant: "facing=south".into(), ..solid("pumpkin") },
         87 => solid("netherrack"),
         88 => solid("soul_sand"),
-        89 => emitting(solid("glowstone"), 15),
+        89 => solid("glowstone"),
         98 => solid(["stonebrick", "mossy_stonebrick", "cracked_stonebrick", "chiseled_stonebrick"].get(m)?),
         103 => solid("melon_block"),
         110 => BlockInfo { variant: "snowy=false".into(), ..solid("mycelium") },
@@ -228,13 +207,15 @@ pub fn lookup(id: u16, meta: u8) -> Option<BlockInfo> {
         161 => leaves(WOODS[4 + (m & 1)], Tint::Foliage),
         162 => BlockInfo { variant: log_axis(meta).into(), ..solid(&format!("{}_log", WOODS[4 + (m & 1)])) },
         168 => solid(["prismarine", "prismarine_bricks", "dark_prismarine"].get(m)?),
-        169 => emitting(solid("sea_lantern"), 15),
+        169 => solid("sea_lantern"),
         170 => BlockInfo { variant: "axis=y".into(), ..solid("hay_block") },
         172 => solid("hardened_clay"),
         173 => solid("coal_block"),
         174 => solid("packed_ice"),
         _ => return None,
-    })
+    };
+    info.props = props(id, meta);
+    Some(info)
 }
 
 /// Every id/meta pair the table knows, for preloading models.
