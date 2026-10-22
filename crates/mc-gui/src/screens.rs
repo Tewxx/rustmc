@@ -319,7 +319,7 @@ impl Screen for Options {
             second,
             Button::sized(110, w / 2 - 155, h / 6 + 48 - 6, 150, 20, t("options.skinCustomisation")).disabled(),
             Button::sized(8675309, w / 2 + 5, h / 6 + 48 - 6, 150, 20, "Super Secret Settings...").disabled(),
-            Button::sized(106, w / 2 - 155, h / 6 + 72 - 6, 150, 20, t("options.sounds")).disabled(),
+            Button::sized(106, w / 2 - 155, h / 6 + 72 - 6, 150, 20, t("options.sounds")),
             Button::sized(107, w / 2 + 5, h / 6 + 72 - 6, 150, 20, t("options.stream")).disabled(),
             Button::sized(101, w / 2 - 155, h / 6 + 96 - 6, 150, 20, t("options.video")),
             Button::sized(100, w / 2 + 5, h / 6 + 96 - 6, 150, 20, t("options.controls")),
@@ -345,6 +345,7 @@ impl Screen for Options {
                 Action::Close
             }
             Some(101) => Action::Open(Box::new(VideoSettings::default())),
+            Some(106) => Action::Open(Box::new(SoundSettings::default())),
             Some(100) => Action::Open(Box::new(Controls::default())),
             Some(_) => {
                 self.dirty = true;
@@ -359,7 +360,7 @@ impl Screen for Options {
             if matches!(b.kind, Kind::Slider { dragging: true, .. }) {
                 self.dirty = true;
             }
-            b.release();
+            b.release(ui);
         }
         ui.settings.save();
     }
@@ -374,6 +375,61 @@ impl Screen for Options {
 
     fn settings_dirty(&self) -> bool {
         self.dirty
+    }
+}
+
+// ---------------------------------------------------------------- sound settings
+
+/// `GuiScreenOptionsSounds`: master (310 wide) then the other categories two per row.
+#[derive(Default)]
+pub struct SoundSettings {
+    buttons: Vec<Button>,
+}
+
+impl Screen for SoundSettings {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        let pos = |i: i32| (w / 2 - 155 + i % 2 * 160, h / 6 - 12 + 24 * (i >> 1));
+        let (x, y) = pos(0);
+        let mut master = Button::option(0, x, y, Opt::SoundVolume(0), ui);
+        master.w = 310;
+        self.buttons = vec![master];
+        for c in 1..9u8 {
+            let (x, y) = pos(c as i32 + 1);
+            self.buttons.push(Button::option(c as i32, x, y, Opt::SoundVolume(c), ui));
+        }
+        self.buttons.push(Button::new(200, w / 2 - 100, h / 6 + 168, ui.lang.get("gui.done")));
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        default_background(ui, b, w, h);
+        let title = ui.lang.get("options.sounds.title");
+        ui.font.draw_centered(b, &title, w / 2, 15, 16777215);
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+    }
+
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        match click_buttons(&mut self.buttons, ui, mx, my) {
+            Some(200) => {
+                ui.settings.save();
+                Action::Close
+            }
+            _ => Action::None,
+        }
+    }
+
+    fn release(&mut self, ui: &mut Ui) {
+        for b in &mut self.buttons {
+            b.release(ui);
+        }
+        ui.settings.save();
+    }
+
+    fn key(&mut self, ui: &mut Ui, key: Key) -> Action {
+        if key == Key::Escape {
+            ui.settings.save();
+            return Action::Close;
+        }
+        Action::None
     }
 }
 
@@ -497,7 +553,7 @@ impl Screen for VideoSettings {
 
     fn release(&mut self, ui: &mut Ui) {
         for b in &mut self.buttons {
-            b.release();
+            b.release(ui);
         }
         ui.settings.save();
     }
@@ -556,7 +612,7 @@ impl Screen for Controls {
 
     fn release(&mut self, ui: &mut Ui) {
         for b in &mut self.buttons {
-            b.release();
+            b.release(ui);
         }
         ui.settings.save();
     }

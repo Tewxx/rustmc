@@ -2213,6 +2213,7 @@ impl App {
             "pause" => self.open(Box::new(screens::PauseMenu::default()), false),
             "options" => self.open(Box::new(screens::Options::default()), false),
             "video" => self.open(Box::new(screens::VideoSettings::default()), false),
+            "sounds" => self.open(Box::new(screens::SoundSettings::default()), false),
             "controls" => self.open(Box::new(screens::Controls::default()), false),
             "chat" => {
                 self.hud.add_chat("<Player> hello from rustmc");

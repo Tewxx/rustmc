@@ -63,7 +63,10 @@ impl Button {
         if !(self.enabled && self.visible && self.hit(mx, my)) {
             return false;
         }
-        ui.sounds.push("gui.button.press");
+        // Sound sliders click on release instead (GuiScreenOptionsSounds.Button).
+        if !matches!(self.kind, Kind::Slider { opt: Opt::SoundVolume(_), .. }) {
+            ui.sounds.push("gui.button.press");
+        }
         match &mut self.kind {
             Kind::Slider { dragging, .. } => {
                 *dragging = true;
@@ -79,8 +82,11 @@ impl Button {
         true
     }
 
-    pub fn release(&mut self) {
-        if let Kind::Slider { dragging, .. } = &mut self.kind {
+    pub fn release(&mut self, ui: &mut Ui) {
+        if let Kind::Slider { dragging, opt, .. } = &mut self.kind {
+            if *dragging && matches!(opt, Opt::SoundVolume(_)) {
+                ui.sounds.push("gui.button.press");
+            }
             *dragging = false;
         }
     }

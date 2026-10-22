@@ -15,7 +15,12 @@ pub enum Opt {
     Graphics,
     ViewBobbing,
     Vsync,
+    /// A `SoundCategory` volume, by index into [`SOUND_CATEGORIES`].
+    SoundVolume(u8),
 }
+
+/// `SoundCategory.values()` names, in order.
+pub const SOUND_CATEGORIES: [&str; 9] = ["master", "music", "record", "weather", "block", "hostile", "neutral", "player", "ambient"];
 
 impl Opt {
     pub fn key(self) -> &'static str {
@@ -30,6 +35,7 @@ impl Opt {
             Opt::Graphics => "options.graphics",
             Opt::ViewBobbing => "options.viewBobbing",
             Opt::Vsync => "options.vsync",
+            Opt::SoundVolume(i) => ["soundCategory.master", "soundCategory.music", "soundCategory.record", "soundCategory.weather", "soundCategory.block", "soundCategory.hostile", "soundCategory.neutral", "soundCategory.player", "soundCategory.ambient"][i as usize],
         }
     }
 
@@ -37,7 +43,7 @@ impl Opt {
     pub fn range(self) -> Option<(f32, f32, f32)> {
         Some(match self {
             Opt::Fov => (30.0, 110.0, 1.0),
-            Opt::Sensitivity | Opt::Gamma => (0.0, 1.0, 0.0),
+            Opt::Sensitivity | Opt::Gamma | Opt::SoundVolume(_) => (0.0, 1.0, 0.0),
             Opt::RenderDistance => (2.0, 16.0, 1.0),
             Opt::FramerateLimit => (10.0, 260.0, 10.0),
             _ => return None,
@@ -183,6 +189,7 @@ impl Settings {
             Opt::Gamma => self.gamma,
             Opt::RenderDistance => self.render_distance as f32,
             Opt::FramerateLimit => self.limit_framerate as f32,
+            Opt::SoundVolume(i) => self.sound_volume(SOUND_CATEGORIES[i as usize]),
             _ => 0.0,
         }
     }
@@ -194,6 +201,9 @@ impl Settings {
             Opt::Gamma => self.gamma = v,
             Opt::RenderDistance => self.render_distance = v as i32,
             Opt::FramerateLimit => self.limit_framerate = v as i32,
+            Opt::SoundVolume(i) => {
+                self.sound_volumes.insert(SOUND_CATEGORIES[i as usize].to_string(), v);
+            }
             _ => {}
         }
     }
@@ -230,6 +240,9 @@ impl Settings {
                 Opt::Gamma if f == 1.0 => s + &t("options.gamma.max"),
                 Opt::Gamma => format!("{s}+{}%", (f * 100.0) as i32),
                 Opt::RenderDistance => format!("{s}{} chunks", f1 as i32),
+                // GuiScreenOptionsSounds.getSoundVolume
+                Opt::SoundVolume(_) if f == 0.0 => s + &t("options.off"),
+                Opt::SoundVolume(_) => format!("{s}{}%", (f * 100.0) as i32),
                 _ => s,
             };
         }
