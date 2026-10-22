@@ -588,6 +588,9 @@ impl App {
         while self.tick_accum >= 1.0 {
             self.tick_accum -= 1.0;
             self.hud.tick();
+            if let Some(sc) = &mut self.screen {
+                sc.tick();
+            }
             // Minecraft.runTick: the music ticker runs in menus and in game.
             if let Some(s) = &mut self.sound {
                 let kind = if !self.in_game {
@@ -983,7 +986,7 @@ impl App {
                     self.entity.food_level = h.food;
                     if h.health <= 0. && !self.entity.dead {
                         self.entity.dead = true;
-                        self.open(Box::new(screens::DeathScreen::default()), false);
+                        self.open(Box::new(screens::DeathScreen::new(false, self.net.is_some(), 0)), false);
                     }
                 }
                 C::Respawn(r) => {
@@ -1501,7 +1504,7 @@ impl App {
         self.refresh_edits(&out.edits);
         self.sync_view();
         if self.entity.dead && !was_dead {
-            self.open(Box::new(screens::DeathScreen::default()), false);
+            self.open(Box::new(screens::DeathScreen::new(false, self.net.is_some(), 0)), false);
         }
     }
     fn refresh_edits(&mut self, edits: &[BlockPos]) {

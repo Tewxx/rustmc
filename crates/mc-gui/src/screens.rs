@@ -25,21 +25,76 @@ pub enum Action {
     Respawn,
 }
 
+/// `GuiGameOver`
 #[derive(Default)]
-pub struct DeathScreen {buttons:Vec<Button>}
+pub struct DeathScreen {
+    buttons: Vec<Button>,
+    /// `enableButtonsTimer`: buttons enable on the 20th tick.
+    timer: i32,
+    pub hardcore: bool,
+    pub multiplayer: bool,
+    /// `EntityPlayer.getScore`
+    pub score: i32,
+}
+
+impl DeathScreen {
+    pub fn new(hardcore: bool, multiplayer: bool, score: i32) -> Self {
+        Self { hardcore, multiplayer, score, ..Default::default() }
+    }
+}
+
 impl Screen for DeathScreen {
-    fn init(&mut self,_:&Ui,w:i32,h:i32) {
-        self.buttons=vec![Button::new(0,w/2-100,h/4+72,"Respawn"),Button::new(1,w/2-100,h/4+96,"Title screen")];
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        self.buttons = if self.hardcore {
+            let key = if self.multiplayer { "deathScreen.leaveServer" } else { "deathScreen.deleteWorld" };
+            vec![Button::new(1, w / 2 - 100, h / 4 + 96, ui.lang.get(key))]
+        } else {
+            vec![
+                Button::new(0, w / 2 - 100, h / 4 + 72, ui.lang.get("deathScreen.respawn")),
+                Button::new(1, w / 2 - 100, h / 4 + 96, ui.lang.get("deathScreen.titleScreen")),
+            ]
+        };
+        let enabled = self.timer >= 20;
+        for b in &mut self.buttons {
+            b.enabled = enabled;
+        }
     }
-    fn draw(&mut self,ui:&mut Ui,b:&mut GuiBatch,w:i32,h:i32,mx:i32,my:i32) {
-        b.gradient(0,0,w,h,0x60500000,0xa0803030);
-        ui.font.draw_centered(b,"You died!",w/2,30,0xffffffff);
-        ui.font.draw_centered(b,"Score: \u{a7}e0",w/2,100,0xffffffff);
-        draw_buttons(&mut self.buttons,ui,b,mx,my);
+    fn tick(&mut self) {
+        self.timer += 1;
+        if self.timer == 20 {
+            for b in &mut self.buttons {
+                b.enabled = true;
+            }
+        }
     }
-    fn click(&mut self,ui:&mut Ui,mx:i32,my:i32)->Action {match click_buttons(&mut self.buttons,ui,mx,my) {Some(0)=>Action::Respawn,Some(1)=>Action::QuitToTitle,_=>Action::None}}
-    fn key(&mut self,_:&mut Ui,_:Key)->Action {Action::None}
-    fn pauses(&self)->bool {false}
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        b.gradient(0, 0, w, h, 0x60500000, 0xa0803030);
+        let title = ui.lang.get(if self.hardcore { "deathScreen.title.hardcore" } else { "deathScreen.title" });
+        b.transform = Some((2.0, [0.0, 0.0]));
+        ui.font.draw_centered(b, &title, w / 2 / 2, 30, 0xffffffff);
+        b.transform = None;
+        if self.hardcore {
+            let info = ui.lang.get("deathScreen.hardcoreInfo");
+            ui.font.draw_centered(b, &info, w / 2, 144, 0xffffffff);
+        }
+        let score = format!("{}: \u{a7}e{}", ui.lang.get("deathScreen.score"), self.score);
+        ui.font.draw_centered(b, &score, w / 2, 100, 0xffffffff);
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+    }
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        match click_buttons(&mut self.buttons, ui, mx, my) {
+            Some(0) => Action::Respawn,
+            Some(1) => Action::QuitToTitle,
+            _ => Action::None,
+        }
+    }
+    /// `GuiGameOver.keyTyped` swallows Escape.
+    fn key(&mut self, _: &mut Ui, _: Key) -> Action {
+        Action::None
+    }
+    fn pauses(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,6 +132,8 @@ pub trait Screen {
         None
     }
     fn scroll(&mut self, _delta: i32) {}
+    /// `updateScreen`, once per client tick.
+    fn tick(&mut self) {}
     /// `doesGuiPauseGame`
     fn pauses(&self) -> bool {
         true
