@@ -292,6 +292,20 @@ Original scope:
 
 ## Next action
 
-Follow the execution order above. Current position: **SJ** (Java collection/hash/string/overflow
-semantics, golden-tested against JDK 8), then S3 and S5. S1c and S1d mappings/tints/geometry are in
-place; the client is still a terrain viewer, with no protocol/player/gameplay implementation yet.
+Current position (Oct 2026): the client is a working multiplayer 1.8.9 client. It joins
+protocol-47 servers (`--connect`/`--online`), streams chunks, predicts movement, renders
+players, every living mob type, arrows, XP orbs, paintings, armour stands and their name tags,
+item frames, TNT, falling blocks, snowball/potion billboards and remote block-break overlays.
+All play-state packets are handled except particles (`S2A`) and server resource packs (`S48`);
+several handlers are state-only until their renderer exists (signs, skulls/banners, chests,
+maps, world border, lightning, fireballs, minecarts/boats). Chat completion is server-owned;
+creative flight sends C13.
+
+Immediate order: (1) `S48` resource-pack prompt/download/status plus an asset-stack reload;
+(2) particles; (3) tile-entity renderers (signs, skulls, banners, chests, beacons); (4) maps,
+world border, lightning/fireballs, minecart/boat, armour layers on stands, TNT flash;
+(5) serverbound EnchantItem/SteerVehicle/Spectate/UpdateSignC; (6) movement/anti-cheat
+differential audit against `EntityPlayerSP`/`PlayerControllerMP`. Then return to the
+client-track segments below (S5 protocol stress, S7 physics replay, S8 streaming, S9 visuals,
+S12 performance).
+

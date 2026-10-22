@@ -665,10 +665,16 @@ impl App {
             }
             Action::Quit => el.exit(),
             Action::TabComplete(prefix) => {
-                let list = commands::complete(&prefix, &self.ui.lang, self.target.map(|t| t.pos));
-                if let Some(screen) = &mut self.screen {
-                    if let Some(line) = screen.autocomplete(&mut self.ui, list) {
-                        self.hud.add_chat(line);
+                if self.net.is_some() {
+                    // `GuiChat.sendAutocompleteRequest`: the server owns command completions.
+                    self.tab_complete = Some((prefix.clone(), Vec::new()));
+                    self.send(mc_protocol::packets::PlayServerbound::TabCompleteC(mc_protocol::packets::TabCompleteC { text: prefix, looking_at: self.target.map(|t| t.pos) }));
+                } else {
+                    let list = commands::complete(&prefix, &self.ui.lang, self.target.map(|t| t.pos));
+                    if let Some(screen) = &mut self.screen {
+                        if let Some(line) = screen.autocomplete(&mut self.ui, list) {
+                            self.hud.add_chat(line);
+                        }
                     }
                 }
             }
@@ -891,6 +897,15 @@ impl App {
             let heal = std::mem::take(&mut self.entity.pending_heal);
             if heal > 0. && self.player.health > 0. {
                 self.player.health = (self.player.health + heal).min(self.player.max_health);
+            }
+            if self.entity.abilities_dirty {
+                // `EntityPlayer.onUpdate` sends C13 when `capabilities.isFlying` changes, so
+                // creative/spectator servers accept the new movement state.
+                self.entity.abilities_dirty = false;
+                use mc_protocol::packets::{PlayServerbound as S, PlayerAbilitiesC};
+                let e = &self.entity;
+                let flags = (e.flying as u8) << 1 | (e.allow_flying as u8) << 2 | (e.creative as u8) << 3;
+                self.send(S::PlayerAbilitiesC(PlayerAbilitiesC { flags, fly_speed: e.fly_speed, walk_speed: e.walk_speed }));
             }
             if let Some(n) = &mut self.net {
                 let e = &self.entity;
@@ -1542,8 +1557,13 @@ impl App {
                     }
                 }
                 C::TabCompleteS(t) => {
-                    if let Some((text, _)) = &self.tab_complete {
-                        self.tab_complete = Some((text.clone(), t.matches));
+                    if self.tab_complete.take().is_some() {
+                        // `GuiChat.onAutocompleteResponse`
+                        if let Some(screen) = &mut self.screen {
+                            if let Some(line) = screen.autocomplete(&mut self.ui, t.matches) {
+                                self.hud.add_chat(line);
+                            }
+                        }
                     }
                 }
                 C::UpdateSignS(s) => {
@@ -2460,12 +2480,37 @@ impl App {
 
     fn sync_view(&mut self) {
         let pt = self.tick_accum;
-        let pos = self.entity.interpolated(pt);
-        let eye = self.eye(pt);
+        let mut pos = self.entity.interpolated(pt);
+        let mut eye = self.eye(pt);
         let e = &self.entity;
-        let yaw = e.prev_yaw + (e.yaw - e.prev_yaw) * pt;
-        let pitch = e.prev_pitch + (e.pitch - e.prev_pitch) * pt;
-        let bob = self.view_bobbing(pt);
+        let mut yaw = e.prev_yaw + (e.yaw - e.prev_yaw) * pt;
+        let mut pitch = e.prev_pitch + (e.pitch - e.prev_pitch) * pt;
+        let mut bob = self.view_bobbing(pt);
+        // `Minecraft.setRenderViewEntity` (S43PacketCamera): the camera follows the entity.
+        let camera_view = self.camera_entity.and_then(|id| {
+            self.remote.map.get(&id).map(|r| {
+                let p = r.interpolated(pt);
+                let child = r.is_child();
+                let eye_h = match r.kind {
+                    entities::Kind::Player => 1.62,
+                    entities::Kind::Object(78) => r.height as f32 * if child { 0.5 } else { 0.9 },
+                    _ => r.height as f32 * 0.85,
+                };
+                (
+                    p,
+                    mc_core::Vec3::new(p.x, p.y + eye_h as f64, p.z),
+                    r.prev_yaw + (r.yaw - r.prev_yaw) * pt,
+                    r.prev_pitch + (r.pitch - r.prev_pitch) * pt,
+                )
+            })
+        });
+        if let Some((p, cam_eye, cam_yaw, cam_pitch)) = camera_view {
+            pos = Vec3::new(p.x as f32, p.y as f32, p.z as f32);
+            eye = Vec3::new(cam_eye.x as f32, cam_eye.y as f32, cam_eye.z as f32);
+            yaw = cam_yaw;
+            pitch = cam_pitch;
+            bob = glam::Mat4::IDENTITY;
+        }
         let in_water = {
             let (x, y, z) = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
             self.world.state_at(x, y, z).block().material == mc_data::Material::Water
@@ -2480,7 +2525,7 @@ impl App {
         self.camera.pos = eye;
         self.camera.bob = self.hurt_camera(pt) * bob * glam::Mat4::from_translation(Vec3::new(0., 0., -0.1));
         self.update_target(pt);
-        if self.entity.perspective != 0 {
+        if self.camera_entity.is_none() && self.entity.perspective != 0 {
             if self.entity.perspective == 2 {
                 self.camera.yaw += 180.;
                 self.camera.pitch = -self.camera.pitch;
@@ -2580,7 +2625,7 @@ impl App {
             swing: e.swing_progress(pt),
             sneaking: e.is_sneaking(),
             perspective: self.entity.perspective,
-            hide_hand: self.ui.settings.hide_gui || self.entity.dead,
+            hide_hand: self.ui.settings.hide_gui || self.entity.dead || self.camera_entity.is_some(),
             outline,
             held,
             light,

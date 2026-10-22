@@ -42,14 +42,49 @@ Commits cbf3425 … 5bc480a. New since the table above:
 | Integrated server (singleplayer) | Scheduled tick list (time, priority, id; 1000/tick), updateLCG random ticks over chunks within 7, neighbour notifications; liquids flow; grass/mycelium, ice, snow, reeds, cactus, crops, farmland, leaf decay | `mc-client/src/server.rs`, `mc-logic/src/blocks.rs` |
 | Inventory player preview | `drawEntityOnScreen` for survival, player container, creative inventory tab | `mc-render/src/avatar.rs::encode_gui` |
 
-Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`)
-then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
+## Session log — entities and play-packet completeness (Oct 2026, b5c6ebd)
 
-**Next, in order:** saplings (needs `mc-gen::trees` usable outside population), vines, fire;
-mob models/rendering for servers; mob/rain/fall/hurt sounds; multithreaded meshing;
-settings parity audit (video options vs `GameSettings`); death score from metadata 18;
-remaining commands; sneaking name-tag occlusion. User-only checks: app icon in Explorer/taskbar,
-a real Microsoft login, listening to sound.
+- **Mob rendering (89ba119):** every `EntityList` living renderer with vanilla models, poses,
+  `rotateCorpse`/`preRenderCallback`/`setLivingAnimations`, renderer layers (spider/enderman eyes,
+  sheep wool, mooshroom, saddle, held blocks, villager robe, golem rose, creepers), mob texture
+  atlas, additive eye pass and `setBrightness` combiner. `MOCK_MOBS` screenshot verified.
+- **Non-living entities (b5c6ebd):** `RenderArrow` (exact crossed-shaft/fin geometry),
+  `RenderXPOrb` (xpValue texture index + sin tint), `RenderPainting` (all 26 `EnumArt`s and
+  `EntityHanging` placement), `ArmorStandRenderer` (wooden model, showArms/noBasePlate/small,
+  body rotation, invisible stands keep name tags), `RenderSnowball`/`RenderPotion` item
+  billboards, `RenderItemFrame` (`item_frame`/`item_frame_map` bakes + FIXED item),
+  `RenderTNTPrimed` swell and `RenderFallingBlock` block quads.
+- **Client world:** `AttachEntity` riding, destroy-stage overlays for other players' blocks
+  (merged with the local one), armour-stand/mob name tags (custom name, always-visible flag,
+  rider rule, child/height offsets), spectator camera (`S43`), creative-flight C13,
+  server-owned chat tab completion (C14 + S3A).
+- **Play packet coverage:** every clientbound packet in the `PlayClientbound` table is now
+  handled except `S2A Particles` and `S48 ResourcePackSend`; every serverbound packet except
+  `EnchantItem`, `UpdateSignC`, `SteerVehicle`, `Spectate`, `ResourcePackStatus` (and the
+  sub-packets of movement already sent by `net.rs`). Packet ids, fields and vanilla handler
+  behaviour are in `mc-client/src/main.rs::process_net`.
+- **State-only handlers** (collected but no renderer yet): world border, maps, signs, tile
+  entities (`S35`), statistics, server brand, lightning (sound + lifetime only), beds.
+- Tests: art table, XP texture/colour thresholds, object sizes, TNT fuse, metadata accessors,
+  world-border lerp/contains. `MOCK_OBJECTS` and `MOCK_BREAK` scenarios with screenshots
+  `shots/objects3.png` and `shots/break.png`.
+
+**Next for multiplayer, in order:**
+1. `S48 ResourcePackSend`: prompt, download with SHA-1 check, `ResourcePackStatus`, and a real
+   asset-stack reload (models/atlas/GUI/sounds) so server packs apply. Needed by Hypixel.
+2. `S2A Particles`: `EnumParticleTypes`, `EntityFX` physics and the 4 render layers (crit,
+   flame, potion, redstone, hearts, explosions…). Without it PvP/potion feedback is missing.
+3. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
+   the sign editor (`S36`/C12).
+4. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
+   bolts; `RenderFireball`; minecart/boat models; wither skull; armour layers on stands; TNT
+   flash (`f2` alpha pass); leash rendering.
+5. Serverbound `EnchantItem`, `SteerVehicle` (boats/horses), `Spectate`, `UpdateSignC`.
+6. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
+   `PlayerControllerMP` (rotation, onGround, sprint/sneak, flying) with loopback tests.
+
+Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_FX=1`, `MOCK_SCORE=1`)
+then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
 
 ## User priority: playable game (latest steering)
 
