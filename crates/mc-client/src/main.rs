@@ -2892,8 +2892,8 @@ impl App {
     fn entity_blocks(&self, pt: f32) -> Vec<mc_render::avatar::WorldQuad> {
         use mc_render::avatar::WorldQuad;
         let mut out = Vec::new();
-        let mut emit = |state: mc_data::StateId, m: glam::Mat4, light: [f32; 3]| {
-            let Some(entry) = self.models.get_state(state) else { return };
+        fn emit(out: &mut Vec<WorldQuad>, models: &BlockModels, state: mc_data::StateId, m: glam::Mat4, light: [f32; 3]) {
+            let Some(entry) = models.get_state(state) else { return };
             let model = &entry.models[mc_assets::model::pick_weighted(&entry.weights, 0, 0, 0)].1;
             for q in &model.quads {
                 let pos = q.pos.map(|p| m.transform_point3(Vec3::new(p[0], p[1], p[2])));
@@ -2903,7 +2903,7 @@ impl App {
                     color: [q.shade * light[0], q.shade * light[1], q.shade * light[2]],
                 });
             }
-        };
+        }
         for r in self.remote.map.values() {
             let p = r.interpolated(pt);
             let (sky, block_light) = self.world.light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
@@ -2919,7 +2919,7 @@ impl App {
                         * glam::Mat4::from_scale(Vec3::splat(swell))
                         * glam::Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.5))
                         * glam::Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2);
-                    emit(tnt, base, light);
+                    emit(&mut out, &self.models, tnt, base, light);
                 }
                 // RenderFallingBlock: the model at the fractional position inside its block.
                 entities::Kind::Object(70) => {
@@ -2931,7 +2931,20 @@ impl App {
                     let fy = p.y - p.y.floor();
                     let fz = p.z - p.z.floor();
                     let m = glam::Mat4::from_translation(Vec3::new((fx - 0.5) as f32, fy as f32, (fz - 0.5) as f32));
-                    emit(state, m, light);
+                    emit(&mut out, &self.models, state, m, light);
+                }
+                // RenderFireball: the fire-charge particle icon, camera-facing at 2.0 (large)
+                // or 0.5 (small) scale, -0.5..0.5 by -0.25..0.75.
+                entities::Kind::Object(63) | entities::Kind::Object(64) => {
+                    let scale = if matches!(r.kind, entities::Kind::Object(63)) { 2.0 } else { 0.5 };
+                    let s = self.models.atlas.sprite("items/fireball");
+                    let m = glam::Mat4::from_translation(Vec3::new(p.x as f32, p.y as f32, p.z as f32))
+                        * glam::Mat4::from_scale(Vec3::splat(scale))
+                        * glam::Mat4::from_rotation_y((180. - self.camera.yaw).to_radians())
+                        * glam::Mat4::from_rotation_x((-self.camera.pitch).to_radians());
+                    let uv = [[s.min_u, s.max_v], [s.max_u, s.max_v], [s.max_u, s.min_v], [s.min_u, s.min_v]];
+                    let corners = [Vec3::new(-0.5, -0.25, 0.), Vec3::new(0.5, -0.25, 0.), Vec3::new(0.5, 0.75, 0.), Vec3::new(-0.5, 0.75, 0.)];
+                    out.push(WorldQuad { pos: corners.map(|c| m.transform_point3(c)), uv, color: light });
                 }
                 _ => {}
             }
