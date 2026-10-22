@@ -102,6 +102,8 @@ pub struct ContainerScreen {
     left: i32,
     top: i32,
     hover: Option<usize>,
+    /// `GuiInventory` (an `InventoryEffectRenderer`) rather than a plain `GuiContainer`.
+    is_player: bool,
 }
 
 struct Layout {
@@ -118,7 +120,7 @@ struct Layout {
 
 impl ContainerScreen {
     pub fn new(window: Arc<Mutex<Window>>, catalogue: Arc<Catalogue>) -> Self {
-        Self { window, catalogue, left: 0, top: 0, hover: None }
+        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false }
     }
 
     fn layout(w: &Window) -> Layout {
@@ -334,9 +336,10 @@ impl Screen for ContainerScreen {
         let l = Self::layout(&self.window.lock().unwrap());
         (l.texture == "textures/gui/container/inventory.png").then_some((self.left + 51, self.top + 75, 30))
     }
-    fn init(&mut self, _: &Ui, w: i32, h: i32) {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let l = Self::layout(&self.window.lock().unwrap());
-        self.left = (w - l.w) / 2;
+        self.is_player = self.window.lock().unwrap().kind == "player";
+        self.left = if self.is_player { ui.effect_gui_left(w, l.w) } else { (w - l.w) / 2 };
         self.top = (h - l.h) / 2;
     }
     fn pauses(&self) -> bool {
@@ -346,6 +349,10 @@ impl Screen for ContainerScreen {
         mc_gui::screens::default_background(ui, b, w, h);
         let win = self.window.lock().unwrap();
         let l = Self::layout(&win);
+        if self.is_player {
+            // GuiInventory.updateScreen re-runs updateActivePotionEffects.
+            self.left = ui.effect_gui_left(w, l.w);
+        }
         let (x, y) = (self.left, self.top);
         b.color = [1.0; 4];
         match l.rows {
@@ -401,6 +408,9 @@ impl Screen for ContainerScreen {
             let ty = my - 12;
             b.rect(tx - 3, ty - 4, tx + width + 3, ty + 12, 0xf0100010);
             ui.font.draw_shadow(b, &text, tx as f32, ty as f32, 0xffffffff);
+        }
+        if self.is_player {
+            ui.draw_effects(b, x, y);
         }
     }
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {

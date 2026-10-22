@@ -717,11 +717,25 @@ impl App {
         let (px, pz) = (self.entity.pos.x.floor() as i32, self.entity.pos.z.floor() as i32);
         if self.net.is_none() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
             self.entity.tick(&self.world, &mut self.geometry, keys);
+            // EntityLivingBase.heal from regeneration (the server corrects it with S06).
+            let heal = std::mem::take(&mut self.entity.pending_heal);
+            if heal > 0. && self.player.health > 0. {
+                self.player.health = (self.player.health + heal).min(self.player.max_health);
+            }
             if let Some(n) = &mut self.net {
                 let e = &self.entity;
                 n.update_walking(e.sprinting, e.is_sneaking(), e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
             }
         }
+        self.ui.effects = self
+            .entity
+            .effects
+            .iter()
+            .filter_map(|e| {
+                let p = mc_entity::effects::potion(e.id)?;
+                Some(mc_gui::EffectView { icon: p.icon, name: p.name, amplifier: e.amplifier, duration: e.duration_string() })
+            })
+            .collect();
         self.tick_items();
         self.remote.tick();
         self.flush_sounds();
@@ -786,6 +800,8 @@ impl App {
                     self.entity.set_game_type(level::GameType::by_id(j.game_mode as i32));
                     self.info.difficulty = j.difficulty;
                     self.player.max_health = 20.;
+                    self.entity.effects.clear();
+                    self.entity.attributes = Default::default();
                     self.player.experience = 0.;
                     self.player.level = 0;
                 }
@@ -1028,6 +1044,27 @@ impl App {
                         }
                     }
                 }
+                C::EntityEffect(e) if e.entity_id == n.entity_id => {
+                    // handleEntityEffect: the byte is set when particles show.
+                    self.entity.effects.add(mc_entity::effects::PotionEffect {
+                        id: e.effect_id as u8,
+                        duration: e.duration,
+                        amplifier: e.amplifier as i32,
+                        ambient: false,
+                        show_particles: e.hide_particles != 0,
+                        duration_max: e.duration == 32767,
+                    });
+                }
+                C::RemoveEntityEffect(e) if e.entity_id == n.entity_id => {
+                    self.entity.effects.remove(e.effect_id);
+                }
+                C::EntityProperties(pr) if pr.entity_id == n.entity_id => {
+                    for a in &pr.attributes {
+                        let mods = a.modifiers.iter().map(|m| mc_entity::effects::Modifier { uuid: (m.uuid.0, m.uuid.1), amount: m.amount, op: m.operation as u8 });
+                        self.entity.attributes.apply_snapshot(&a.key, a.base, mods);
+                    }
+                    self.player.max_health = self.entity.attributes.value(mc_entity::effects::MAX_HEALTH) as f32;
+                }
                 C::SetExperience(x) => {
                     self.player.experience = x.bar;
                     self.player.level = x.level;
@@ -1048,6 +1085,9 @@ impl App {
                         self.unload_chunk(x, z);
                     }
                     self.entity.dead = false;
+                    self.entity.effects.clear();
+                    self.entity.attributes = Default::default();
+                    self.player.max_health = 20.;
                     self.entity.set_game_type(level::GameType::by_id(r.game_mode as i32));
                     self.info.difficulty = r.difficulty;
                 }
@@ -1233,6 +1273,7 @@ impl App {
         }
         let held = self.held_registry_item();
         let mut speed = tools::dig_speed(held, block);
+        speed = self.entity.effects.dig_multiplier(speed);
         if self.entity.in_water {
             speed /= 5.;
         }

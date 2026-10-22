@@ -312,8 +312,8 @@ impl Screen for Creative {
     fn entity_preview(&self) -> Option<(i32, i32, i32)> {
         (self.tab == 11).then_some((self.left + 43, self.top + 45, 20))
     }
-    fn init(&mut self, _: &Ui, w: i32, h: i32) {
-        self.left = (w - 195) / 2;
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        self.left = ui.effect_gui_left(w, 195);
         self.top = (h - 136) / 2;
     }
     fn pauses(&self) -> bool {
@@ -447,6 +447,7 @@ impl Screen for Creative {
             b.rect(tx - 3, ty - 4, tx + width + 3, ty + 12, 0xf0100010);
             ui.font.draw_shadow(b, text, tx as f32, ty as f32, 0xffffffff);
         }
+        ui.draw_effects(b, x, y);
     }
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         for tab in 0..12 {

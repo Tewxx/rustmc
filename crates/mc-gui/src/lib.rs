@@ -15,6 +15,18 @@ pub mod widgets;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack { pub item: usize, pub count: u8 }
 
+/// One active potion effect as `InventoryEffectRenderer` shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EffectView {
+    /// `statusIconIndex`, or -1.
+    pub icon: i32,
+    /// Translation key of the potion name.
+    pub name: &'static str,
+    pub amplifier: i32,
+    /// `Potion.getDurationString`
+    pub duration: String,
+}
+
 use font::FontRenderer;
 use lang::Lang;
 use mc_assets::AssetSource;
@@ -69,6 +81,8 @@ pub struct Ui {
     pub ticks: f32,
     /// Sound events GUI widgets played (`playPressSound`), drained by the client.
     pub sounds: Vec<&'static str>,
+    /// `thePlayer.getActivePotionEffects()` in iteration order.
+    pub effects: Vec<EffectView>,
 }
 
 impl Ui {
@@ -82,6 +96,41 @@ impl Ui {
             in_world: false,
             ticks: 0.0,
             sounds: Vec::new(),
+            effects: Vec::new(),
+        }
+    }
+
+    /// `InventoryEffectRenderer.updateActivePotionEffects`: the container moves right to make room.
+    pub fn effect_gui_left(&self, w: i32, x_size: i32) -> i32 {
+        if self.effects.is_empty() {
+            (w - x_size) / 2
+        } else {
+            160 + (w - x_size - 200) / 2
+        }
+    }
+
+    /// `InventoryEffectRenderer.drawActivePotionEffects`
+    pub fn draw_effects(&mut self, b: &mut batch::GuiBatch, gui_left: i32, gui_top: i32) {
+        if self.effects.is_empty() {
+            return;
+        }
+        let (i, mut j) = (gui_left - 124, gui_top);
+        let n = self.effects.len() as i32;
+        let l = if n > 5 { 132 / (n - 1) } else { 33 };
+        let tex = "textures/gui/container/inventory.png";
+        for e in self.effects.clone() {
+            b.color = [1.0; 4];
+            b.textured_rect(tex, i, j, 0, 166, 140, 32);
+            if e.icon >= 0 {
+                b.textured_rect(tex, i + 6, j + 7, e.icon % 8 * 18, 198 + e.icon / 8 * 18, 18, 18);
+            }
+            let mut s1 = self.lang.get(e.name);
+            if (1..=3).contains(&e.amplifier) {
+                s1 = format!("{s1} {}", self.lang.get(&format!("enchantment.level.{}", e.amplifier + 1)));
+            }
+            self.font.draw_shadow(b, &s1, (i + 10 + 18) as f32, (j + 6) as f32, 0xffffffff);
+            self.font.draw_shadow(b, &e.duration, (i + 10 + 18) as f32, (j + 6 + 10) as f32, 0xff7f7f7f);
+            j += l;
         }
     }
 }

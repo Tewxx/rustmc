@@ -8,6 +8,7 @@ pub mod aabb;
 pub mod block_pos;
 pub mod facing;
 pub mod fxhash;
+pub mod java_hash;
 pub mod math;
 pub mod nbt;
 pub mod random;

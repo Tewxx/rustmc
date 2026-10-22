@@ -1,5 +1,6 @@
 //! `EntityPlayerSP` movement and animation state: a port of the `Entity`, `EntityLivingBase`,
 //! `EntityPlayer` and `EntityPlayerSP` tick paths that run for the local player.
+use crate::effects::{self, Attributes, Effects, Modifier};
 use crate::world::*;
 use mc_core::math::{self, floor_double, wrap_angle_to_180_float};
 use mc_core::{Aabb, BlockPos, Vec3};
@@ -7,7 +8,6 @@ use mc_data::Material;
 
 pub const WIDTH: f32 = 0.6;
 pub const HEIGHT: f32 = 1.8;
-const SWING_END: i32 = 6;
 
 /// `MovementInputFromOptions` key state for one tick.
 #[derive(Clone, Copy, Default, Debug)]
@@ -99,6 +99,12 @@ pub struct PlayerEntity {
     pub prev_fov_modifier_hand: f32,
     /// Abilities changed by the player (double-tap jump): send `C13PacketPlayerAbilities`.
     pub abilities_dirty: bool,
+    /// `activePotionsMap`
+    pub effects: Effects,
+    /// `BaseAttributeMap`
+    pub attributes: Attributes,
+    /// Health gained from regeneration ticks since the client last drained it.
+    pub pending_heal: f32,
 }
 
 fn player_bb(p: Vec3) -> Aabb {
@@ -174,6 +180,9 @@ impl PlayerEntity {
             fov_modifier_hand: 1.,
             prev_fov_modifier_hand: 1.,
             abilities_dirty: false,
+            effects: Effects::default(),
+            attributes: Attributes::default(),
+            pending_heal: 0.,
         }
     }
 
@@ -205,19 +214,14 @@ impl PlayerEntity {
         }
     }
 
-    /// Value of the movement speed attribute (walk speed, ×1.3 while sprinting).
+    /// Value of the movement speed attribute (sprinting and server modifiers included).
     fn movement_speed_attr(&self) -> f64 {
-        let base = self.walk_speed as f64;
-        if self.sprinting {
-            base * (1.0 + 0.30000001192092896)
-        } else {
-            base
-        }
+        self.attributes.value(effects::MOVEMENT_SPEED)
     }
 
     /// `EntityLivingBase.swingItem` (client half; the caller sends `C0APacketAnimation`).
     pub fn swing_item(&mut self) {
-        if !self.is_swing_in_progress || self.swing_progress_int >= SWING_END / 2 || self.swing_progress_int < 0 {
+        if !self.is_swing_in_progress || self.swing_progress_int >= self.effects.swing_end() / 2 || self.swing_progress_int < 0 {
             self.swing_progress_int = -1;
             self.is_swing_in_progress = true;
         }
@@ -235,14 +239,14 @@ impl PlayerEntity {
     fn update_arm_swing_progress(&mut self) {
         if self.is_swing_in_progress {
             self.swing_progress_int += 1;
-            if self.swing_progress_int >= SWING_END {
+            if self.swing_progress_int >= self.effects.swing_end() {
                 self.swing_progress_int = 0;
                 self.is_swing_in_progress = false;
             }
         } else {
             self.swing_progress_int = 0;
         }
-        self.swing_progress = self.swing_progress_int as f32 / SWING_END as f32;
+        self.swing_progress = self.swing_progress_int as f32 / self.effects.swing_end() as f32;
     }
 
     /// `AbstractClientPlayer.getFovModifier` (no bow).
@@ -273,6 +277,8 @@ impl PlayerEntity {
         self.prev_swing_progress = self.swing_progress;
         self.prev_render_yaw_offset = self.render_yaw_offset;
         self.prev_rotation_yaw_head = self.rotation_yaw_head;
+        // updatePotionEffects
+        self.pending_heal += self.effects.tick_client();
 
         self.on_living_update_sp(w, keys);
         self.update_body_yaw();
@@ -297,8 +303,15 @@ impl PlayerEntity {
         is_material_in_bb(w, &self.bb.expand(-0.10000000149011612, -0.4000000059604645, -0.10000000149011612), Material::Lava)
     }
 
+    /// `EntityLivingBase.setSprinting`: toggles the sprint speed modifier.
     pub fn set_sprinting(&mut self, v: bool) {
         self.sprinting = v;
+        if let Some(a) = self.attributes.get_mut(effects::MOVEMENT_SPEED) {
+            a.remove(effects::SPRINT_UUID);
+            if v {
+                a.apply(Modifier { uuid: effects::SPRINT_UUID, amount: effects::SPRINT_BOOST, op: 2 });
+            }
+        }
     }
 
     /// `EntityPlayerSP.onLivingUpdate`
@@ -343,14 +356,15 @@ impl PlayerEntity {
         self.push_out_of_blocks(w, self.pos.x + half, y, self.pos.z - half);
         self.push_out_of_blocks(w, self.pos.x + half, y, self.pos.z + half);
         let flag3 = self.food_level > 6 || self.allow_flying;
-        if self.on_ground && !flag1 && !flag2 && self.move_forward >= f && !self.sprinting && flag3 && !keys.using_item {
+        let blind = self.effects.has(effects::BLINDNESS);
+        if self.on_ground && !flag1 && !flag2 && self.move_forward >= f && !self.sprinting && flag3 && !keys.using_item && !blind {
             if self.sprint_toggle_timer <= 0 && !keys.sprint {
                 self.sprint_toggle_timer = 7;
             } else {
                 self.set_sprinting(true);
             }
         }
-        if !self.sprinting && self.move_forward >= f && flag3 && !keys.using_item && keys.sprint {
+        if !self.sprinting && self.move_forward >= f && flag3 && !keys.using_item && !blind && keys.sprint {
             self.set_sprinting(true);
         }
         if self.sprinting && (self.move_forward < f || self.collided_horizontally || !flag3) {
@@ -457,6 +471,9 @@ impl PlayerEntity {
 
     fn jump(&mut self) {
         self.motion.y = 0.41999998688697815;
+        if let Some(e) = self.effects.get(effects::JUMP_BOOST) {
+            self.motion.y += ((e.amplifier + 1) as f32 * 0.1) as f64;
+        }
         if self.sprinting {
             let f = self.yaw * 0.017453292;
             self.motion.x -= (math::sin(f) * 0.2) as f64;

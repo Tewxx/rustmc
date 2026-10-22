@@ -174,8 +174,8 @@ impl Screen for SurvivalInventory {
     fn entity_preview(&self) -> Option<(i32, i32, i32)> {
         Some((self.left + 51, self.top + 75, 30))
     }
-    fn init(&mut self, _: &Ui, w: i32, h: i32) {
-        self.left = (w - 176) / 2;
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        self.left = ui.effect_gui_left(w, 176);
         self.top = (h - 166) / 2;
     }
     fn pauses(&self) -> bool {
@@ -183,6 +183,8 @@ impl Screen for SurvivalInventory {
     }
     fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
         mc_gui::screens::default_background(ui, b, w, h);
+        // GuiInventory.updateScreen re-runs updateActivePotionEffects.
+        self.left = ui.effect_gui_left(w, 176);
         let (x, y) = (self.left, self.top);
         b.textured_rect("textures/gui/container/inventory.png", x, y, 0, 0, 176, 166);
         let title = ui.lang.get("container.crafting");
@@ -206,6 +208,7 @@ impl Screen for SurvivalInventory {
             b.rect(tx - 3, ty - 4, tx + width + 3, ty + 12, 0xf0100010);
             ui.font.draw_shadow(b, &text, tx as f32, ty as f32, 0xffffffff);
         }
+        ui.draw_effects(b, x, y);
     }
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         self.mouse(ui, mx, my, false)
