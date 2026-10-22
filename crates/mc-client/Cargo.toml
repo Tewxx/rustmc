@@ -16,6 +16,8 @@ mc-gen = { path = "../mc-gen" }
 mc-render = { path = "../mc-render" }
 mc-gui = { path = "../mc-gui" }
 mc-entity = { path = "../mc-entity" }
+mc-protocol = { path = "../mc-protocol" }
+serde_json = "1"
 glam = "0.29"
 pollster = "0.4"
 wgpu = "24"

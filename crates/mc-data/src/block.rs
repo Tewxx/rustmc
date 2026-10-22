@@ -243,6 +243,12 @@ impl StateId {
         Self::try_from_raw(raw).unwrap_or(StateId::AIR)
     }
 
+    /// `Block.getStateById`: `id + (meta << 12)` from packets.
+    pub fn try_from_network(v: i32) -> Option<StateId> {
+        let (id, meta) = (v & 4095, (v >> 12) & 15);
+        Self::try_from_raw(((id as u32) << 4 | meta as u32) as u16)
+    }
+
     #[inline]
     pub fn try_from_raw(raw: u16) -> Option<StateId> {
         match RAW_TO_STATE.get(raw as usize) {

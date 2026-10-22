@@ -57,6 +57,9 @@ pub struct Hud {
     chat: Vec<ChatLine>,
     /// Integer client ticks (`updateCounter`).
     pub update_counter: i32,
+    /// `GuiIngame.recordPlaying` / `recordPlayingUpFor`: the action bar message.
+    action_bar: String,
+    action_bar_time: i32,
 }
 
 impl Hud {
@@ -64,6 +67,20 @@ impl Hud {
     pub fn add_chat(&mut self, text: impl Into<String>) {
         self.chat.insert(0, ChatLine { text: text.into(), tick: self.update_counter });
         self.chat.truncate(100);
+    }
+
+    /// `GuiIngame.setRecordPlaying(message, false)`
+    pub fn set_action_bar(&mut self, text: String) {
+        self.action_bar = text;
+        self.action_bar_time = 60;
+    }
+
+    /// `GuiIngame.updateTick`
+    pub fn tick(&mut self) {
+        self.update_counter += 1;
+        if self.action_bar_time > 0 {
+            self.action_bar_time -= 1;
+        }
     }
 
     pub fn render(&mut self, ui: &mut Ui, b: &mut GuiBatch, sr: Scaled, p: &PlayerHud, debug: &DebugInfo, chat_open: bool) {
@@ -84,6 +101,17 @@ impl Hud {
         }
         if ui.settings.show_debug {
             debug_overlay(ui, b, sr, debug);
+        }
+        if !ui.settings.hide_gui && self.action_bar_time > 0 {
+            let pt = ui.ticks - self.update_counter as f32;
+            let f2 = self.action_bar_time as f32 - pt;
+            let l1 = ((f2 * 255.0 / 20.0) as i32).min(255);
+            if l1 > 8 {
+                b.blend = Blend::Alpha;
+                let x = w / 2 - ui.font.width(&self.action_bar) / 2;
+                let text = self.action_bar.clone();
+                ui.font.draw(b, &text, x as f32, (h - 68 - 4) as f32, 0xFFFFFF + ((l1 as u32) << 24 & 0xFF000000));
+            }
         }
         if !ui.settings.hide_gui || chat_open {
             self.draw_chat(ui, b, h, chat_open);

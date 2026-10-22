@@ -157,6 +157,23 @@ pub struct Weather {
 }
 
 impl Weather {
+    /// `World.setRainStrength`
+    pub fn set_rain(&mut self, f: f32) {
+        self.prev_rain = f;
+        self.rain = f;
+    }
+    /// `World.setThunderStrength`
+    pub fn set_thunder(&mut self, f: f32) {
+        self.prev_thunder = f;
+        self.thunder = f;
+    }
+    /// `updateWeather` on a `WorldClient`: the timers belong to the server.
+    pub fn tick_remote(&mut self, info: &WorldInfo) {
+        self.prev_thunder = self.thunder;
+        self.thunder = (self.thunder + if info.thundering { 0.01 } else { -0.01 }).clamp(0.0, 1.0);
+        self.prev_rain = self.rain;
+        self.rain = (self.rain + if info.raining { 0.01 } else { -0.01 }).clamp(0.0, 1.0);
+    }
     pub fn tick(&mut self, info: &mut WorldInfo, rand: &mut mc_core::random::JavaRandom) {
         if info.clean_weather_time > 0 {
             info.clean_weather_time -= 1;

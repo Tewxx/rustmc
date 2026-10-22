@@ -7,6 +7,8 @@
 //! E inventory, F5 perspective, mouse break/place/pick, T chat, / commands, Esc pause.
 
 mod bench;
+mod chat;
+mod net;
 mod commands;
 mod icon;
 mod inventory;
@@ -49,6 +51,9 @@ struct Args {
     screen: String,
     bench: Option<f64>,
     seed: Option<i64>,
+    /// `host[:port]` of a server to join instead of a local world.
+    connect: Option<String>,
+    name: String,
 }
 
 fn parse_args() -> Args {
@@ -63,6 +68,8 @@ fn parse_args() -> Args {
         screen: "hud".into(),
         bench: None,
         seed: None,
+        connect: None,
+        name: "Player".into(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -75,6 +82,8 @@ fn parse_args() -> Args {
             "--screen" => a.screen = it.next().unwrap_or_default(),
             "--bench" => a.bench = Some(it.next().and_then(|s| s.parse().ok()).unwrap_or(30.0)),
             "--seed" => a.seed = it.next().map(|s| s.parse().unwrap_or_else(|_| java_string_hash(&s) as i64)),
+            "--connect" => a.connect = it.next(),
+            "--name" => a.name = it.next().unwrap_or_else(|| "Player".into()),
             "--radius" => a.radius = it.next().and_then(|s| s.parse().ok()).unwrap_or(4),
             "--pos" => {
                 let x = it.next().and_then(|s| s.parse().ok());
@@ -296,6 +305,9 @@ struct App {
     fps: u32,
     screenshot: Option<(PathBuf, String)>,
     bench: Option<Bench>,
+    /// The server connection when playing multiplayer.
+    net: Option<net::Net>,
+    name: String,
 }
 
 impl App {
@@ -360,6 +372,8 @@ impl App {
             fps: 0,
             screenshot: None,
             bench: None,
+            net: None,
+            name: "Player".into(),
         }
     }
     fn scaled(&self) -> Scaled {
@@ -433,6 +447,10 @@ impl App {
             Action::SendChat(msg) => {
                 self.close_screen();
                 self.send_chat(&msg);
+            }
+            Action::Respawn if self.net.is_some() => {
+                self.send(mc_protocol::packets::PlayServerbound::ClientStatus(mc_protocol::packets::ClientStatus { status: mc_protocol::packets::ClientStatusKind::PerformRespawn }));
+                self.close_screen();
             }
             Action::Respawn => {
                 self.entity.dead = false;
@@ -509,11 +527,12 @@ impl App {
     }
 
     fn update(&mut self, dt: f32) {
+        self.process_net();
         let paused = self.screen.as_ref().is_some_and(|s| s.pauses());
         self.tick_accum += dt * 20.0;
         while self.tick_accum >= 1.0 {
             self.tick_accum -= 1.0;
-            self.hud.update_counter += 1;
+            self.hud.tick();
             if let Some(r) = &self.renderer {
                 let uploads = self.models.atlas.tick();
                 r.upload_atlas(&uploads);
@@ -530,6 +549,11 @@ impl App {
 
     /// The in-game part of `Minecraft.runTick`: input, then `updateEquippedItem`, then entities.
     fn run_tick(&mut self) {
+        // PlayerControllerMP.updateController
+        let sel = self.player.selected_slot as i32;
+        if let Some(n) = &mut self.net {
+            n.sync_current_item(sel);
+        }
         self.right_click_delay = self.right_click_delay.saturating_sub(1);
         self.left_click_counter = self.left_click_counter.saturating_sub(1);
         self.update_target(1.0);
@@ -569,9 +593,17 @@ impl App {
             sprint: k(KeyCode::ControlLeft) || k(KeyCode::ControlRight),
             using_item: false,
         };
-        self.entity.tick(&self.world, &mut self.geometry, keys);
+        // EntityPlayerSP.onUpdate only runs over a loaded chunk.
+        let (px, pz) = (self.entity.pos.x.floor() as i32, self.entity.pos.z.floor() as i32);
+        if self.net.is_none() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
+            self.entity.tick(&self.world, &mut self.geometry, keys);
+            if let Some(n) = &mut self.net {
+                let e = &self.entity;
+                n.update_walking(e.sprinting, e.is_sneaking(), e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
+            }
+        }
         self.tick_items();
-        if self.entity.pos.y < -64. {
+        if self.net.is_none() && self.entity.pos.y < -64. {
             self.entity.teleport(self.spawn);
         }
         // EntityRenderer.updateTorchFlicker
@@ -580,10 +612,218 @@ impl App {
         self.torch_flicker_dx = (self.torch_flicker_dx as f64 * 0.9) as f32;
         self.torch_flicker_x += self.torch_flicker_dx - self.torch_flicker_x;
         // WorldServer.tick: weather, then the clocks.
-        self.weather.tick(&mut self.info, &mut self.rand);
+        if self.net.is_some() {
+            // WorldClient: only the strengths follow the server's raining flags.
+            self.weather.tick_remote(&self.info);
+        } else {
+            self.weather.tick(&mut self.info, &mut self.rand);
+        }
         self.info.total_time += 1;
         if self.info.rules.get_bool("doDaylightCycle") {
             self.info.time += 1;
+        }
+    }
+
+    /// `NetHandlerPlayClient`: applies everything the server sent since the last frame.
+    fn process_net(&mut self) {
+        use mc_protocol::packets::{PlayClientbound as C, PlayServerbound as S, *};
+        let Some(n) = &mut self.net else { return };
+        let incoming = n.poll();
+        let mut edits = Vec::new();
+        for inc in incoming {
+            let p = match inc {
+                net::Incoming::Packet(p) => *p,
+                net::Incoming::Closed(reason) => {
+                    if let Some(n) = &mut self.net {
+                        if n.closed.is_none() {
+                            let text = chat::format(&reason, &self.ui.lang);
+                            self.hud.add_chat(format!("{}: {text}", self.ui.lang.get("disconnect.lost")));
+                            n.closed = Some(reason);
+                        }
+                    }
+                    continue;
+                }
+            };
+            let Some(n) = &mut self.net else { return };
+            match p {
+                C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
+                C::JoinGame(j) => {
+                    n.entity_id = j.entity_id;
+                    let view = self.ui.settings.render_distance as i8;
+                    n.send_join_replies("en_US", view, true, 0x7f);
+                    self.entity.set_game_type(level::GameType::by_id(j.game_mode as i32));
+                    self.info.difficulty = j.difficulty;
+                    self.player.max_health = 20.;
+                    self.player.experience = 0.;
+                    self.player.level = 0;
+                }
+                C::PlayerPosLookS(pl) => {
+                    let (mut pos, mut yaw, mut pitch) = (self.entity.pos, self.entity.yaw, self.entity.pitch);
+                    n.handle_pos_look(&pl, &mut pos, &mut yaw, &mut pitch);
+                    self.entity.set_position(pos);
+                    if pl.flags & 7 == 0 {
+                        self.entity.motion = mc_core::Vec3::new(0., 0., 0.);
+                    }
+                    self.entity.yaw = yaw;
+                    self.entity.pitch = pitch;
+                    self.entity.prev_yaw = yaw;
+                    self.entity.prev_pitch = pitch;
+                }
+                C::ChunkData(c) => {
+                    if c.full && c.bitmask == 0 {
+                        self.unload_chunk(c.x, c.z);
+                    } else if let Ok(w) = mc_protocol::chunk::decode(c.bitmask, &c.data, self.world.has_sky, c.full) {
+                        let old = self.world.remove(c.x, c.z);
+                        self.world.insert(net::fill_chunk(old, c.x, c.z, w, c.full));
+                    }
+                }
+                C::MapChunkBulk(b) => {
+                    for (x, z, mask, data) in b.chunks {
+                        if let Ok(w) = mc_protocol::chunk::decode(mask, &data, b.sky_light, true) {
+                            self.world.insert(net::fill_chunk(None, x, z, w, true));
+                        }
+                    }
+                }
+                C::BlockChange(b) => {
+                    let st = mc_data::StateId::try_from_network(b.state).unwrap_or(mc_data::StateId::AIR);
+                    self.world.set_block_state(b.pos, st);
+                    edits.push(b.pos);
+                }
+                C::MultiBlockChange(m) => {
+                    for (p, state) in m.records {
+                        let pos = BlockPos::new(m.chunk_x * 16 + (p >> 12) as i32, (p & 255) as i32, m.chunk_z * 16 + ((p >> 8) & 15) as i32);
+                        let st = mc_data::StateId::try_from_network(state).unwrap_or(mc_data::StateId::AIR);
+                        self.world.set_block_state(pos, st);
+                        edits.push(pos);
+                    }
+                }
+                C::TimeUpdate(t) => {
+                    // WorldClient.setWorldTime: a negative time freezes the daylight cycle.
+                    self.info.total_time = t.world_age;
+                    let neg = t.time_of_day < 0;
+                    self.info.time = if neg { -t.time_of_day } else { t.time_of_day };
+                    self.info.rules.set("doDaylightCycle", if neg { "false" } else { "true" });
+                }
+                C::ChatS(c) => {
+                    let text = chat::format(&c.json, &self.ui.lang);
+                    if c.position == 2 {
+                        self.hud.set_action_bar(text);
+                    } else {
+                        self.hud.add_chat(text);
+                    }
+                }
+                C::SpawnPosition(sp) => self.info.spawn = sp.pos,
+                C::SetExperience(x) => {
+                    self.player.experience = x.bar;
+                    self.player.level = x.level;
+                }
+                C::UpdateHealth(h) => {
+                    self.player.health = h.health;
+                    self.player.food = h.food;
+                    self.entity.food_level = h.food;
+                    if h.health <= 0. && !self.entity.dead {
+                        self.entity.dead = true;
+                        self.open(Box::new(screens::DeathScreen::default()), false);
+                    }
+                }
+                C::Respawn(r) => {
+                    self.world.has_sky = r.dimension == 0;
+                    let keys: Vec<(i32, i32)> = self.world.chunks.keys().copied().collect();
+                    for (x, z) in keys {
+                        self.unload_chunk(x, z);
+                    }
+                    self.entity.dead = false;
+                    self.entity.set_game_type(level::GameType::by_id(r.game_mode as i32));
+                    self.info.difficulty = r.difficulty;
+                }
+                C::ChangeGameState(g) => {
+                    let j = (g.value + 0.5).floor() as i32;
+                    match g.reason {
+                        0 => self.hud.add_chat(self.ui.lang.get("tile.bed.notValid")),
+                        1 => {
+                            self.info.raining = true;
+                            self.weather.set_rain(0.);
+                        }
+                        2 => {
+                            self.info.raining = false;
+                            self.weather.set_rain(1.);
+                        }
+                        3 => {
+                            self.hud.add_chat(self.ui.lang.get("gameMode.changed"));
+                            self.entity.set_game_type(level::GameType::by_id(j));
+                        }
+                        7 => self.weather.set_rain(g.value),
+                        8 => self.weather.set_thunder(g.value),
+                        _ => {}
+                    }
+                }
+                C::PlayerAbilitiesS(a) => {
+                    // handlePlayerAbilities
+                    self.entity.flying = a.flags & 2 != 0;
+                    self.entity.creative = a.flags & 8 != 0;
+                    self.entity.allow_flying = a.flags & 4 != 0;
+                    self.entity.fly_speed = a.fly_speed;
+                    self.entity.walk_speed = a.walk_speed;
+                }
+                C::HeldItemChangeS(h) => {
+                    if (0..9).contains(&h.slot) {
+                        self.player.selected_slot = h.slot as usize;
+                    }
+                }
+                C::SetSlot(s) => {
+                    let stack = net::slot_stack(&self.catalogue, &s.item);
+                    if s.window_id == 0 {
+                        self.set_container_slot(s.slot as usize, stack);
+                    } else if s.window_id == -2 && (0..36).contains(&s.slot) {
+                        self.ui.inventory[s.slot as usize] = stack;
+                    }
+                }
+                C::WindowItems(w) => {
+                    if w.window_id == 0 {
+                        for (i, it) in w.items.iter().enumerate() {
+                            let stack = net::slot_stack(&self.catalogue, it);
+                            self.set_container_slot(i, stack);
+                        }
+                    }
+                }
+                C::Disconnect(d) => {
+                    let text = chat::format(&d.reason, &self.ui.lang);
+                    self.hud.add_chat(format!("{}: {text}", self.ui.lang.get("disconnect.lost")));
+                    n.closed = Some(d.reason);
+                    n.disconnect();
+                }
+                _ => {}
+            }
+        }
+        self.refresh_edits(&edits);
+        // Sections of newly arrived or unloaded chunks.
+        self.refresh_edits(&[]);
+    }
+
+    /// `ContainerPlayer` slot numbers to the client inventory.
+    fn set_container_slot(&mut self, slot: usize, stack: Option<mc_gui::ItemStack>) {
+        match slot {
+            5..=8 => self.ui.armor[slot - 5] = stack,
+            9..=35 => self.ui.inventory[slot] = stack,
+            36..=44 => self.ui.inventory[slot - 36] = stack,
+            _ => {}
+        }
+    }
+
+    /// `WorldClient.doPreChunk(x, z, false)`
+    fn unload_chunk(&mut self, x: i32, z: i32) {
+        if self.world.remove(x, z).is_some() {
+            if let Some(r) = &mut self.renderer {
+                let empty = mc_render::mesh::ChunkMesh::default();
+                for sy in 0..16 {
+                    r.upload_section(x, sy, z, &empty);
+                }
+            }
+            for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                for sy in 0..16 {
+                    self.world.dirty.insert((x + dx, sy, z + dz));
+                }
+            }
         }
     }
 
@@ -614,7 +854,7 @@ impl App {
     fn destroy_block(&mut self, pos: BlockPos) {
         let state = self.world.state_at(pos.x, pos.y, pos.z);
         if self.world.set_block(pos, 0, 0) {
-            if !self.entity.creative && tools::can_harvest(self.held_registry_item(), state.block()) {
+            if self.net.is_none() && !self.entity.creative && tools::can_harvest(self.held_registry_item(), state.block()) {
                 for (id, meta, count) in tools::drops(state, &mut self.rand) {
                     if let Some(i) = self.catalogue.index_of(id, meta) {
                         let id = self.alloc_entity_id();
@@ -625,6 +865,22 @@ impl App {
             }
             self.refresh_edits(&[pos]);
         }
+    }
+
+    /// `EntityPlayerSP.swingItem`: every call also sends C0A.
+    fn swing(&mut self) {
+        self.entity.swing_item();
+        self.send(mc_protocol::packets::PlayServerbound::AnimationC(mc_protocol::packets::AnimationC {}));
+    }
+
+    fn send(&mut self, p: mc_protocol::packets::PlayServerbound) {
+        if let Some(n) = &mut self.net {
+            n.send(p);
+        }
+    }
+
+    fn send_dig(&mut self, status: mc_protocol::packets::DiggingStatus, pos: BlockPos, face: Facing) {
+        self.send(mc_protocol::packets::PlayServerbound::PlayerDigging(mc_protocol::packets::PlayerDigging { status, pos, face: face.index() as u8 }));
     }
 
     fn alloc_entity_id(&mut self) -> u32 {
@@ -691,7 +947,9 @@ impl App {
         if !self.entity.allow_edit() {
             return;
         }
+        let face = self.target.map_or(Facing::Down, |t| t.face);
         if self.entity.creative {
+            self.send_dig(mc_protocol::packets::DiggingStatus::StartDestroyBlock, pos, face);
             self.destroy_block(pos);
             self.block_hit_delay = 5;
             return;
@@ -699,6 +957,10 @@ impl App {
         if self.hitting == Some(pos) {
             return;
         }
+        if let Some(old) = self.hitting {
+            self.send_dig(mc_protocol::packets::DiggingStatus::AbortDestroyBlock, old, face);
+        }
+        self.send_dig(mc_protocol::packets::DiggingStatus::StartDestroyBlock, pos, face);
         let block = self.world.state_at(pos.x, pos.y, pos.z).block();
         if block.material != mc_data::Material::Air && self.relative_hardness(pos) >= 1. {
             self.destroy_block(pos);
@@ -715,6 +977,10 @@ impl App {
         }
         let target = self.target.filter(|t| self.world.state_at(t.pos.x, t.pos.y, t.pos.z).block().id != 0);
         let (true, Some(t), true) = (held, target, self.entity.allow_edit()) else {
+            // resetBlockRemoving
+            if let Some(old) = self.hitting {
+                self.send_dig(mc_protocol::packets::DiggingStatus::AbortDestroyBlock, old, Facing::Down);
+            }
             self.hitting = None;
             self.block_damage = 0.;
             return;
@@ -723,11 +989,13 @@ impl App {
             self.block_hit_delay -= 1;
         } else if self.entity.creative {
             self.block_hit_delay = 5;
+            self.send_dig(mc_protocol::packets::DiggingStatus::StartDestroyBlock, t.pos, t.face);
             self.destroy_block(t.pos);
         } else if self.hitting == Some(t.pos) {
             self.block_damage += self.relative_hardness(t.pos);
             if self.block_damage >= 1. {
                 self.hitting = None;
+                self.send_dig(mc_protocol::packets::DiggingStatus::StopDestroyBlock, t.pos, t.face);
                 self.destroy_block(t.pos);
                 self.block_damage = 0.;
                 self.block_hit_delay = 5;
@@ -735,7 +1003,7 @@ impl App {
         } else {
             self.click_block(t.pos);
         }
-        self.entity.swing_item();
+        self.swing();
     }
 
     /// `BlockRendererDispatcher.renderBlockDamage`: the block's model with every quad's UVs moved
@@ -775,6 +1043,12 @@ impl App {
 
     /// `NetHandlerPlayServer.processChatMessage` on the integrated server.
     fn send_chat(&mut self, msg: &str) {
+        if let Some(n) = &mut self.net {
+            // GuiScreen.sendChatMessage: C01 carries at most 100 characters.
+            let m: String = msg.chars().take(100).collect();
+            n.send(mc_protocol::packets::PlayServerbound::ChatMessage(mc_protocol::packets::ChatMessage { message: m }));
+            return;
+        }
         let msg = commands::normalize_space(msg);
         if !msg.starts_with('/') {
             let line = self.ui.lang.format("chat.type.text", &["Player", &msg]);
@@ -817,7 +1091,7 @@ impl App {
         }
     }
     fn refresh_edits(&mut self, edits: &[BlockPos]) {
-        if edits.is_empty() {
+        if edits.is_empty() && self.world.dirty.is_empty() {
             return;
         }
         let t0 = Instant::now();
@@ -1046,7 +1320,7 @@ impl App {
             if self.left_click_counter > 0 {
                 return;
             }
-            self.entity.swing_item();
+            self.swing();
             match self.target {
                 None => {
                     if !self.entity.creative {
@@ -1075,6 +1349,20 @@ impl App {
                 }
             }
             return;
+        }
+        if button == MouseButton::Right && self.net.is_some() && self.world.state_at(t.pos.x, t.pos.y, t.pos.z).block().id != 0 {
+            let stack = self.ui.inventory[self.player.selected_slot];
+            let item = net::stack_slot(&self.catalogue, stack);
+            // ItemBlock.canPlaceBlockOnSide failing sends nothing.
+            let blocked = stack.is_some_and(|s| {
+                let b = self.catalogue.items[s.item].block;
+                let replaceable = |p: BlockPos| self.world.state_at(p.x, p.y, p.z).block().material.props().replaceable;
+                b != 0 && !replaceable(t.pos) && !replaceable(t.pos.offset_facing(t.face))
+            });
+            if !blocked {
+                let c = ((t.hit.x - t.pos.x as f64) as f32, (t.hit.y - t.pos.y as f64) as f32, (t.hit.z - t.pos.z as f64) as f32);
+                self.send(mc_protocol::packets::PlayServerbound::BlockPlacement(mc_protocol::packets::BlockPlacement { pos: t.pos, direction: t.face.index() as u8, item, cursor: c }));
+            }
         }
         if button == MouseButton::Right {
             let Some(stack) = self.ui.inventory[self.player.selected_slot] else {
@@ -1156,7 +1444,7 @@ impl App {
                         None
                     };
                 }
-                self.entity.swing_item();
+                self.swing();
                 self.entity.reset_equipped_progress();
                 self.refresh_edits(&[p]);
             }
@@ -1235,6 +1523,21 @@ impl App {
         let in_game = which != "title" && which != "title-options";
         self.in_game = in_game;
         self.ui.in_world = in_game;
+        if self.net.is_some() {
+            // Wait for the join sequence, then run real ticks so movement packets go out.
+            let t = Instant::now();
+            while t.elapsed() < Duration::from_secs(5) && self.world.chunks.len() < 64 {
+                self.process_net();
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            for _ in 0..40 {
+                self.process_net();
+                self.run_tick();
+                self.hud.tick();
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            self.process_net();
+        }
         for _ in 0..30 {
             self.entity.tick(&self.world, &mut self.geometry, player::Keys::default());
             let current = self.ui.inventory[self.player.selected_slot].map(|s| (s.item, s.count));
@@ -1459,7 +1762,12 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => el.exit(),
+            WindowEvent::CloseRequested => {
+                if let Some(n) = &mut self.net {
+                    n.disconnect();
+                }
+                el.exit()
+            }
             WindowEvent::Resized(s) => {
                 if let Some(r) = &mut self.renderer {
                     r.resize(s.width, s.height);
@@ -1664,8 +1972,27 @@ fn main() {
         t.elapsed().as_secs_f64() * 1e3
     );
 
-    let (world, center, seed) = load_world(&args);
-    if world.chunks.is_empty() {
+    let connection = args.connect.as_deref().map(|addr| {
+        let (host, port) = match addr.rsplit_once(':') {
+            Some((h, p)) if p.parse::<u16>().is_ok() => (h.to_string(), p.parse().unwrap()),
+            _ => (addr.to_string(), 25565),
+        };
+        match net::Net::connect(&host, port, &args.name) {
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("Failed to connect to the server: {e}");
+                std::process::exit(1);
+            }
+        }
+    });
+    let (world, center, seed) = if connection.is_some() {
+        let mut w = World::default();
+        w.track_dirty = true;
+        (w, (8, 8), 0)
+    } else {
+        load_world(&args)
+    };
+    if world.chunks.is_empty() && connection.is_none() {
         eprintln!("no chunks loaded around {center:?}");
         std::process::exit(1);
     }
@@ -1677,7 +2004,9 @@ fn main() {
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App::new(assets, models, world, center, settings);
     app.info.seed = seed;
-    app.in_game = args.play;
+    app.in_game = args.play || connection.is_some();
+    app.name = args.name.clone();
+    app.net = connection;
     app.screenshot = args.screenshot.clone().map(|p| (p, args.screen.clone()));
     app.bench = args
         .bench
