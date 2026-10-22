@@ -18,6 +18,10 @@ pub enum Action {
     QuitToTitle,
     Quit,
     SendChat(String),
+    /// `GuiChat.sendAutocompleteRequest`: the text before the cursor.
+    TabComplete(String),
+    /// A line for the chat log (several completion matches).
+    PrintChat(String),
     Respawn,
 }
 
@@ -47,6 +51,12 @@ pub enum Key {
     Backspace,
     Left,
     Right,
+    Up,
+    Down,
+    Home,
+    End,
+    Delete,
+    Tab,
     Other,
 }
 
@@ -62,6 +72,10 @@ pub trait Screen {
         if key == Key::Escape { Action::Close } else { Action::None }
     }
     fn typed(&mut self, _c: char) {}
+    /// `GuiChat.onAutocompleteResponse`; returns a line to print in chat (several matches).
+    fn autocomplete(&mut self, _ui: &mut Ui, _list: Vec<String>) -> Option<String> {
+        None
+    }
     fn scroll(&mut self, _delta: i32) {}
     /// `doesGuiPauseGame`
     fn pauses(&self) -> bool {
@@ -496,22 +510,115 @@ impl Screen for Controls {
 
 // ---------------------------------------------------------------- chat (GuiChat)
 
+/// `StringUtils.getCommonPrefix`
+fn common_prefix(list: &[String]) -> String {
+    let Some(first) = list.first() else { return String::new() };
+    let mut n = first.chars().count();
+    for s in &list[1..] {
+        n = n.min(first.chars().zip(s.chars()).take_while(|(a, b)| a == b).count());
+    }
+    first.chars().take(n).collect()
+}
+
 #[derive(Default)]
 pub struct Chat {
     pub text: String,
     cursor: usize,
     opened_at: f32,
+    /// `sentHistoryCursor` and the text being typed before browsing history.
+    history_cursor: usize,
+    history_buffer: String,
+    // Tab completion state
+    names_found: bool,
+    waiting: bool,
+    index: usize,
+    found: Vec<String>,
 }
 
 impl Chat {
     pub fn with_text(text: &str) -> Self {
-        Self { text: text.into(), cursor: text.chars().count(), opened_at: 0.0 }
+        Self {
+            text: text.into(),
+            cursor: text.chars().count(),
+            opened_at: 0.0,
+            history_cursor: usize::MAX,
+            history_buffer: String::new(),
+            names_found: false,
+            waiting: false,
+            index: 0,
+            found: Vec::new(),
+        }
+    }
+
+    fn chars(&self) -> Vec<char> {
+        self.text.chars().collect()
+    }
+
+    /// `func_146197_a(-1, cursor, false)`: start of the word under the cursor.
+    fn word_start(&self) -> usize {
+        let c = self.chars();
+        let mut p = self.cursor;
+        while p > 0 && c[p - 1] != ' ' {
+            p -= 1;
+        }
+        p
+    }
+
+    /// `deleteFromCursor(start - cursor)` then `writeText(s)`.
+    fn replace_word(&mut self, start: usize, s: &str) {
+        let mut c = self.chars();
+        c.drain(start..self.cursor);
+        let ins: Vec<char> = s.chars().take(100usize.saturating_sub(c.len())).collect();
+        let n = ins.len();
+        c.splice(start..start, ins);
+        self.text = c.into_iter().collect();
+        self.cursor = start + n;
+    }
+
+    /// `GuiChat.autocompletePlayerNames`
+    fn cycle(&mut self) -> Option<String> {
+        if self.found.is_empty() {
+            return None;
+        }
+        let start = self.word_start();
+        if self.index >= self.found.len() {
+            self.index = 0;
+        }
+        let line = (self.found.len() > 1).then(|| self.found.join(", "));
+        let s = self.found[self.index].clone();
+        self.index += 1;
+        self.replace_word(start, &s);
+        line
+    }
+
+    /// `GuiChat.getSentHistory`
+    fn history(&mut self, ui: &Ui, delta: i32) {
+        let sent = &ui.sent_messages;
+        if self.history_cursor == usize::MAX {
+            self.history_cursor = sent.len();
+        }
+        let i = (self.history_cursor as i64 + delta as i64).clamp(0, sent.len() as i64) as usize;
+        if i == self.history_cursor {
+            return;
+        }
+        if i == sent.len() {
+            self.history_cursor = sent.len();
+            self.text = self.history_buffer.clone();
+        } else {
+            if self.history_cursor == sent.len() {
+                self.history_buffer = self.text.clone();
+            }
+            self.text = sent[i].clone();
+            self.history_cursor = i;
+        }
+        self.cursor = self.text.chars().count();
     }
 }
 
 impl Screen for Chat {
     fn init(&mut self, ui: &Ui, _w: i32, _h: i32) {
         self.opened_at = ui.ticks;
+        self.history_cursor = ui.sent_messages.len();
     }
 
     fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, _mx: i32, _my: i32) {
@@ -535,19 +642,47 @@ impl Screen for Chat {
         Action::None
     }
 
-    fn key(&mut self, _ui: &mut Ui, key: Key) -> Action {
+    fn key(&mut self, ui: &mut Ui, key: Key) -> Action {
+        // GuiChat.keyTyped: any key but Tab resets the completion cycle.
+        self.waiting = false;
+        if key == Key::Tab {
+            if self.names_found {
+                let line = self.cycle();
+                return line.map_or(Action::None, Action::PrintChat);
+            }
+            self.waiting = true;
+            let prefix: String = self.text.chars().take(self.cursor).collect();
+            return Action::TabComplete(prefix);
+        }
+        self.names_found = false;
         match key {
             Key::Escape => Action::Close,
             Key::Enter => {
                 let msg = self.text.trim().to_string();
-                if msg.is_empty() { Action::Close } else { Action::SendChat(msg) }
+                if msg.is_empty() {
+                    Action::Close
+                } else {
+                    // GuiNewChat.addToSentMessages
+                    if ui.sent_messages.last() != Some(&msg) {
+                        ui.sent_messages.push(msg.clone());
+                    }
+                    Action::SendChat(msg)
+                }
             }
             Key::Backspace => {
                 if self.cursor > 0 {
-                    let mut chars: Vec<char> = self.text.chars().collect();
+                    let mut chars = self.chars();
                     chars.remove(self.cursor - 1);
                     self.text = chars.into_iter().collect();
                     self.cursor -= 1;
+                }
+                Action::None
+            }
+            Key::Delete => {
+                let mut chars = self.chars();
+                if self.cursor < chars.len() {
+                    chars.remove(self.cursor);
+                    self.text = chars.into_iter().collect();
                 }
                 Action::None
             }
@@ -559,7 +694,45 @@ impl Screen for Chat {
                 self.cursor = (self.cursor + 1).min(self.text.chars().count());
                 Action::None
             }
-            Key::Other | Key::Inventory | Key::Number(_) => Action::None,
+            Key::Home => {
+                self.cursor = 0;
+                Action::None
+            }
+            Key::End => {
+                self.cursor = self.text.chars().count();
+                Action::None
+            }
+            Key::Up => {
+                self.history(ui, -1);
+                Action::None
+            }
+            Key::Down => {
+                self.history(ui, 1);
+                Action::None
+            }
+            Key::Tab | Key::Other | Key::Inventory | Key::Number(_) => Action::None,
+        }
+    }
+
+    fn autocomplete(&mut self, _ui: &mut Ui, list: Vec<String>) -> Option<String> {
+        if !self.waiting {
+            return None;
+        }
+        self.waiting = false;
+        self.names_found = false;
+        self.found = list.iter().filter(|s| !s.is_empty()).cloned().collect();
+        self.index = 0;
+        let start = self.word_start();
+        let current: String = self.chars()[start..self.cursor].iter().collect();
+        let common = common_prefix(&list);
+        if !common.is_empty() && !current.eq_ignore_ascii_case(&common) {
+            self.replace_word(start, &common);
+            None
+        } else if !self.found.is_empty() {
+            self.names_found = true;
+            self.cycle()
+        } else {
+            None
         }
     }
 
@@ -568,7 +741,8 @@ impl Screen for Chat {
         if c == '\u{a7}' || (c as u32) < 32 || c == '\u{7f}' || self.text.chars().count() >= 100 {
             return;
         }
-        let mut chars: Vec<char> = self.text.chars().collect();
+        self.names_found = false;
+        let mut chars = self.chars();
         chars.insert(self.cursor, c);
         self.text = chars.into_iter().collect();
         self.cursor += 1;

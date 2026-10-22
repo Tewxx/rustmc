@@ -16,6 +16,15 @@ pub fn sun_brightness(celestial_angle: f32) -> f32 {
     f1 * 0.8 + 0.2
 }
 
+/// `World.getSunBrightness` with rain and thunder strengths.
+pub fn sun_brightness_weather(celestial_angle: f32, rain: f32, thunder: f32) -> f32 {
+    let f1 = 1.0 - (mc_core::math::cos(celestial_angle * std::f32::consts::PI * 2.0) * 2.0 + 0.2);
+    let mut f1 = 1.0 - f1.clamp(0.0, 1.0);
+    f1 *= 1.0 - rain * 5.0 / 16.0;
+    f1 *= 1.0 - thunder * 5.0 / 16.0;
+    f1 * 0.8 + 0.2
+}
+
 /// `torch_flicker` is `torchFlickerX` (random, ~0 on average). `gamma` is the
 /// brightness option: 0 = Moody (vanilla default), 1 = Bright.
 pub fn build(sun: f32, torch_flicker: f32, gamma: f32) -> [u8; 256 * 4] {

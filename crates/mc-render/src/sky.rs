@@ -15,15 +15,42 @@ pub struct Sky {
     pub clouds: bool,
 }
 impl Sky {
+    /// Rain and thunder darkening of `World.getSkyColor`, `EntityRenderer.updateFogColor` and
+    /// `World.getCloudColour`.
+    pub fn apply_weather(&mut self, rain: f32, thunder: f32) {
+        let lum = |c: &[f32; 3]| c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+        if rain > 0. {
+            let g = lum(&self.sky) * 0.6;
+            let k = 1. - rain * 0.75;
+            self.sky = self.sky.map(|c| c * k + g * (1. - k));
+            let g = lum(&self.cloud) * 0.6;
+            let k = 1. - rain * 0.95;
+            self.cloud = self.cloud.map(|c| c * k + g * (1. - k));
+            let (a, b) = (1. - rain * 0.5, 1. - rain * 0.4);
+            self.fog = [self.fog[0] * a, self.fog[1] * a, self.fog[2] * b];
+        }
+        if thunder > 0. {
+            let g = lum(&self.sky) * 0.2;
+            let k = 1. - thunder * 0.75;
+            self.sky = self.sky.map(|c| c * k + g * (1. - k));
+            let g = lum(&self.cloud) * 0.2;
+            let k = 1. - thunder * 0.95;
+            self.cloud = self.cloud.map(|c| c * k + g * (1. - k));
+            let a = 1. - thunder * 0.5;
+            self.fog = self.fog.map(|c| c * a);
+        }
+    }
+
     pub fn overworld(time: i64, partial: f32, temperature: f32, distance_chunks: i32) -> Self {
-        let mut angle = ((time % 24000) as f32 + partial) / 24000. - 0.25;
+        let mut angle = (((time % 24000) as i32) as f32 + partial) / 24000. - 0.25;
         if angle < 0. {
             angle += 1.;
         }
         if angle > 1. {
             angle -= 1.;
         }
-        // Match the MCP/vanilla provider's arithmetic, including the f32 narrowing.
+        // WorldProvider.calculateCelestialAngle, including the f32 narrowing. Its "1/3 blend" is
+        // `f = f + (f - f) / 3.0F` in 1.8.9: a no-op.
         angle = 1. - (((angle as f64 * std::f64::consts::PI).cos() + 1.) / 2.) as f32;
         let daylight = (math::cos(angle * std::f32::consts::PI * 2.) * 2. + 0.5).clamp(0., 1.);
         let temp = (temperature / 3.).clamp(-1., 1.);

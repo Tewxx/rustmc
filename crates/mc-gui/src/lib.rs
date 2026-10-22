@@ -52,6 +52,8 @@ pub struct Ui {
     pub crafting: [Option<ItemStack>; 4],
     /// Stacks thrown by the player (Q, clicking outside a container); the client spawns them.
     pub drops: Vec<ItemStack>,
+    /// `GuiNewChat.sentMessages`: chat input history.
+    pub sent_messages: Vec<String>,
     pub selected_slot: usize,
     pub shift_down: bool,
     pub font: FontRenderer,
@@ -67,7 +69,7 @@ pub struct Ui {
 impl Ui {
     pub fn new(assets: &AssetSource, settings: Settings) -> Self {
         Self {
-            inventory: [None; 36], armor: [None; 4], crafting: [None; 4], drops: Vec::new(), selected_slot: 0, shift_down: false,
+            inventory: [None; 36], armor: [None; 4], crafting: [None; 4], drops: Vec::new(), sent_messages: Vec::new(), selected_slot: 0, shift_down: false,
             font: FontRenderer::load(assets),
             lang: Lang::load(assets, "en_US"),
             settings,

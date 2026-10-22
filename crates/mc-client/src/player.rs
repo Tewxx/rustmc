@@ -34,6 +34,9 @@ pub struct Player {
     pub prev_equipped_progress: f32,
     /// `itemToRender` as (catalogue index, count).
     pub item_to_render: Option<(usize, u8)>,
+    pub game_type: crate::level::GameType,
+    /// `/spawnpoint` (a forced spawn: no bed needed).
+    pub spawn_point: Option<BlockPos>,
 }
 
 impl std::ops::Deref for Player {
@@ -53,7 +56,42 @@ impl Player {
         let mut e = PlayerEntity::new(pos);
         e.creative = true;
         e.allow_flying = true;
-        Self { e, dead: false, perspective: 0, equipped_progress: 0., prev_equipped_progress: 0., item_to_render: None }
+        Self {
+            e,
+            dead: false,
+            perspective: 0,
+            equipped_progress: 0.,
+            prev_equipped_progress: 0.,
+            item_to_render: None,
+            game_type: crate::level::GameType::Creative,
+            spawn_point: None,
+        }
+    }
+    /// `EntityPlayerMP.setGameType` / `WorldSettings.GameType.configurePlayerCapabilities`.
+    pub fn set_game_type(&mut self, g: crate::level::GameType) {
+        use crate::level::GameType;
+        self.game_type = g;
+        match g {
+            GameType::Creative => {
+                self.e.allow_flying = true;
+                self.e.creative = true;
+            }
+            GameType::Spectator => {
+                self.e.allow_flying = true;
+                self.e.creative = false;
+                self.e.flying = true;
+            }
+            _ => {
+                self.e.allow_flying = false;
+                self.e.creative = false;
+                self.e.flying = false;
+            }
+        }
+        self.e.abilities_dirty = true;
+    }
+    /// `PlayerCapabilities.allowEdit`
+    pub fn allow_edit(&self) -> bool {
+        !self.game_type.is_adventure()
     }
     pub fn bounds(&self) -> Aabb {
         self.e.bb
@@ -73,10 +111,8 @@ impl Player {
         )
     }
     pub fn tick(&mut self, world: &World, geometry: &mut BlockGeometry, keys: Keys) {
-        self.e.allow_flying = self.e.creative;
-        if !self.e.creative {
-            self.e.flying = false;
-        }
+        // EntityPlayer.onUpdate: spectators pass through blocks.
+        self.e.no_clip = self.game_type == crate::level::GameType::Spectator;
         if self.dead {
             self.e.last_tick_pos = self.e.pos;
             return;

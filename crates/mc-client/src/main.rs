@@ -11,6 +11,7 @@ mod commands;
 mod icon;
 mod inventory;
 mod player;
+mod level;
 mod survival;
 mod tools;
 
@@ -120,7 +121,7 @@ fn java_string_hash(s: &str) -> i32 {
     s.encode_utf16().fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(c as i32))
 }
 
-fn load_world(args: &Args) -> (World, (i32, i32)) {
+fn load_world(args: &Args) -> (World, (i32, i32), i64) {
     let mut world = World::default();
     let seed = args.seed.unwrap_or_else(|| {
         let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
@@ -171,7 +172,7 @@ fn load_world(args: &Args) -> (World, (i32, i32)) {
     world.track_dirty = true;
     world.take_dirty();
     println!("lit chunks in {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
-    (world, center)
+    (world, center, seed)
 }
 
 fn find_player_spawn(world: &World, center: (i32, i32)) -> mc_core::Vec3 {
@@ -201,6 +202,20 @@ fn find_player_spawn(world: &World, center: (i32, i32)) -> mc_core::Vec3 {
     mc_core::Vec3::new(center.0 as f64 + 0.5, y as f64 + 1., center.1 as f64 + 0.5)
 }
 
+/// `Math.random()`
+fn rand_f64() -> f64 {
+    use std::cell::Cell;
+    thread_local!(static STATE: Cell<u64> = Cell::new(0x2545F4914F6CDD1D ^ std::process::id() as u64));
+    STATE.with(|s| {
+        let mut x = s.get();
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        s.set(x);
+        (x >> 11) as f64 / (1u64 << 53) as f64
+    })
+}
+
 fn map_key(code: KeyCode) -> Key {
     match code {
         KeyCode::KeyE => Key::Inventory,
@@ -218,6 +233,12 @@ fn map_key(code: KeyCode) -> Key {
         KeyCode::Backspace => Key::Backspace,
         KeyCode::ArrowLeft => Key::Left,
         KeyCode::ArrowRight => Key::Right,
+        KeyCode::ArrowUp => Key::Up,
+        KeyCode::ArrowDown => Key::Down,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::Delete => Key::Delete,
+        KeyCode::Tab => Key::Tab,
         _ => Key::Other,
     }
 }
@@ -242,6 +263,12 @@ struct App {
     rand: mc_core::random::JavaRandom,
     /// Q presses since the last tick (with Ctrl held: whole stack).
     drop_presses: Vec<bool>,
+    info: level::WorldInfo,
+    weather: level::Weather,
+    // EntityRenderer.updateTorchFlicker
+    torch_flicker_x: f32,
+    torch_flicker_dx: f32,
+    lightmap: [u8; 1024],
     assets: AssetSource,
     models: BlockModels,
     world: World,
@@ -297,6 +324,11 @@ impl App {
             next_entity_id: 1,
             rand: mc_core::random::JavaRandom::new(0x5DEECE66D),
             drop_presses: Vec::new(),
+            info: level::WorldInfo::new(0, BlockPos::new(spawn.x.floor() as i32, spawn.y.floor() as i32, spawn.z.floor() as i32)),
+            weather: level::Weather::default(),
+            torch_flicker_x: 0.,
+            torch_flicker_dx: 0.,
+            lightmap: lightmap::build(1.0, 0.0, settings.gamma),
             assets,
             models,
             world,
@@ -389,14 +421,28 @@ impl App {
                 self.open(Box::new(screens::MainMenu::default()), false);
             }
             Action::Quit => el.exit(),
+            Action::TabComplete(prefix) => {
+                let list = commands::complete(&prefix, &self.ui.lang, self.target.map(|t| t.pos));
+                if let Some(screen) = &mut self.screen {
+                    if let Some(line) = screen.autocomplete(&mut self.ui, list) {
+                        self.hud.add_chat(line);
+                    }
+                }
+            }
+            Action::PrintChat(line) => self.hud.add_chat(line),
             Action::SendChat(msg) => {
                 self.close_screen();
                 self.send_chat(&msg);
             }
             Action::Respawn => {
                 self.entity.dead = false;
-                self.entity.flying = false;
-                self.entity.teleport(self.spawn);
+                let g = self.entity.game_type;
+                self.entity.set_game_type(g);
+                let at = match self.entity.spawn_point {
+                    Some(p) => mc_core::Vec3::new(p.x as f64 + 0.5, p.y as f64 + 0.1, p.z as f64 + 0.5),
+                    None => self.spawn,
+                };
+                self.entity.teleport(at);
                 self.close_screen();
                 self.sync_view();
             }
@@ -412,7 +458,7 @@ impl App {
         r.render_distance_blocks = (s.render_distance * 16) as f32;
         r.set_vsync(s.vsync);
         if s.gamma != self.applied.gamma {
-            r.set_lightmap(&lightmap::build(lightmap::sun_brightness(0.0), 0.0, s.gamma));
+            r.set_lightmap(&self.lightmap);
         }
         let (w, h) = (r.config.width, r.config.height);
         if (s.ambient_occlusion != 0) != (self.applied.ambient_occlusion != 0) || s.fancy_graphics != self.applied.fancy_graphics {
@@ -528,6 +574,17 @@ impl App {
         if self.entity.pos.y < -64. {
             self.entity.teleport(self.spawn);
         }
+        // EntityRenderer.updateTorchFlicker
+        let (a, b, c, d) = (rand_f64(), rand_f64(), rand_f64(), rand_f64());
+        self.torch_flicker_dx = (self.torch_flicker_dx as f64 + (a - b) * c * d) as f32;
+        self.torch_flicker_dx = (self.torch_flicker_dx as f64 * 0.9) as f32;
+        self.torch_flicker_x += self.torch_flicker_dx - self.torch_flicker_x;
+        // WorldServer.tick: weather, then the clocks.
+        self.weather.tick(&mut self.info, &mut self.rand);
+        self.info.total_time += 1;
+        if self.info.rules.get_bool("doDaylightCycle") {
+            self.info.time += 1;
+        }
     }
 
     /// The `Item` in the selected hotbar slot.
@@ -630,6 +687,10 @@ impl App {
 
     /// `PlayerControllerMP.clickBlock`
     fn click_block(&mut self, pos: BlockPos) {
+        // PlayerControllerMP.clickBlock: adventure/spectator players can't break blocks.
+        if !self.entity.allow_edit() {
+            return;
+        }
         if self.entity.creative {
             self.destroy_block(pos);
             self.block_hit_delay = 5;
@@ -653,7 +714,7 @@ impl App {
             return;
         }
         let target = self.target.filter(|t| self.world.state_at(t.pos.x, t.pos.y, t.pos.z).block().id != 0);
-        let (true, Some(t)) = (held, target) else {
+        let (true, Some(t), true) = (held, target, self.entity.allow_edit()) else {
             self.hitting = None;
             self.block_damage = 0.;
             return;
@@ -712,20 +773,46 @@ impl App {
         self.hitting.map(|p| (p, (self.block_damage * 10.) as i32 - 1)).filter(|(_, s)| *s >= 0)
     }
 
+    /// `NetHandlerPlayServer.processChatMessage` on the integrated server.
     fn send_chat(&mut self, msg: &str) {
+        let msg = commands::normalize_space(msg);
         if !msg.starts_with('/') {
-            self.hud.add_chat(format!("<Player> {msg}"));
+            let line = self.ui.lang.format("chat.type.text", &["Player", &msg]);
+            self.hud.add_chat(line);
             return;
         }
-        match commands::execute(msg, &mut self.entity, &mut self.world, &mut self.ui, &self.catalogue, self.spawn) {
-            Ok(result) => {
-                self.hud.add_chat(result.text);
-                self.refresh_edits(&result.edits);
-                self.sync_view();
-            }
-            Err(error) => self.hud.add_chat(format!("\u{a7}c{error}")),
+        let was_dead = self.entity.dead;
+        let out = {
+            let mut c = commands::Ctx {
+                player: &mut self.entity,
+                world: &mut self.world,
+                ui: &mut self.ui,
+                items: &self.catalogue,
+                info: &mut self.info,
+                name: "Player",
+            };
+            commands::execute(&msg, &mut c)
+        };
+        for m in out.messages {
+            self.hud.add_chat(m);
         }
-        if self.entity.dead {
+        for (stack, fake) in out.drops {
+            // dropPlayerItemWithRandomChoice(stack, false), then setNoPickupDelay, or the
+            // one-tick fake item of a fully given stack.
+            let id = self.alloc_entity_id();
+            let e = &self.entity;
+            let mut it = mc_entity::item::ItemEntity::thrown(id, e.pos, e.eye_height(), e.yaw, e.pitch, (stack.item, stack.count), &mut self.rand);
+            if fake {
+                it.pickup_delay = 32767;
+                it.age = 5999;
+            } else {
+                it.pickup_delay = 0;
+            }
+            self.items.push(it);
+        }
+        self.refresh_edits(&out.edits);
+        self.sync_view();
+        if self.entity.dead && !was_dead {
             self.open(Box::new(screens::DeathScreen::default()), false);
         }
     }
@@ -798,7 +885,7 @@ impl App {
     }
 
     fn lightmap_color(&self, sky: u8, block: u8) -> [f32; 3] {
-        let table = lightmap::build(lightmap::sun_brightness(0.0), 0.0, self.ui.settings.gamma);
+        let table = &self.lightmap;
         let i = (sky as usize * 16 + block as usize) * 4;
         [table[i] as f32 / 255., table[i + 1] as f32 / 255., table[i + 2] as f32 / 255.]
     }
@@ -889,7 +976,16 @@ impl App {
             self.entity.pos.z.floor() as i32,
         );
         let biome = mc_data::biome::Biome::by_id(self.world.biome_id(block_pos)).unwrap_or(mc_data::biome::Biome::by_id(1).unwrap());
-        let mut sky = mc_render::sky::Sky::overworld(6000, 0., biome.temperature_at(block_pos), self.ui.settings.render_distance);
+        let mut sky = mc_render::sky::Sky::overworld(self.info.time, pt, biome.temperature_at(block_pos), self.ui.settings.render_distance);
+        let (rain, thunder) = (self.weather.rain_strength(pt), self.weather.thunder_strength(pt));
+        sky.apply_weather(rain, thunder);
+        // EntityRenderer.updateLightmap (getSunBrightness(1.0)).
+        let sun_sky = mc_render::sky::Sky::overworld(self.info.time, 1.0, 0.0, 2);
+        let sun = lightmap::sun_brightness_weather(sun_sky.angle, self.weather.rain_strength(1.0), self.weather.thunder_strength(1.0));
+        self.lightmap = lightmap::build(sun, self.torch_flicker_x, self.ui.settings.gamma);
+        if let Some(r) = &self.renderer {
+            r.set_lightmap(&self.lightmap);
+        }
         sky.ticks = self.ui.ticks;
         sky.fancy_clouds = self.ui.settings.fancy_graphics;
         let light = self.light_at_eyes();
@@ -984,6 +1080,10 @@ impl App {
             let Some(stack) = self.ui.inventory[self.player.selected_slot] else {
                 return;
             };
+            // EntityPlayer.canPlayerEdit
+            if !self.entity.allow_edit() {
+                return;
+            }
             let item = &self.catalogue.items[stack.item];
             if item.block == 0 {
                 return;
@@ -1225,6 +1325,26 @@ impl App {
                 self.sync_view();
             }
             "creative" => self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false),
+            "night" | "sunset" | "rain" | "cmds" => {
+                match which {
+                    "night" => self.send_chat("/time set 18000"),
+                    "sunset" => self.send_chat("/time set 12500"),
+                    "rain" => {
+                        self.send_chat("/weather thunder");
+                        for _ in 0..100 {
+                            self.run_tick();
+                        }
+                    }
+                    _ => {
+                        for c in ["/help", "/gamemode 1", "/tp ~ ~ ~", "/give Player golden_apple 1 1", "/time query daytime", "/fill 0 0 0 1 1", "/foo"] {
+                            self.send_chat(c);
+                        }
+                        self.open(Box::new(screens::Chat::with_text("/gamer")), false);
+                    }
+                }
+                self.entity.pitch = -10.;
+                self.sync_view();
+            }
             "survival" => {
                 self.send_chat("/give Player stone 64");
                 self.send_chat("/give Player iron_helmet 1");
@@ -1236,8 +1356,9 @@ impl App {
                 self.screen = None;
                 self.sync_view();
             }
-            "held" => {
-                if let Some(item) = self.catalogue.find("planks", 0) {
+            w if w == "held" || w.starts_with("held-") => {
+                let name = w.strip_prefix("held-").unwrap_or("planks");
+                if let Some(item) = self.catalogue.find(name, 0) {
                     self.ui.inventory[0] = Some(mc_gui::ItemStack { item, count: 1 });
                 }
                 for _ in 0..5 {
@@ -1543,7 +1664,7 @@ fn main() {
         t.elapsed().as_secs_f64() * 1e3
     );
 
-    let (world, center) = load_world(&args);
+    let (world, center, seed) = load_world(&args);
     if world.chunks.is_empty() {
         eprintln!("no chunks loaded around {center:?}");
         std::process::exit(1);
@@ -1555,6 +1676,7 @@ fn main() {
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App::new(assets, models, world, center, settings);
+    app.info.seed = seed;
     app.in_game = args.play;
     app.screenshot = args.screenshot.clone().map(|p| (p, args.screen.clone()));
     app.bench = args
