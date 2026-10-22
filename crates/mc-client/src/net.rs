@@ -39,7 +39,7 @@ impl Net {
     pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>) -> Result<Net, String> {
         let mut join = |hash: &str| match session {
             Some(s) => crate::auth::join_server(s, hash),
-            None => Err("Not authenticated with Minecraft.net (use --online)".into()),
+            None => Err("This server is online-mode. Sign in with --online (Microsoft account), or join an offline-mode server with --name <name>.".into()),
         };
         let (mut reader, writer, ok) = login(host, port, name, Some(&mut join)).map_err(|e| match e {
             mc_protocol::net::LoginError::Kicked(json) => json,

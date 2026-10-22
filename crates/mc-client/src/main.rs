@@ -80,6 +80,32 @@ fn normalize_server_key(addr: &str) -> String {
     }
 }
 
+fn print_usage() {
+    println!(
+        "rustmc — Minecraft 1.8.9 client\n\n\
+Usage: rustmc [options]\n\n\
+  --connect <host[:port]>  join a server (offline-mode by default)\n\
+  --name <name>            player name for offline-mode servers (default: Player)\n\
+  --online                 sign in with a Microsoft account for online-mode servers\n\
+  --jar <1.8.9.jar>        client jar with the assets (auto-detected otherwise)\n\
+  --pack <zip|dir>         extra resource pack (repeatable)\n\
+  --pack-mode <mode>       prompt | enabled | disabled\n\
+  --world <dir>            load a saved world instead of the demo generator\n\
+  --seed <seed>            demo world seed\n\
+  --radius <n>             demo world radius in chunks\n\
+  --pos <x> <z>            demo world centre\n\
+  --play                   start the integrated singleplayer server\n\
+  --screenshot <png>       save one frame and exit\n\
+  --screen <name>          screenshot scene (hud, net, body, …)\n\
+  --bench <seconds>        render benchmark\n\n\
+Examples:\n\
+  rustmc --connect play.example.com --name ASUISSU\n\
+  rustmc --connect mc.hypixel.net --online\n\n\
+Offline-mode servers accept any --name. Online-mode servers (including Hypixel)\n\
+require --online and ignore --name; they kick unauthenticated clients."
+    );
+}
+
 fn parse_args() -> Args {
     let mut a = Args {
         play: false,
@@ -100,6 +126,10 @@ fn parse_args() -> Args {
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
+            "--help" | "-h" => {
+                print_usage();
+                std::process::exit(0);
+            }
             "--play" => a.play = true,
             "--jar" => a.jar = it.next().map(PathBuf::from),
             "--pack" => a.packs.extend(it.next().map(PathBuf::from)),

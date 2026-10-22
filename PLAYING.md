@@ -34,6 +34,31 @@ cached and re-applied on later joins. `--pack-mode enabled|disabled|prompt` over
 remembered per-server choice. Pack sound overrides are not loaded yet (sounds come from
 `.minecraft/assets`).
 
+## Joining real servers
+
+Offline-mode (cracked) servers accept any name:
+
+```
+rustmc --connect play.example.com --name ASUISSU
+rustmc --connect 203.0.113.5:25566 --name ASUISSU
+```
+
+`--connect` takes `host[:port]` (default 25565) and resolves the host normally. Servers that
+publish a `_minecraft._tcp` SRV record must be reached through their SRV target/port, which the
+client cannot query yet; use `nslookup -type=SRV _minecraft._tcp.<host>` and connect to the
+target directly.
+
+Online-mode servers (Hypixel, most public servers) reject offline names: log in with
+
+```
+rustmc --connect mc.hypixel.net --online
+```
+
+`--online` opens the Microsoft device-code flow once and caches the refresh token in
+`rustmc_account.json`; the in-game name is the account's profile name, not `--name`.
+If the server asks for encryption without a Microsoft session, the client now reports
+"This server is online-mode…" instead of a bare auth error. `rustmc --help` lists every flag.
+
 This is not full 1.8.9 parity. World edits and inventory are session-only in singleplayer.
 The integrated server has scheduled/random block ticks and fluids but no mobs or full
 survival. Special block renderers, tile entities and several placement rules remain
