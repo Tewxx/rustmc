@@ -729,6 +729,7 @@ impl App {
                 self.open(Box::new(screens::MainMenu::default()), false);
             }
             Action::Connect { address, name, online } => {
+                eprintln!("[connect] address={address:?} name={name:?} online={online}");
                 // A running App has no world-reset/connection-switch path yet, so hand the
                 // direct-connect request to a fresh client process and stop this one.
                 let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("rustmc.exe"));

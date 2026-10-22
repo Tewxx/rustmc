@@ -43,7 +43,7 @@ impl Net {
         };
         let (mut reader, writer, ok) = login(host, port, name, Some(&mut join)).map_err(|e| match e {
             mc_protocol::net::LoginError::Kicked(json) => json,
-            mc_protocol::net::LoginError::Io(e) => format!("Connection refused: {e}"),
+            mc_protocol::net::LoginError::Io(e) => format!("Could not connect to {host}:{port}: {e}"),
             mc_protocol::net::LoginError::Auth(s) | mc_protocol::net::LoginError::Protocol(s) => s,
         })?;
         let (tx, rx) = mpsc::channel();
