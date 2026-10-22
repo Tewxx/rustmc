@@ -35,10 +35,10 @@ pub enum Tree {
     MegaPine(bool),
 }
 
-fn log(variant: &str) -> StateId {
+pub(crate) fn log(variant: &str) -> StateId {
     state("minecraft:log").set("variant", variant)
 }
-fn leaves(variant: &str) -> StateId {
+pub(crate) fn leaves(variant: &str) -> StateId {
     state("minecraft:leaves").set("variant", variant).set_bool("check_decay", false)
 }
 fn log2(variant: &str) -> StateId {
@@ -137,7 +137,7 @@ fn vine(facing_prop: &str) -> StateId {
 }
 
 /// `WorldGenTrees`
-fn small(p: &mut Pop, pos: BlockPos, min_height: i32, wood: StateId, leaf: StateId, vines: bool) -> bool {
+pub(crate) fn small(p: &mut Pop, pos: BlockPos, min_height: i32, wood: StateId, leaf: StateId, vines: bool) -> bool {
     let i = p.ni(3) + min_height;
     if !(pos.y >= 1 && pos.y + i + 1 <= 256) {
         return false;
@@ -232,7 +232,7 @@ fn hanging_vines(p: &mut Pop, m: BlockPos) {
 }
 
 /// `WorldGenForest` (birch)
-fn forest(p: &mut Pop, pos: BlockPos, tall: bool) -> bool {
+pub(crate) fn forest(p: &mut Pop, pos: BlockPos, tall: bool) -> bool {
     let mut i = p.ni(3) + 5;
     if tall {
         i += p.ni(7);
@@ -354,7 +354,7 @@ fn taiga1(p: &mut Pop, pos: BlockPos) -> bool {
 }
 
 /// `WorldGenTaiga2` (spruce)
-fn taiga2(p: &mut Pop, pos: BlockPos) -> bool {
+pub(crate) fn taiga2(p: &mut Pop, pos: BlockPos) -> bool {
     let i = p.ni(4) + 6;
     let j = 1 + p.ni(2);
     let k = i - j;
@@ -512,7 +512,7 @@ fn random_horizontal(p: &mut Pop) -> Facing {
 }
 
 /// `WorldGenSavannaTree`
-fn savanna(p: &mut Pop, pos: BlockPos) -> bool {
+pub(crate) fn savanna(p: &mut Pop, pos: BlockPos) -> bool {
     let i = p.ni(3) + p.ni(3) + 5;
     if !(pos.y >= 1 && pos.y + i + 1 <= 256) {
         return false;
@@ -1112,7 +1112,7 @@ impl BigTree<'_> {
 
 /// `WorldGenBigTree.generate` after `func_175904_e` (leaf distance 5). `height_limit` is the
 /// generator's persistent `heightLimit`.
-fn big_tree(p: &mut Pop, pos: BlockPos, height_limit: &mut i32) -> bool {
+pub(crate) fn big_tree(p: &mut Pop, pos: BlockPos, height_limit: &mut i32) -> bool {
     let seed = p.rand.next_long();
     let mut t = BigTree { rand: JavaRandom::new(seed), base: pos, height_limit, height: 0, leaf_distance_limit: 5, nodes: Vec::new() };
     if *t.height_limit == 0 {

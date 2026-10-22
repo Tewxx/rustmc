@@ -468,6 +468,19 @@ pub fn random_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
         ids::FARMLAND => farmland_tick(l, pos, state),
         ids::LEAVES | ids::LEAVES2 => leaves_tick(l, pos, state),
         ids::VINE => vine_tick(l, pos, state),
+        ids::SAPLING => {
+            // BlockSapling.updateTick: BlockBush check, then grow at light >= 9 with 1/7.
+            if !can_block_stay(l, pos, state) {
+                l.drop_block_as_item(pos, state, 1.0, 0);
+                l.set_state(pos, StateId::AIR, flags::DEFAULT);
+            } else if l.light(pos.up()) >= 9 && l.rng(Rng::World).next_int_bounded(7) == 0 {
+                if state.get_int("stage") == 0 {
+                    l.set_state(pos, state.cycle("stage").unwrap_or(state), flags::NO_RERENDER);
+                } else {
+                    l.grow_tree(pos, state);
+                }
+            }
+        }
         _ => update_tick(l, pos, state, Rng::World),
     }
 }

@@ -1401,3 +1401,30 @@ fn dungeon_chest(p: &mut Pop, pos: BlockPos) {
         ch.tile_entities.insert(pos, t);
     }
 }
+
+/// `BlockSapling.generateTree` for a single sapling: the tree generators run against the
+/// world with the world's random. 2×2 mega spruce/jungle and dark oak are not handled yet.
+pub fn grow_sapling(world: &mut World, rand: &mut JavaRandom, pos: BlockPos, sapling: StateId) -> bool {
+    let kind = sapling.value("type").unwrap_or("oak");
+    // `worldgenerator` is picked (consuming nextInt(10)) before the type switch.
+    let big = rand.next_int_bounded(10) == 0;
+    let jungle_height = if kind == "jungle" { 4 + rand.next_int_bounded(7) } else { 0 };
+    if kind == "dark_oak" {
+        return false;
+    }
+    let mut p = Pop { world, rand: std::mem::replace(rand, JavaRandom::new(0)), world_rand: JavaRandom::new(0), seed: 0 };
+    p.set_state(pos, StateId::AIR, 4);
+    let ok = match kind {
+        "spruce" => trees::taiga2(&mut p, pos),
+        "birch" => trees::forest(&mut p, pos, false),
+        "jungle" => trees::small(&mut p, pos, jungle_height, trees::log("jungle"), trees::leaves("jungle"), false),
+        "acacia" => trees::savanna(&mut p, pos),
+        _ if big => trees::big_tree(&mut p, pos, &mut 0),
+        _ => trees::small(&mut p, pos, 4, trees::log("oak"), trees::leaves("oak"), false),
+    };
+    if !ok {
+        p.set_state(pos, sapling, 4);
+    }
+    *rand = p.rand;
+    ok
+}

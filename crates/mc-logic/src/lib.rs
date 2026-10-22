@@ -94,6 +94,10 @@ pub trait Level {
         }
     }
 
+    /// `BlockSapling.generateTree` (tree generators live outside this crate).
+    fn grow_tree(&mut self, _pos: BlockPos, _sapling: StateId) -> bool {
+        false
+    }
     fn as_level(&mut self) -> &mut dyn Level;
 }
 

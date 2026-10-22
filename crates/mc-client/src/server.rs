@@ -137,6 +137,12 @@ impl Level for Lv<'_> {
         name != "doDaylightCycle" || self.rules_daylight
     }
 
+    fn grow_tree(&mut self, pos: BlockPos, sapling: StateId) -> bool {
+        let ok = mc_gen::populate::grow_sapling(self.world, &mut self.server.rand, pos, sapling);
+        self.fx.edits.push(pos);
+        ok
+    }
+
     fn as_level(&mut self) -> &mut dyn Level {
         self
     }
@@ -245,6 +251,28 @@ mod tests {
         }
         let grass = (-8..8).flat_map(|x| (-8..8).map(move |z| (x, z))).filter(|&(x, z)| lv.world.state_at(x, 10, z).block().id == ids::GRASS).count();
         assert!(grass > 16, "{grass}");
+    }
+
+    #[test]
+    fn saplings_grow_into_trees() {
+        let (mut w, mut s) = (world(), Server::default());
+        for x in -8..8 {
+            for z in -8..8 {
+                w.set_block(BlockPos::new(x, 10, z), ids::DIRT, 0);
+            }
+        }
+        let sap = mc_logic::st(ids::SAPLING, 0).set("stage", "1");
+        w.set_block_state(BlockPos::new(0, 11, 0), sap);
+        let mut fx = Effects::default();
+        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules_daylight: true };
+        for _ in 0..500 {
+            let st = lv.state(BlockPos::new(0, 11, 0));
+            if st.block().id != ids::SAPLING {
+                break;
+            }
+            mc_logic::blocks::random_tick(&mut lv, BlockPos::new(0, 11, 0), st);
+        }
+        assert!(matches!(lv.state(BlockPos::new(0, 11, 0)).block().id, ids::LOG | ids::LOG2));
     }
 
     #[test]
