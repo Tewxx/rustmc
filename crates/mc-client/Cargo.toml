@@ -1,0 +1,21 @@
+[package]
+name = "mc-client"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rustmc"
+path = "src/main.rs"
+
+[dependencies]
+mc-core = { path = "../mc-core" }
+mc-assets = { path = "../mc-assets" }
+mc-world = { path = "../mc-world" }
+mc-render = { path = "../mc-render" }
+mc-gui = { path = "../mc-gui" }
+glam = "0.29"
+pollster = "0.4"
+wgpu = "24"
+winit = "0.30"
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }

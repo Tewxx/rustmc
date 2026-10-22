@@ -1,0 +1,9 @@
+[package]
+name = "mc-gui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mc-assets = { path = "../mc-assets" }
+mc-core = { path = "../mc-core" }
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -1,0 +1,15 @@
+[package]
+name = "mc-render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mc-core = { path = "../mc-core" }
+mc-assets = { path = "../mc-assets" }
+mc-world = { path = "../mc-world" }
+mc-gui = { path = "../mc-gui" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+bytemuck = { version = "1", features = ["derive"] }
+glam = { version = "0.29", features = ["bytemuck"] }
+winit = "0.30"
+wgpu = "24"
