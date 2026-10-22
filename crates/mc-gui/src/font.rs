@@ -132,6 +132,78 @@ impl FontRenderer {
         w
     }
 
+    /// `listFormattedStringToWidth`: wraps at spaces (or mid-word), carrying the active
+    /// formatting codes onto each continuation line.
+    pub fn list_to_width(&self, text: &str, width: i32) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut s: Vec<u16> = text.encode_utf16().collect();
+        loop {
+            // A first character wider than the line would recurse forever in vanilla; take it.
+            let i = self.size_to_width(&s, width).max(1);
+            if s.len() <= i {
+                out.push(String::from_utf16_lossy(&s));
+                break;
+            }
+            let head = s[..i].to_vec();
+            let skip = matches!(s[i], 32 | 10) as usize;
+            let mut rest: Vec<u16> = format_from_string(&head);
+            rest.extend_from_slice(&s[i + skip..]);
+            out.push(String::from_utf16_lossy(&head));
+            s = rest;
+        }
+        // String.split drops trailing empty strings.
+        while out.len() > 1 && out.last().is_some_and(|l| l.is_empty()) {
+            out.pop();
+        }
+        out
+    }
+
+    /// `sizeStringToWidth`
+    fn size_to_width(&self, s: &[u16], width: i32) -> usize {
+        let i = s.len();
+        let (mut j, mut k, mut l, mut bold) = (0, 0usize, None::<usize>, false);
+        while k < i {
+            let c = s[k];
+            match c {
+                10 => {}
+                167 => {
+                    if k < i - 1 {
+                        k += 1;
+                        let c1 = s[k];
+                        if c1 == 108 || c1 == 76 {
+                            bold = true;
+                        } else if c1 == 114 || c1 == 82 || is_format_color(c1) {
+                            bold = false;
+                        }
+                    }
+                }
+                _ => {
+                    if c == 32 {
+                        l = Some(k);
+                    }
+                    j += self.char_width(c);
+                    if bold {
+                        j += 1;
+                    }
+                }
+            }
+            if c == 10 {
+                // The newline itself is consumed by the split.
+                l = Some(k);
+                k = l.unwrap();
+                return k;
+            }
+            if j > width {
+                break;
+            }
+            k += 1;
+        }
+        match l {
+            Some(l) if k != i && l < k => l,
+            _ => k,
+        }
+    }
+
     /// `trimStringToWidth` (forward only).
     pub fn trim_to_width(&self, text: &str, width: i32) -> String {
         let mut out = String::new();
@@ -342,4 +414,28 @@ impl FontRenderer {
         );
         (end - start) / 2.0 + 1.0
     }
+}
+
+fn is_format_color(c: u16) -> bool {
+    (48..=57).contains(&c) || (97..=102).contains(&c) || (65..=70).contains(&c)
+}
+
+fn is_format_special(c: u16) -> bool {
+    (107..=111).contains(&c) || (75..=79).contains(&c) || c == 114 || c == 82
+}
+
+/// `getFormatFromString`: the color and style codes in effect at the end of `text`.
+pub fn format_from_string(text: &[u16]) -> Vec<u16> {
+    let mut s = Vec::new();
+    for i in 0..text.len().saturating_sub(1) {
+        if text[i] == 167 {
+            let c = text[i + 1];
+            if is_format_color(c) {
+                s = vec![167, c];
+            } else if is_format_special(c) {
+                s.extend_from_slice(&[167, c]);
+            }
+        }
+    }
+    s
 }

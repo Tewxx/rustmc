@@ -121,6 +121,38 @@ fn handle(stream: TcpStream) {
                         play(PlayClientbound::EntityMetadata(EntityMetadata { entity_id: 42, metadata: vec![(17, mc_protocol::MetaValue::Float(4.0))] }));
                         play(PlayClientbound::UpdateHealth(UpdateHealth { health: 13.0, food: 17, saturation: 0.0 }));
                     }
+                    if std::env::var_os("MOCK_SCORE").is_some() {
+                        // Title, tab header/footer, a team, sidebar / list / below-name objectives.
+                        play(PlayClientbound::PlayerListItem(PlayerListItem {
+                            action: PlayerListAction::AddPlayer,
+                            entries: vec![PlayerListEntry { uuid: mc_protocol::Uuid(0x3000, 0x8000_0000_0000_0000), name: "Player".into(), ping: 420, ..Default::default() }],
+                        }));
+                        play(PlayClientbound::Title(Title::Times { fade_in: 0, stay: 200, fade_out: 20 }));
+                        play(PlayClientbound::Title(Title::Subtitle(r#"{"text":"to the mock server","color":"gray"}"#.into())));
+                        play(PlayClientbound::Title(Title::Title(r#"{"text":"Welcome","color":"gold","bold":true}"#.into())));
+                        play(PlayClientbound::PlayerListHeaderFooter(PlayerListHeaderFooter {
+                            header: r#"{"text":"Mock Network","color":"aqua","bold":true}"#.into(),
+                            footer: r#"{"text":"play.example.net - a long footer line that has to wrap across the list width","color":"gray"}"#.into(),
+                        }));
+                        play(PlayClientbound::Teams(Teams {
+                            name: "red".into(),
+                            mode: 0,
+                            display_name: "Red".into(),
+                            prefix: "\u{a7}c[R] ".into(),
+                            suffix: "\u{a7}7*".into(),
+                            friendly_flags: 3,
+                            name_tag_visibility: "always".into(),
+                            color: 12,
+                            players: vec!["Notch".into()],
+                        }));
+                        for (name, title, kind, slot) in [("kills", "\u{a7}e\u{a7}lKILLS", "integer", 1i8), ("ping", "Ping", "integer", 0), ("hp", "\u{a7}chp", "integer", 2)] {
+                            play(PlayClientbound::ScoreboardObjective(ScoreboardObjective { name: name.into(), mode: 0, display_name: title.into(), render_type: kind.into() }));
+                            play(PlayClientbound::DisplayScoreboard(DisplayScoreboard { position: slot, name: name.into() }));
+                        }
+                        for (who, obj, v) in [("Notch", "kills", 5), ("Player", "kills", 3), ("\u{a7}aOnline: 2", "kills", 1), ("#hidden", "kills", 99), ("Notch", "ping", 35), ("Player", "ping", 420), ("Notch", "hp", 20)] {
+                            play(PlayClientbound::UpdateScore(UpdateScore { name: who.into(), action: ScoreAction::Change, objective: obj.into(), value: v }));
+                        }
+                    }
                     if std::env::var_os("MOCK_CHEST").is_some() {
                         play(PlayClientbound::OpenWindow(OpenWindow { window_id: 3, kind: "minecraft:chest".into(), title: r#"{"text":"Kit Selector","color":"dark_red"}"#.into(), slots: 27, entity_id: 0 }));
                         let mut items: Vec<Option<mc_protocol::Slot>> = vec![None; 63];

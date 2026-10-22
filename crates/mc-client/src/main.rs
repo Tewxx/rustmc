@@ -25,6 +25,7 @@ mod survival;
 mod tools;
 mod tooltip;
 mod item_use;
+mod scoreboard;
 
 use bench::Bench;
 use glam::Vec3;
@@ -363,6 +364,12 @@ struct App {
     open_window: Option<Arc<std::sync::Mutex<container::Window>>>,
     /// Tab list names by profile UUID (`playerInfoMap`).
     player_names: std::collections::HashMap<mc_protocol::Uuid, String>,
+    /// The world scoreboard and the tab list's `playerInfoMap`.
+    scoreboard: scoreboard::Scoreboard,
+    /// `GuiIngame.highlightingItemStack`
+    highlight_stack: Option<mc_gui::ItemStack>,
+    /// Screenshot cases show the player list without the key held.
+    force_tab: bool,
     sound: Option<mc_sound::SoundManager>,
     /// `PlayerControllerMP.stepSoundTickCounter`
     step_sound_counter: f32,
@@ -450,6 +457,9 @@ impl App {
             creative_sync: None,
             open_window: None,
             player_names: Default::default(),
+            scoreboard: Default::default(),
+            highlight_stack: None,
+            force_tab: false,
             sound: None,
             step_sound_counter: 0.,
             pointed_entity: None,
@@ -647,7 +657,7 @@ impl App {
         self.tick_accum += dt * 20.0;
         while self.tick_accum >= 1.0 {
             self.tick_accum -= 1.0;
-            self.hud.tick();
+            self.hud_tick();
             if let Some(sc) = &mut self.screen {
                 sc.tick();
             }
@@ -848,6 +858,9 @@ impl App {
                 C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
+                    // A new WorldClient brings a fresh Scoreboard; the player info map stays.
+                    let players = std::mem::take(&mut self.scoreboard.players);
+                    self.scoreboard = scoreboard::Scoreboard { players, ..Default::default() };
                     self.player.hardcore = j.hardcore;
                     self.has_valid_health = false;
                     let view = self.ui.settings.render_distance as i8;
@@ -946,21 +959,71 @@ impl App {
                     }
                 }
                 C::PlayerListItem(pl) => {
+                    // handlePlayerListItem
                     for e in pl.entries {
+                        let players = &mut self.scoreboard.players;
                         match pl.action {
                             PlayerListAction::AddPlayer => {
                                 if let Some(t) = e.properties.iter().find(|p| p.name == "textures") {
                                     self.skins.request(e.uuid, &t.value);
                                 }
-                                self.player_names.insert(e.uuid, e.name);
+                                self.player_names.insert(e.uuid, e.name.clone());
+                                players.insert(
+                                    e.uuid,
+                                    scoreboard::PlayerInfo {
+                                        name: e.name,
+                                        game_mode: e.game_mode,
+                                        ping: e.ping,
+                                        display_name: e.display_name.map(|d| chat::format(&d, &self.ui.lang)),
+                                    },
+                                );
                             }
                             PlayerListAction::RemovePlayer => {
                                 self.player_names.remove(&e.uuid);
+                                players.remove(&e.uuid);
                             }
-                            _ => {}
+                            PlayerListAction::UpdateGameMode => {
+                                if let Some(p) = players.get_mut(&e.uuid) {
+                                    p.game_mode = e.game_mode;
+                                }
+                            }
+                            PlayerListAction::UpdateLatency => {
+                                if let Some(p) = players.get_mut(&e.uuid) {
+                                    p.ping = e.ping;
+                                }
+                            }
+                            PlayerListAction::UpdateDisplayName => {
+                                if let Some(p) = players.get_mut(&e.uuid) {
+                                    p.display_name = e.display_name.map(|d| chat::format(&d, &self.ui.lang));
+                                }
+                            }
                         }
                     }
                 }
+                C::PlayerListHeaderFooter(h) => {
+                    let (header, footer) = (chat::format(&h.header, &self.ui.lang), chat::format(&h.footer, &self.ui.lang));
+                    self.scoreboard.header = (!header.is_empty()).then_some(header);
+                    self.scoreboard.footer = (!footer.is_empty()).then_some(footer);
+                }
+                C::Title(t) => {
+                    // handleTitle: fields a packet type does not carry read as 0, so CLEAR also
+                    // zeroes the fade times (vanilla behaviour).
+                    use mc_protocol::packets::Title;
+                    match t {
+                        Title::Title(s) => self.hud.display_title(Some(chat::format(&s, &self.ui.lang)), None, 0, 0, 0),
+                        Title::Subtitle(s) => self.hud.display_title(None, Some(chat::format(&s, &self.ui.lang)), 0, 0, 0),
+                        Title::Times { fade_in, stay, fade_out } => self.hud.display_title(None, None, fade_in, stay, fade_out),
+                        Title::Clear => self.hud.display_title(None, None, 0, 0, 0),
+                        Title::Reset => {
+                            self.hud.display_title(Some(String::new()), Some(String::new()), -1, -1, -1);
+                            self.hud.default_title_times();
+                        }
+                    }
+                }
+                C::ScoreboardObjective(o) => self.scoreboard.objective(o),
+                C::UpdateScore(u) => self.scoreboard.score(u),
+                C::DisplayScoreboard(d) => self.scoreboard.display_slot(d.position, d.name),
+                C::Teams(t) => self.scoreboard.team(t),
                 C::SoundEffect(se) => {
                     let p = mc_core::Vec3::new(se.x as f64 / 8., se.y as f64 / 8., se.z as f64 / 8.);
                     self.play_sound(&se.name, Some(p), se.volume, se.pitch as f32 / 63.);
@@ -2693,32 +2756,66 @@ impl App {
         }
     }
 
+    /// `GuiIngame.updateTick`, including the held item's name highlight.
+    fn hud_tick(&mut self) {
+        self.hud.tick();
+        if !self.in_game {
+            return;
+        }
+        let cur = self.ui.inventory[self.player.selected_slot];
+        match cur {
+            None => self.hud.highlight_ticks = 0,
+            Some(s) => {
+                let cat = &self.catalogue;
+                let same = self.highlight_stack.is_some_and(|h| {
+                    cat.items[h.item].id == cat.items[s.item].id && tooltip::tags_equal(&h, &s) && (tooltip::damageable(cat, &s) || h.damage == s.damage)
+                });
+                if same {
+                    if self.hud.highlight_ticks > 0 {
+                        self.hud.highlight_ticks -= 1;
+                    }
+                } else {
+                    self.hud.highlight_ticks = 40;
+                }
+                self.hud.highlight_name = tooltip::highlight_name(cat, &self.ui.lang, &s);
+            }
+        }
+        self.highlight_stack = cur;
+    }
+
+    /// Our profile name as the scoreboard knows it.
+    fn my_name(&self) -> String {
+        self.net.as_ref().and_then(|n| self.scoreboard.players.get(&n.uuid)).map_or_else(|| "Player".to_string(), |p| p.name.clone())
+    }
+
     /// Builds this frame's GUI batch.
     fn build_gui(&mut self) -> Scaled {
         let sr = self.scaled();
         let (mx, my) = self.mouse_gui();
         self.batch.clear();
         let hud_visible = self.in_game && self.screen.as_ref().is_none_or(|s| s.shows_hud());
+        // Name tags belong to the world pass, under every overlay.
+        if hud_visible && !self.ui.settings.hide_gui {
+            self.name_tags(sr);
+        }
         if hud_visible {
             let chat_open = self.screen.is_some();
             let debug = self.debug_info();
-            self.hud.render(&mut self.ui, &mut self.batch, sr, &self.player, &debug, chat_open);
-            if !self.ui.settings.hide_gui {
-                for slot in 0..9 {
-                    if let Some(stack) = self.ui.inventory[slot] {
-                        self.catalogue.draw(
-                            &mut self.ui,
-                            &mut self.batch,
-                            stack,
-                            sr.width / 2 - 90 + slot as i32 * 20 + 2,
-                            sr.height - 19,
-                        );
+            let me = self.my_name();
+            self.hud.sidebar = self.scoreboard.sidebar(&me);
+            // The list shows while the key is held, unless this is a lone integrated-server
+            // player with no list objective.
+            let lone = self.net.is_none() && self.scoreboard.players.len() <= 1 && self.scoreboard.display[0].is_none();
+            self.hud.tab_list = ((self.bound_down("key.playerlist") || self.force_tab) && !lone).then(|| self.scoreboard.tab_list());
+            let (inventory, catalogue) = (self.ui.inventory, &self.catalogue);
+            let mut items = |ui: &mut mc_gui::Ui, b: &mut mc_gui::batch::GuiBatch| {
+                for (slot, stack) in inventory.iter().enumerate().take(9) {
+                    if let Some(stack) = stack {
+                        catalogue.draw(ui, b, *stack, sr.width / 2 - 90 + slot as i32 * 20 + 2, sr.height - 19);
                     }
                 }
-            }
-        }
-        if hud_visible && !self.ui.settings.hide_gui {
-            self.name_tags(sr);
+            };
+            self.hud.render(&mut self.ui, &mut self.batch, sr, &self.player, &debug, chat_open, &mut items);
         }
         if let Some(s) = &mut self.screen {
             s.draw(&mut self.ui, &mut self.batch, sr.width, sr.height, mx, my);
@@ -2737,24 +2834,41 @@ impl App {
         let vp = self.camera.view_proj(aspect, self.ui.settings.render_distance as f32 * 16.);
         let tan = (self.camera.fov_deg.to_radians() / 2.).tan();
         let mut tags: Vec<(f32, f32, f32, String, bool)> = Vec::new();
+        let me = self.my_name();
         for r in self.remote.map.values() {
             if r.kind != entities::Kind::Player || r.name.is_empty() {
                 continue;
             }
+            // canRenderName: a team's name tag visibility decides first.
+            if self.scoreboard.name_tag_visible(&r.name, &me) == Some(false) {
+                continue;
+            }
             let p = r.interpolated(pt);
-            let rel = Vec3::new(p.x as f32, p.y as f32 + 1.8 + 0.5, p.z as f32) - self.camera.pos;
+            let base = Vec3::new(p.x as f32, p.y as f32 + 1.8 + 0.5, p.z as f32) - self.camera.pos;
             let max = if r.sneaking { 32. } else { 64. };
-            if rel.length() >= max {
+            if base.length() >= max {
                 continue;
             }
-            let clip = vp * rel.extend(1.);
-            if clip.w <= 0.05 {
-                continue;
+            let mut project = |rel: Vec3, text: String, faint: bool| {
+                let clip = vp * rel.extend(1.);
+                if clip.w <= 0.05 {
+                    return;
+                }
+                let (nx, ny) = (clip.x / clip.w, clip.y / clip.w);
+                let x = (nx * 0.5 + 0.5) * sr.width_f as f32;
+                let y = (0.5 - ny * 0.5) * sr.height_f as f32;
+                tags.push((clip.w, x, y, text, faint));
+            };
+            let mut rel = base;
+            // RenderPlayer.renderOffsetLivingLabel: the below-name objective within 10 blocks,
+            // the name raised by FONT_HEIGHT * 1.15 * 0.026666668 above it.
+            if !r.sneaking && base.length_squared() < 100. {
+                if let Some(s) = self.scoreboard.below_name(&r.name) {
+                    project(rel, s, false);
+                    rel.y += 9. * 1.15 * 0.026666668;
+                }
             }
-            let (nx, ny) = (clip.x / clip.w, clip.y / clip.w);
-            let x = (nx * 0.5 + 0.5) * sr.width_f as f32;
-            let y = (0.5 - ny * 0.5) * sr.height_f as f32;
-            tags.push((clip.w, x, y, r.name.clone(), r.sneaking));
+            project(rel, self.scoreboard.format_name(&r.name), r.sneaking);
         }
         // Far tags first so near ones draw on top.
         tags.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -2798,7 +2912,7 @@ impl App {
             for _ in 0..40 {
                 self.process_net();
                 self.run_tick();
-                self.hud.tick();
+                self.hud_tick();
             }
             std::thread::sleep(Duration::from_millis(500));
             self.process_net();
@@ -3022,6 +3136,7 @@ impl App {
                 self.screen = None;
             }
             "net" => {}
+            "net-tab" => self.force_tab = true,
             "net-inv" | "net-inv-tip" => {
                 let title = self.ui.lang.get("container.crafting");
                 let w = Arc::new(std::sync::Mutex::new(container::Window::new(0, "player", title, 5)));

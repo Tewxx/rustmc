@@ -109,6 +109,26 @@ fn potion_name(lang: &Lang, stack: &ItemStack) -> String {
     }
 }
 
+/// `ItemStack.getDisplayName`, with `renderSelectedItem`'s italic for custom names.
+pub fn highlight_name(cat: &Catalogue, lang: &Lang, stack: &ItemStack) -> String {
+    if has_display_name(stack) {
+        format!("\u{a7}o{}", display_name(cat, stack))
+    } else if cat.items[stack.item].id == 373 {
+        potion_name(lang, stack)
+    } else {
+        display_name(cat, stack)
+    }
+}
+
+/// `ItemStack.areItemStackTagsEqual`
+pub fn tags_equal(a: &ItemStack, b: &ItemStack) -> bool {
+    match (a.tag, b.tag) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x == y,
+        _ => false,
+    }
+}
+
 /// `StringUtils.ticksToElapsedTime`
 fn elapsed(ticks: i32) -> String {
     let s = ticks / 20;

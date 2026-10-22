@@ -84,6 +84,43 @@ pub struct DebugInfo {
     pub limit_framerate: i32,
 }
 
+/// `GuiIngame.renderScoreboard` input: the objective title and (formatted name, points),
+/// lowest score first.
+#[derive(Clone, Debug, Default)]
+pub struct Sidebar {
+    pub title: String,
+    pub lines: Vec<(String, i32)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TabEntry {
+    /// `getPlayerName`: the list display name, else the team-formatted profile name.
+    pub name: String,
+    pub ping: i32,
+    pub spectator: bool,
+    /// The list objective's points (display slot 0), if one is shown.
+    pub score: Option<i32>,
+}
+
+/// `GuiPlayerTabOverlay.renderPlayerlist` input, already in `PlayerComparator` order.
+#[derive(Clone, Debug, Default)]
+pub struct TabList {
+    pub entries: Vec<TabEntry>,
+    pub hearts: bool,
+    pub header: Option<String>,
+    pub footer: Option<String>,
+}
+
+/// `titleFadeIn` / `titleDisplayTime` / `titleFadeOut`
+#[derive(Clone, Copy, Debug)]
+struct TitleTimes(i32, i32, i32);
+impl Default for TitleTimes {
+    /// `setDefaultTitlesTimes`
+    fn default() -> Self {
+        Self(10, 70, 20)
+    }
+}
+
 struct ChatLine {
     text: String,
     /// `updateCounter` when added.
@@ -103,6 +140,17 @@ pub struct Hud {
     last_player_health: i32,
     last_system_time: u64,
     health_update_counter: i64,
+    displayed_title: String,
+    displayed_subtitle: String,
+    titles_timer: i32,
+    title_times: TitleTimes,
+    /// `renderSelectedItem`: the held stack's name and `remainingHighlightTicks`.
+    pub highlight_name: String,
+    pub highlight_ticks: i32,
+    /// Set by the client each frame from its scoreboard.
+    pub sidebar: Option<Sidebar>,
+    /// `Some` while the player list key is held (and the list is worth showing).
+    pub tab_list: Option<TabList>,
 }
 
 impl Hud {
@@ -118,18 +166,70 @@ impl Hud {
         self.action_bar_time = 60;
     }
 
-    /// `GuiIngame.updateTick`
-    pub fn tick(&mut self) {
-        self.update_counter += 1;
-        if self.action_bar_time > 0 {
-            self.action_bar_time -= 1;
+    /// `GuiIngame.displayTitle`
+    pub fn display_title(&mut self, title: Option<String>, subtitle: Option<String>, fade_in: i32, stay: i32, fade_out: i32) {
+        let TitleTimes(fi, st, fo) = &mut self.title_times;
+        if title.is_none() && subtitle.is_none() && fade_in < 0 && stay < 0 && fade_out < 0 {
+            self.displayed_title.clear();
+            self.displayed_subtitle.clear();
+            self.titles_timer = 0;
+        } else if let Some(t) = title {
+            self.displayed_title = t;
+            self.titles_timer = *fi + *st + *fo;
+        } else if let Some(s) = subtitle {
+            self.displayed_subtitle = s;
+        } else {
+            if fade_in >= 0 {
+                *fi = fade_in;
+            }
+            if stay >= 0 {
+                *st = stay;
+            }
+            if fade_out >= 0 {
+                *fo = fade_out;
+            }
+            if self.titles_timer > 0 {
+                self.titles_timer = *fi + *st + *fo;
+            }
         }
     }
 
-    pub fn render(&mut self, ui: &mut Ui, b: &mut GuiBatch, sr: Scaled, p: &PlayerHud, debug: &DebugInfo, chat_open: bool) {
+    /// `setDefaultTitlesTimes`
+    pub fn default_title_times(&mut self) {
+        self.title_times = TitleTimes::default();
+    }
+
+    /// `GuiIngame.updateTick` (the held-item highlight is counted by the client).
+    pub fn tick(&mut self) {
+        if self.action_bar_time > 0 {
+            self.action_bar_time -= 1;
+        }
+        if self.titles_timer > 0 {
+            self.titles_timer -= 1;
+            if self.titles_timer <= 0 {
+                self.displayed_title.clear();
+                self.displayed_subtitle.clear();
+            }
+        }
+        self.update_counter += 1;
+    }
+
+    /// `renderGameOverlay`. `hotbar_items` draws the hotbar stacks (`renderHotbarItem`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render(
+        &mut self,
+        ui: &mut Ui,
+        b: &mut GuiBatch,
+        sr: Scaled,
+        p: &PlayerHud,
+        debug: &DebugInfo,
+        chat_open: bool,
+        hotbar_items: &mut dyn FnMut(&mut Ui, &mut GuiBatch),
+    ) {
         let (w, h) = (sr.width, sr.height);
         if !ui.settings.hide_gui {
             self.hotbar(b, sr, p);
+            hotbar_items(ui, b);
             // Crosshair: inverted against the world behind it.
             b.color = [1.0; 4];
             if !ui.settings.show_debug {
@@ -140,6 +240,9 @@ impl Hud {
             if p.survival {
                 self.player_stats(b, sr, p);
                 self.exp_bar(ui, b, sr, p, w / 2 - 91);
+            }
+            if ui.settings.held_item_tooltips {
+                self.selected_item(ui, b, sr, p);
             }
         }
         if ui.settings.show_debug {
@@ -157,8 +260,69 @@ impl Hud {
             }
         }
         if !ui.settings.hide_gui || chat_open {
+            let pt = ui.ticks - self.update_counter as f32;
+            self.titles(ui, b, sr, pt);
+            if let Some(s) = self.sidebar.take() {
+                render_scoreboard(ui, b, sr, &s);
+                self.sidebar = Some(s);
+            }
             self.draw_chat(ui, b, h, chat_open);
+            if let Some(t) = self.tab_list.take() {
+                render_player_list(ui, b, w, &t);
+                self.tab_list = Some(t);
+            }
         }
+    }
+
+    /// `renderSelectedItem`
+    fn selected_item(&self, ui: &mut Ui, b: &mut GuiBatch, sr: Scaled, p: &PlayerHud) {
+        if self.highlight_ticks <= 0 || self.highlight_name.is_empty() {
+            return;
+        }
+        let s = &self.highlight_name;
+        let i = (sr.width - ui.font.width(s)) / 2;
+        let mut j = sr.height - 59;
+        if !p.survival {
+            j += 14;
+        }
+        let k = ((self.highlight_ticks as f32 * 256.0 / 10.0) as i32).min(255);
+        if k > 0 {
+            b.blend = Blend::Alpha;
+            let s = s.clone();
+            ui.font.draw_shadow(b, &s, i as f32, j as f32, 0xFFFFFF_u32.wrapping_add((k as u32) << 24));
+        }
+    }
+
+    /// The title and subtitle (`titlesTimer`), scaled 4× and 2× about the screen centre.
+    fn titles(&self, ui: &mut Ui, b: &mut GuiBatch, sr: Scaled, pt: f32) {
+        if self.titles_timer <= 0 {
+            return;
+        }
+        let TitleTimes(fade_in, stay, fade_out) = self.title_times;
+        let f3 = self.titles_timer as f32 - pt;
+        let mut i2 = 255;
+        if self.titles_timer > fade_out + stay {
+            let f4 = (fade_in + stay + fade_out) as f32 - f3;
+            i2 = (f4 * 255.0 / fade_in as f32) as i32;
+        }
+        if self.titles_timer <= fade_out {
+            i2 = (f3 * 255.0 / fade_out as f32) as i32;
+        }
+        let i2 = i2.clamp(0, 255);
+        if i2 <= 8 {
+            return;
+        }
+        let color = 0xFFFFFF | ((i2 as u32) << 24 & 0xFF000000);
+        let centre = [(sr.width / 2) as f32, (sr.height / 2) as f32];
+        let saved = b.transform;
+        b.blend = Blend::Alpha;
+        b.transform = Some((4.0, centre));
+        let t = self.displayed_title.clone();
+        ui.font.draw_shadow(b, &t, (-ui.font.width(&t) / 2) as f32, -10.0, color);
+        b.transform = Some((2.0, centre));
+        let t = self.displayed_subtitle.clone();
+        ui.font.draw_shadow(b, &t, (-ui.font.width(&t) / 2) as f32, 5.0, color);
+        b.transform = saved;
     }
 
     /// `renderTooltip` (the hotbar)
@@ -343,6 +507,184 @@ impl Hud {
             }
         }
         b.transform = saved;
+    }
+}
+
+/// `GuiIngame.renderScoreboard`
+fn render_scoreboard(ui: &mut Ui, b: &mut GuiBatch, sr: Scaled, s: &Sidebar) {
+    let fh = FONT_HEIGHT;
+    let mut i = ui.font.width(&s.title);
+    for (name, points) in &s.lines {
+        i = i.max(ui.font.width(&format!("{name}: \u{a7}c{points}")));
+    }
+    let i1 = s.lines.len() as i32 * fh;
+    let j1 = sr.height / 2 + i1 / 3;
+    let k1 = 3;
+    let l1 = sr.width - i - k1;
+    for (j, (name, points)) in s.lines.iter().enumerate() {
+        let j = j as i32 + 1;
+        let s2 = format!("\u{a7}c{points}");
+        let k = j1 - j * fh;
+        let l = sr.width - k1 + 2;
+        b.rect(l1 - 2, k, l, k + fh, 1342177280);
+        // The text color's 0x20 alpha is moot: drawRect leaves blending off, so it draws opaque.
+        ui.font.draw(b, name, l1 as f32, k as f32, 0xFFFFFFFF);
+        let w2 = ui.font.width(&s2);
+        ui.font.draw(b, &s2, (l - w2) as f32, k as f32, 0xFFFFFFFF);
+        if j == s.lines.len() as i32 {
+            b.rect(l1 - 2, k - fh - 1, l, k - 1, 1610612736);
+            b.rect(l1 - 2, k - 1, l, k, 1342177280);
+            let tw = ui.font.width(&s.title);
+            ui.font.draw(b, &s.title, (l1 + i / 2 - tw / 2) as f32, (k - fh) as f32, 0xFFFFFFFF);
+        }
+    }
+}
+
+/// `GuiPlayerTabOverlay.renderPlayerlist` (no skin heads: they need an encrypted connection or
+/// the integrated server).
+fn render_player_list(ui: &mut Ui, b: &mut GuiBatch, width: i32, t: &TabList) {
+    let fh = FONT_HEIGHT;
+    let mut i = 0;
+    let mut j = 0;
+    for e in &t.entries {
+        i = i.max(ui.font.width(&e.name));
+        if let (Some(v), false) = (e.score, t.hearts) {
+            j = j.max(ui.font.width(&format!(" {v}")));
+        }
+    }
+    let list = &t.entries[..t.entries.len().min(80)];
+    let l3 = list.len() as i32;
+    let mut i4 = l3;
+    let mut j4 = 1;
+    while i4 > 20 {
+        j4 += 1;
+        i4 = (l3 + j4 - 1) / j4;
+    }
+    let heads = false;
+    let has_objective = list.iter().any(|e| e.score.is_some());
+    let l = if has_objective {
+        if t.hearts {
+            90
+        } else {
+            j
+        }
+    } else {
+        0
+    };
+    let i1 = (j4 * ((if heads { 9 } else { 0 }) + i + l + 13)).min(width - 50) / j4;
+    let j1 = width / 2 - (i1 * j4 + (j4 - 1) * 5) / 2;
+    let mut k1 = 10;
+    let mut l1 = i1 * j4 + (j4 - 1) * 5;
+    let header = t.header.as_ref().map(|h| ui.font.list_to_width(h, width - 50));
+    let footer = t.footer.as_ref().map(|f| ui.font.list_to_width(f, width - 50));
+    for s in header.iter().chain(footer.iter()).flatten() {
+        l1 = l1.max(ui.font.width(s));
+    }
+    b.blend = Blend::Alpha;
+    if let Some(lines) = &header {
+        b.rect(width / 2 - l1 / 2 - 1, k1 - 1, width / 2 + l1 / 2 + 1, k1 + lines.len() as i32 * fh, i32::MIN as u32);
+        for s in lines {
+            let w = ui.font.width(s);
+            ui.font.draw_shadow(b, s, (width / 2 - w / 2) as f32, k1 as f32, 0xFFFFFFFF);
+            k1 += fh;
+        }
+        k1 += 1;
+    }
+    b.rect(width / 2 - l1 / 2 - 1, k1 - 1, width / 2 + l1 / 2 + 1, k1 + i4 * 9, i32::MIN as u32);
+    for k4 in 0..l3 {
+        let l4 = k4 / i4;
+        let i5 = k4 % i4;
+        let j2 = j1 + l4 * i1 + l4 * 5;
+        let k2 = k1 + i5 * 9;
+        b.rect(j2, k2, j2 + i1, k2 + 8, 553648127);
+        b.color = [1.0; 4];
+        let e = &list[k4 as usize];
+        if e.spectator {
+            let s1 = format!("\u{a7}o{}", e.name);
+            ui.font.draw_shadow(b, &s1, j2 as f32, k2 as f32, 0x90FFFFFF);
+        } else {
+            ui.font.draw_shadow(b, &e.name, j2 as f32, k2 as f32, 0xFFFFFFFF);
+        }
+        if let (Some(v), false) = (e.score, e.spectator) {
+            let k5 = j2 + i + 1;
+            let l5 = k5 + l;
+            if l5 - k5 > 5 {
+                scoreboard_value(ui, b, t.hearts, v, k2, k5, l5);
+            }
+        }
+        // drawPing
+        let jj = match e.ping {
+            p if p < 0 => 5,
+            p if p < 150 => 0,
+            p if p < 300 => 1,
+            p if p < 600 => 2,
+            p if p < 1000 => 3,
+            _ => 4,
+        };
+        b.textured_rect(ICONS, j2 + i1 - 11, k2, 0, 176 + jj * 8, 10, 8);
+    }
+    if let Some(lines) = &footer {
+        k1 = k1 + i4 * 9 + 1;
+        b.rect(width / 2 - l1 / 2 - 1, k1 - 1, width / 2 + l1 / 2 + 1, k1 + lines.len() as i32 * fh, i32::MIN as u32);
+        for s in lines {
+            let w = ui.font.width(s);
+            ui.font.draw_shadow(b, s, (width / 2 - w / 2) as f32, k1 as f32, 0xFFFFFFFF);
+            k1 += fh;
+        }
+    }
+}
+
+/// `drawScoreboardValues` (hearts without the change flash: that needs per-player history).
+fn scoreboard_value(ui: &mut Ui, b: &mut GuiBatch, hearts: bool, i: i32, y: i32, x0: i32, x1: i32) {
+    if !hearts {
+        let s1 = format!("\u{a7}e{i}");
+        let w = ui.font.width(&s1);
+        ui.font.draw_shadow(b, &s1, (x1 - w) as f32, y as f32, 16777215);
+        return;
+    }
+    let last = i;
+    let j = ((i.max(last) as f32) / 2.0).ceil() as i32;
+    let k = ((i / 2) as f32).ceil().max(((last / 2) as f32).ceil()).max(10.0) as i32;
+    if j <= 0 {
+        return;
+    }
+    let f = ((x1 - x0 - 4) as f32 / k as f32).min(9.0);
+    if f > 3.0 {
+        let rect = |b: &mut GuiBatch, x: f32, u: i32| {
+            const F: f32 = 0.003_906_25;
+            b.textured_rect_uv(ICONS, x, y as f32, 9.0, 9.0, [u as f32 * F, 0.0, (u + 9) as f32 * F, 9.0 * F]);
+        };
+        for l in j..k {
+            rect(b, x0 as f32 + l as f32 * f, 16);
+        }
+        for j1 in 0..j {
+            let x = x0 as f32 + j1 as f32 * f;
+            rect(b, x, 16);
+            if j1 * 2 + 1 < i {
+                rect(b, x, if j1 >= 10 { 160 } else { 52 });
+            }
+            if j1 * 2 + 1 == i {
+                rect(b, x, if j1 >= 10 { 169 } else { 61 });
+            }
+        }
+    } else {
+        let f1 = (i as f32 / 20.0).clamp(0.0, 1.0);
+        let i1 = (((1.0 - f1) * 255.0) as i32) << 16 | ((f1 * 255.0) as i32) << 8;
+        let mut s = format!("{}", java_float(i as f32 / 2.0));
+        if x1 - ui.font.width(&format!("{s}hp")) >= x0 {
+            s.push_str("hp");
+        }
+        let w = ui.font.width(&s);
+        ui.font.draw_shadow(b, &s, ((x1 + x0) / 2 - w / 2) as f32, y as f32, i1 as u32);
+    }
+}
+
+/// Java `Float.toString` for the half-integers the heart score prints.
+fn java_float(v: f32) -> String {
+    if v.fract() == 0.0 {
+        format!("{v:.1}")
+    } else {
+        format!("{v}")
     }
 }
 
