@@ -28,6 +28,29 @@ never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`
 | Creative catalogue, tabs, search, stack/cursor operations, hotbar icons; local commands, break/place/pick | Working; special item behavior/NBT and complete placement rules remain | `mc-client/src/{inventory,commands,main}.rs` |
 | Client: state machine, input, settings (`options.txt`) | Local playable creative world, death/respawn screen | `crates/mc-client/src/main.rs` |
 
+## Session log — multiplayer, sound, integrated server (Oct 2026)
+
+Commits cbf3425 … 5bc480a. New since the table above:
+
+| Area | Status | Where |
+|---|---|---|
+| Multiplayer (`--connect host:port --name X`, `--online` for Microsoft auth) | Join, chunks, movement packets in vanilla order/thresholds, digging, C0A/C02/C08, C09 sync, PosLook replies, chat/action bar, death screen, block changes | `mc-client/src/{net,main,chat}.rs` |
+| Online auth | Device-code MSA → XBL → XSTS → MC; refresh token cached in git-ignored `rustmc_account.json`. **Never tested with a real account** | `mc-client/src/auth.rs` |
+| Remote entities | Other players (3-step interp, body clamp, limbs, held item, skins, name tags), item entities, picking/attack | `mc-client/src/entities.rs`, `mc-render/src/avatar.rs` |
+| Containers | Window 0 + chest/hopper/dispenser/crafting/furnace, slotClick modes 0/1/2/-999, transactions, C0F/C0D, creative C10 | `mc-client/src/container.rs` |
+| Sound | Pure-Rust Vorbis (matches ffmpeg), WinMM mixer, sounds.json, categories, music ticker, footsteps/dig/break/place, GUI clicks, sound options screen. **Not listened to by a human yet** | `crates/mc-sound`, `mc-client/src/music.rs` |
+| Integrated server (singleplayer) | Scheduled tick list (time, priority, id; 1000/tick), updateLCG random ticks over chunks within 7, neighbour notifications; liquids flow; grass/mycelium, ice, snow, reeds, cactus, crops, farmland, leaf decay | `mc-client/src/server.rs`, `mc-logic/src/blocks.rs` |
+| Inventory player preview | `drawEntityOnScreen` for survival, player container, creative inventory tab | `mc-render/src/avatar.rs::encode_gui` |
+
+Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`)
+then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
+
+**Next, in order:** saplings (needs `mc-gen::trees` usable outside population), vines, fire;
+mob models/rendering for servers; mob/rain/fall/hurt sounds; multithreaded meshing;
+settings parity audit (video options vs `GameSettings`); death score from metadata 18;
+remaining commands; sneaking name-tag occlusion. User-only checks: app icon in Explorer/taskbar,
+a real Microsoft login, listening to sound.
+
 ## User priority: playable game (latest steering)
 
 Latest steering also rejects the visual appearance as far from 1:1. Do not call the playable
