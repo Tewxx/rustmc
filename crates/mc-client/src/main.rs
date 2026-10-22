@@ -7,6 +7,7 @@
 //! E inventory, F5 perspective, mouse break/place/pick, T chat, / commands, Esc pause.
 
 mod bench;
+mod auth;
 mod chat;
 mod entities;
 mod net;
@@ -55,6 +56,8 @@ struct Args {
     /// `host[:port]` of a server to join instead of a local world.
     connect: Option<String>,
     name: String,
+    /// Sign in with a Microsoft account for online-mode servers.
+    online: bool,
 }
 
 fn parse_args() -> Args {
@@ -71,6 +74,7 @@ fn parse_args() -> Args {
         seed: None,
         connect: None,
         name: "Player".into(),
+        online: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -83,6 +87,7 @@ fn parse_args() -> Args {
             "--screen" => a.screen = it.next().unwrap_or_default(),
             "--bench" => a.bench = Some(it.next().and_then(|s| s.parse().ok()).unwrap_or(30.0)),
             "--seed" => a.seed = it.next().map(|s| s.parse().unwrap_or_else(|_| java_string_hash(&s) as i64)),
+            "--online" => a.online = true,
             "--connect" => a.connect = it.next(),
             "--name" => a.name = it.next().unwrap_or_else(|| "Player".into()),
             "--radius" => a.radius = it.next().and_then(|s| s.parse().ok()).unwrap_or(4),
@@ -2202,10 +2207,21 @@ fn main() {
             Some((h, p)) if p.parse::<u16>().is_ok() => (h.to_string(), p.parse().unwrap()),
             _ => (addr.to_string(), 25565),
         };
-        match net::Net::connect(&host, port, &args.name) {
+        let session = args.online.then(|| match auth::login() {
+            Ok(s) => {
+                println!("Signed in as {}", s.name);
+                s
+            }
+            Err(e) => {
+                eprintln!("Microsoft sign-in failed: {e}");
+                std::process::exit(1);
+            }
+        });
+        let name = session.as_ref().map_or(args.name.clone(), |s| s.name.clone());
+        match net::Net::connect(&host, port, &name, session.as_ref()).map(|n| (n, name)) {
             Ok(n) => n,
             Err(e) => {
-                eprintln!("Failed to connect to the server: {e}");
+                eprintln!("Failed to connect to the server: {}", chat::format(&e, &mc_gui::lang::Lang::default()));
                 std::process::exit(1);
             }
         }
@@ -2230,8 +2246,8 @@ fn main() {
     let mut app = App::new(assets, models, world, center, settings);
     app.info.seed = seed;
     app.in_game = args.play || connection.is_some();
-    app.name = args.name.clone();
-    app.net = connection;
+    app.name = connection.as_ref().map_or(args.name.clone(), |c| c.1.clone());
+    app.net = connection.map(|c| c.0);
     app.screenshot = args.screenshot.clone().map(|p| (p, args.screen.clone()));
     app.bench = args
         .bench

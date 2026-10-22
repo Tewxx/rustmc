@@ -6,3 +6,4 @@
 /tools/extract/out
 /bench.csv
 /logs
+rustmc_account.json

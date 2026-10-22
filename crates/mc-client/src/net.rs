@@ -34,8 +34,12 @@ pub struct Net {
 
 impl Net {
     /// `GuiConnecting`: blocks until login succeeds, then reads packets on a thread.
-    pub fn connect(host: &str, port: u16, name: &str) -> Result<Net, String> {
-        let (mut reader, writer, _ok) = login(host, port, name, None).map_err(|e| match e {
+    pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>) -> Result<Net, String> {
+        let mut join = |hash: &str| match session {
+            Some(s) => crate::auth::join_server(s, hash),
+            None => Err("Not authenticated with Minecraft.net (use --online)".into()),
+        };
+        let (mut reader, writer, _ok) = login(host, port, name, Some(&mut join)).map_err(|e| match e {
             mc_protocol::net::LoginError::Kicked(json) => json,
             mc_protocol::net::LoginError::Io(e) => format!("Connection refused: {e}"),
             mc_protocol::net::LoginError::Auth(s) | mc_protocol::net::LoginError::Protocol(s) => s,
@@ -274,7 +278,7 @@ mod tests {
                 d.feed(&buf[..n]);
             }
         });
-        let mut n = Net::connect("127.0.0.1", port, "a").unwrap();
+        let mut n = Net::connect("127.0.0.1", port, "a", None).unwrap();
         n.update_walking(true, false, 0.0, 64.0, 0.0, 0.0, 0.0, true); // sprint + moved
         n.update_walking(true, false, 0.01, 64.0, 0.0, 0.0, 0.0, true); // below threshold
         n.update_walking(true, false, 0.01, 64.0, 0.0, 5.0, 0.0, false); // look only
