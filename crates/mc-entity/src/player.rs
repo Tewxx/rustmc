@@ -105,6 +105,12 @@ pub struct PlayerEntity {
     pub attributes: Attributes,
     /// Health gained from regeneration ticks since the client last drained it.
     pub pending_heal: f32,
+    pub hurt_time: i32,
+    pub max_hurt_time: i32,
+    pub hurt_resistant_time: i32,
+    /// `attackedAtYaw` (always 0 on the client in 1.8.9).
+    pub attacked_at_yaw: f32,
+    pub death_time: i32,
 }
 
 fn player_bb(p: Vec3) -> Aabb {
@@ -183,6 +189,11 @@ impl PlayerEntity {
             effects: Effects::default(),
             attributes: Attributes::default(),
             pending_heal: 0.,
+            hurt_time: 0,
+            max_hurt_time: 0,
+            hurt_resistant_time: 0,
+            attacked_at_yaw: 0.,
+            death_time: 0,
         }
     }
 
@@ -277,6 +288,12 @@ impl PlayerEntity {
         self.prev_swing_progress = self.swing_progress;
         self.prev_render_yaw_offset = self.render_yaw_offset;
         self.prev_rotation_yaw_head = self.rotation_yaw_head;
+        if self.hurt_time > 0 {
+            self.hurt_time -= 1;
+        }
+        if self.hurt_resistant_time > 0 {
+            self.hurt_resistant_time -= 1;
+        }
         // updatePotionEffects
         self.pending_heal += self.effects.tick_client();
 

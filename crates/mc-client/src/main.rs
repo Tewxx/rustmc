@@ -327,6 +327,10 @@ struct App {
     ui: Ui,
     hud: Hud,
     player: PlayerHud,
+    /// `EntityPlayerSP.hasValidHealth`
+    has_valid_health: bool,
+    /// `EntityPlayer.getScore` (data watcher 18), shown on the death screen.
+    score: i32,
     batch: GuiBatch,
     /// Open screen and the screens it was opened from (parents).
     screen: Option<Box<dyn Screen>>,
@@ -413,6 +417,8 @@ impl App {
             ui,
             hud: Hud::default(),
             player: PlayerHud::default(),
+            has_valid_health: false,
+            score: 0,
             batch: GuiBatch::new(),
             screen: None,
             parents: Vec::new(),
@@ -718,6 +724,12 @@ impl App {
         if self.net.is_none() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
             self.entity.tick(&self.world, &mut self.geometry, keys);
             // EntityLivingBase.heal from regeneration (the server corrects it with S06).
+            // onDeathUpdate: deathTime stops at 20 when the dead player leaves the entity list.
+            if self.player.health <= 0. && self.net.is_some() {
+                self.entity.death_time = (self.entity.death_time + 1).min(20);
+            } else {
+                self.entity.death_time = 0;
+            }
             let heal = std::mem::take(&mut self.entity.pending_heal);
             if heal > 0. && self.player.health > 0. {
                 self.player.health = (self.player.health + heal).min(self.player.max_health);
@@ -795,6 +807,8 @@ impl App {
                 C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
+                    self.player.hardcore = j.hardcore;
+                    self.has_valid_health = false;
                     let view = self.ui.settings.render_distance as i8;
                     n.send_join_replies("en_US", view, self.ui.settings.chat_visibility as i8, self.ui.settings.chat_colors, self.ui.settings.model_parts);
                     self.entity.set_game_type(level::GameType::by_id(j.game_mode as i32));
@@ -973,6 +987,18 @@ impl App {
                     if let Some(r) = self.remote.map.get_mut(&m.entity_id) {
                         apply_meta(r, &m.metadata);
                     }
+                    if m.entity_id == n.entity_id {
+                        // DataWatcher.updateWatchedObjectsFromList on the local player.
+                        for (i, v) in &m.metadata {
+                            match (i, v) {
+                                (1, mc_protocol::MetaValue::Short(a)) => self.player.air = *a as i32,
+                                (6, mc_protocol::MetaValue::Float(hp)) => self.player.health = hp.clamp(0., self.player.max_health),
+                                (17, mc_protocol::MetaValue::Float(a)) => self.player.absorption = *a,
+                                (18, mc_protocol::MetaValue::Int(s)) => self.score = *s,
+                                _ => {}
+                            }
+                        }
+                    }
                 }
                 C::EntityEquipment(e) => {
                     if e.slot == 0 {
@@ -1037,6 +1063,23 @@ impl App {
                         }
                     }
                 }
+                C::EntityStatus(s) if s.entity_id == n.entity_id => match s.status {
+                    // EntityLivingBase.handleStatusUpdate
+                    2 => {
+                        self.entity.limb_swing_amount = 1.5;
+                        self.entity.hurt_resistant_time = 20;
+                        self.entity.hurt_time = 10;
+                        self.entity.max_hurt_time = 10;
+                        self.entity.attacked_at_yaw = 0.;
+                        let pitch = (rand_f64() as f32 - rand_f64() as f32) * 0.2 + 1.0;
+                        self.play_sound("game.player.hurt", Some(self.entity.pos), 1.0, pitch);
+                    }
+                    3 => {
+                        let pitch = (rand_f64() as f32 - rand_f64() as f32) * 0.2 + 1.0;
+                        self.play_sound("game.player.die", Some(self.entity.pos), 1.0, pitch);
+                    }
+                    _ => {}
+                },
                 C::EntityStatus(s) => {
                     if s.status == 2 {
                         if let Some(r) = self.remote.map.get_mut(&s.entity_id) {
@@ -1070,15 +1113,17 @@ impl App {
                     self.player.level = x.level;
                 }
                 C::UpdateHealth(h) => {
-                    self.player.health = h.health;
+                    self.set_player_sp_health(h.health);
                     self.player.food = h.food;
+                    self.player.saturation = h.saturation;
                     self.entity.food_level = h.food;
                     if h.health <= 0. && !self.entity.dead {
                         self.entity.dead = true;
-                        self.open(Box::new(screens::DeathScreen::new(false, self.net.is_some(), 0)), false);
+                        self.open(Box::new(screens::DeathScreen::new(false, self.net.is_some(), self.score)), false);
                     }
                 }
                 C::Respawn(r) => {
+                    self.has_valid_health = false;
                     self.world.has_sky = r.dimension == 0;
                     let keys: Vec<(i32, i32)> = self.world.chunks.keys().copied().collect();
                     for (x, z) in keys {
@@ -1263,6 +1308,64 @@ impl App {
     fn held_registry_item(&self) -> Option<&'static mc_data::item::Item> {
         let s = self.ui.inventory[self.player.selected_slot]?;
         mc_data::item::Item::by_id(self.catalogue.items[s.item].id)
+    }
+
+    /// `EntityPlayer.getTotalArmorValue`: the armor items' `damageReduceAmount`.
+    fn total_armor_value(&self) -> i32 {
+        self.ui
+            .armor
+            .iter()
+            .flatten()
+            .filter_map(|s| mc_data::item::Item::by_id(self.catalogue.items[s.item].id))
+            .filter(|i| i.is_a("ItemArmor"))
+            .map(|i| i.num("damageReduceAmount") as i32)
+            .sum()
+    }
+
+    /// `EntityPlayerSP.setPlayerSPHealth`
+    fn set_player_sp_health(&mut self, health: f32) {
+        let max = self.player.max_health;
+        if !self.has_valid_health {
+            self.player.health = health.clamp(0., max);
+            self.has_valid_health = true;
+            return;
+        }
+        let f = self.player.health - health;
+        if f <= 0. {
+            self.player.health = health.clamp(0., max);
+            if f < 0. {
+                self.entity.hurt_resistant_time = 10;
+            }
+        } else {
+            self.entity.hurt_resistant_time = 20;
+            self.damage_entity_generic(f);
+            self.entity.hurt_time = 10;
+            self.entity.max_hurt_time = 10;
+        }
+    }
+
+    /// `EntityPlayer.damageEntity(DamageSource.generic, amount)` as the client runs it.
+    /// Armor durability and protection enchantments need item damage/NBT (not modelled yet).
+    fn damage_entity_generic(&mut self, mut amount: f32) {
+        // applyArmorCalculations
+        let i = 25 - self.total_armor_value();
+        let f = amount * i as f32;
+        amount = f / 25.0;
+        // applyPotionDamageCalculations
+        if let Some(e) = self.entity.effects.get(11) {
+            let j = 25 - (e.amplifier + 1) * 5;
+            let f = amount * j as f32;
+            amount = f / 25.0;
+        }
+        if amount <= 0. {
+            amount = 0.;
+        }
+        let before = amount;
+        amount = (amount - self.player.absorption).max(0.);
+        self.player.absorption -= before - amount;
+        if amount != 0. {
+            self.player.health = (self.player.health - amount).clamp(0., self.player.max_health);
+        }
     }
 
     /// `Block.getPlayerRelativeBlockHardness`
@@ -1719,6 +1822,24 @@ impl App {
         Some(mc_render::avatar::HeldItem { model, tints, entity_block: matches!(def.block, 54 | 130 | 146) })
     }
 
+    /// `EntityRenderer.hurtCameraEffect`: death roll, then the hurt shake.
+    fn hurt_camera(&self, pt: f32) -> glam::Mat4 {
+        let e = &self.entity;
+        let mut m = glam::Mat4::IDENTITY;
+        if self.player.health <= 0. && self.net.is_some() {
+            let f1 = e.death_time as f32 + pt;
+            m *= glam::Mat4::from_rotation_z((40.0 - 8000.0 / (f1 + 200.0)).to_radians());
+        }
+        let f = e.hurt_time as f32 - pt;
+        if f < 0. || e.max_hurt_time == 0 {
+            return m;
+        }
+        let f = f / e.max_hurt_time as f32;
+        let f = mc_core::math::sin(f * f * f * f * std::f32::consts::PI);
+        let yaw = e.attacked_at_yaw;
+        m * glam::Mat4::from_rotation_y((-yaw).to_radians()) * glam::Mat4::from_rotation_z((-f * 14.0).to_radians()) * glam::Mat4::from_rotation_y(yaw.to_radians())
+    }
+
     /// `EntityRenderer.setupViewBobbing`
     fn view_bobbing(&self, pt: f32) -> glam::Mat4 {
         let e = &self.entity;
@@ -1759,7 +1880,7 @@ impl App {
         self.camera.yaw = yaw;
         self.camera.pitch = pitch;
         self.camera.pos = eye;
-        self.camera.bob = bob * glam::Mat4::from_translation(Vec3::new(0., 0., -0.1));
+        self.camera.bob = self.hurt_camera(pt) * bob * glam::Mat4::from_translation(Vec3::new(0., 0., -0.1));
         self.update_target(pt);
         if self.entity.perspective != 0 {
             if self.entity.perspective == 2 {
@@ -1781,6 +1902,14 @@ impl App {
             self.camera.pos = eye + back * distance;
         }
         self.player.survival = !self.entity.creative;
+        self.player.armor = self.total_armor_value();
+        self.player.hurt_resistant_time = self.entity.hurt_resistant_time;
+        let fx = &self.entity.effects;
+        self.player.regeneration = fx.has(10);
+        self.player.poison = fx.has(19);
+        self.player.wither = fx.has(20);
+        self.player.hunger = fx.has(17);
+        self.player.eye_in_water = in_water;
         self.ui.selected_slot = self.player.selected_slot;
         let held = self.ui.inventory[self.player.selected_slot].and_then(|s| self.held_item(s.item));
         let hand_item = self.entity.item_to_render.and_then(|(i, _)| self.held_item(i));
@@ -2358,6 +2487,12 @@ impl App {
                 self.screen = None;
             }
             "net" => {}
+            "net-inv" => {
+                let title = self.ui.lang.get("container.crafting");
+                let w = Arc::new(std::sync::Mutex::new(container::Window::new(0, "player", title, 5)));
+                self.open_window = Some(w.clone());
+                self.open(Box::new(container::ContainerScreen::new(w, self.catalogue.clone())), false)
+            }
             _ => self.screen = None,
         }
         // Give screens a fake mouse over the first button for hover states.

@@ -18,12 +18,50 @@ pub struct PlayerHud {
     pub level: i32,
     pub selected_slot: usize,
     pub survival: bool,
+    /// `getAbsorptionAmount` (data watcher 17).
+    pub absorption: f32,
+    pub hurt_resistant_time: i32,
+    pub regeneration: bool,
+    pub poison: bool,
+    pub wither: bool,
+    pub hunger: bool,
+    pub hardcore: bool,
+    /// `FoodStats.getSaturationLevel`
+    pub saturation: f32,
+    /// `getAir` (data watcher 1).
+    pub air: i32,
+    /// `isInsideOfMaterial(Material.water)`
+    pub eye_in_water: bool,
 }
 
 impl Default for PlayerHud {
     fn default() -> Self {
-        Self { health: 20.0, max_health: 20.0, food: 20, armor: 0, experience: 0.0, level: 0, selected_slot: 0, survival: true }
+        Self {
+            health: 20.0,
+            max_health: 20.0,
+            food: 20,
+            armor: 0,
+            experience: 0.0,
+            level: 0,
+            selected_slot: 0,
+            survival: true,
+            absorption: 0.0,
+            hurt_resistant_time: 0,
+            regeneration: false,
+            poison: false,
+            wither: false,
+            hunger: false,
+            hardcore: false,
+            saturation: 5.0,
+            air: 300,
+            eye_in_water: false,
+        }
     }
+}
+
+/// `Minecraft.getSystemTime`
+fn system_time_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 /// Numbers the F3 screen prints, gathered by the client each frame.
@@ -60,6 +98,11 @@ pub struct Hud {
     /// `GuiIngame.recordPlaying` / `recordPlayingUpFor`: the action bar message.
     action_bar: String,
     action_bar_time: i32,
+    // renderPlayerStats damage flashing
+    player_health: i32,
+    last_player_health: i32,
+    last_system_time: u64,
+    health_update_counter: i64,
 }
 
 impl Hud {
@@ -126,17 +169,40 @@ impl Hud {
         b.textured_rect(WIDGETS, i - 91 - 1 + p.selected_slot as i32 * 20, sr.height - 22 - 1, 0, 22, 24, 22);
     }
 
-    /// `renderPlayerStats`, no potions, mount, air or damage flashing.
-    fn player_stats(&self, b: &mut GuiBatch, sr: Scaled, p: &PlayerHud) {
-        let health = mc_core::math::ceiling_float_int(p.health);
+    /// `renderPlayerStats` (no mount health: riding is not modelled yet).
+    fn player_stats(&mut self, b: &mut GuiBatch, sr: Scaled, p: &PlayerHud) {
+        use mc_core::math::ceiling_float_int;
+        let i = ceiling_float_int(p.health);
+        let flag = self.health_update_counter > self.update_counter as i64 && (self.health_update_counter - self.update_counter as i64) / 3 % 2 == 1;
+        let now = system_time_ms();
+        if i < self.player_health && p.hurt_resistant_time > 0 {
+            self.last_system_time = now;
+            self.health_update_counter = (self.update_counter + 20) as i64;
+        } else if i > self.player_health && p.hurt_resistant_time > 0 {
+            self.last_system_time = now;
+            self.health_update_counter = (self.update_counter + 10) as i64;
+        }
+        if now.saturating_sub(self.last_system_time) > 1000 {
+            self.player_health = i;
+            self.last_player_health = i;
+            self.last_system_time = now;
+        }
+        self.player_health = i;
+        let j = self.last_player_health;
+        let mut rng = JavaRandom::new(self.update_counter.wrapping_mul(312871) as i64);
+        // flag1 is never set in 1.8.9, so the previous food level never flashes.
+        let k = p.food;
         let i1 = sr.width / 2 - 91;
         let j1 = sr.width / 2 + 91;
         let k1 = sr.height - 39;
         let f = p.max_health;
-        let l1 = mc_core::math::ceiling_float_int(f / 2.0 / 10.0);
+        let f1 = p.absorption;
+        let l1 = ceiling_float_int((f + f1) / 2.0 / 10.0);
         let i2 = (10 - (l1 - 2)).max(3);
         let j2 = k1 - (l1 - 1) * i2 - 10;
+        let mut f2 = f1;
         let k2 = p.armor;
+        let l2 = if p.regeneration { self.update_counter % ceiling_float_int(f + 5.0) } else { -1 };
         for i3 in 0..10 {
             if k2 > 0 {
                 let j3 = i1 + i3 * 8;
@@ -151,32 +217,72 @@ impl Hud {
                 }
             }
         }
-        // Low health jitter uses Random seeded by updateCounter * 312871.
-        let mut rng = JavaRandom::new((self.update_counter as i64).wrapping_mul(312871));
-        for i6 in (0..mc_core::math::ceiling_float_int(f / 2.0)).rev() {
-            let j6 = 16;
-            let l3 = mc_core::math::ceiling_float_int((i6 + 1) as f32 / 10.0) - 1;
+        for i6 in (0..ceiling_float_int((f + f1) / 2.0)).rev() {
+            let j6 = if p.poison {
+                16 + 36
+            } else if p.wither {
+                16 + 72
+            } else {
+                16
+            };
+            let k3 = flag as i32;
+            let l3 = ceiling_float_int((i6 + 1) as f32 / 10.0) - 1;
             let i4 = i1 + i6 % 10 * 8;
             let mut j4 = k1 - l3 * i2;
-            if health <= 4 {
+            if i <= 4 {
                 j4 += rng.next_int(2);
             }
-            b.textured_rect(ICONS, i4, j4, 16, 0, 9, 9);
-            if i6 * 2 + 1 < health {
-                b.textured_rect(ICONS, i4, j4, j6 + 36, 0, 9, 9);
+            if i6 == l2 {
+                j4 -= 2;
             }
-            if i6 * 2 + 1 == health {
-                b.textured_rect(ICONS, i4, j4, j6 + 45, 0, 9, 9);
+            let k4 = if p.hardcore { 5 } else { 0 };
+            b.textured_rect(ICONS, i4, j4, 16 + k3 * 9, 9 * k4, 9, 9);
+            if flag {
+                if i6 * 2 + 1 < j {
+                    b.textured_rect(ICONS, i4, j4, j6 + 54, 9 * k4, 9, 9);
+                }
+                if i6 * 2 + 1 == j {
+                    b.textured_rect(ICONS, i4, j4, j6 + 63, 9 * k4, 9, 9);
+                }
+            }
+            if f2 > 0.0 {
+                if f2 == f1 && f1 % 2.0 == 1.0 {
+                    b.textured_rect(ICONS, i4, j4, j6 + 153, 9 * k4, 9, 9);
+                } else {
+                    b.textured_rect(ICONS, i4, j4, j6 + 144, 9 * k4, 9, 9);
+                }
+                f2 -= 2.0;
+            } else {
+                if i6 * 2 + 1 < i {
+                    b.textured_rect(ICONS, i4, j4, j6 + 36, 9 * k4, 9, 9);
+                }
+                if i6 * 2 + 1 == i {
+                    b.textured_rect(ICONS, i4, j4, j6 + 45, 9 * k4, 9, 9);
+                }
             }
         }
         for k6 in 0..10 {
-            let i9 = j1 - k6 * 8 - 9;
-            b.textured_rect(ICONS, i9, k1, 16, 27, 9, 9);
-            if k6 * 2 + 1 < p.food {
-                b.textured_rect(ICONS, i9, k1, 16 + 36, 27, 9, 9);
+            let mut i7 = k1;
+            let (l7, j8) = if p.hunger { (16 + 36, 13) } else { (16, 0) };
+            if p.saturation <= 0.0 && self.update_counter % (k * 3 + 1) == 0 {
+                i7 = k1 + (rng.next_int(3) - 1);
             }
-            if k6 * 2 + 1 == p.food {
-                b.textured_rect(ICONS, i9, k1, 16 + 45, 27, 9, 9);
+            let i9 = j1 - k6 * 8 - 9;
+            b.textured_rect(ICONS, i9, i7, 16 + j8 * 9, 27, 9, 9);
+            if k6 * 2 + 1 < k {
+                b.textured_rect(ICONS, i9, i7, l7 + 36, 27, 9, 9);
+            }
+            if k6 * 2 + 1 == k {
+                b.textured_rect(ICONS, i9, i7, l7 + 45, 27, 9, 9);
+            }
+        }
+        if p.eye_in_water {
+            let l6 = p.air;
+            let k7 = mc_core::math::ceiling_double_int((l6 - 2) as f64 * 10.0 / 300.0);
+            let i8 = mc_core::math::ceiling_double_int(l6 as f64 * 10.0 / 300.0) - k7;
+            for l8 in 0..k7 + i8 {
+                let u = if l8 < k7 { 16 } else { 25 };
+                b.textured_rect(ICONS, j1 - l8 * 8 - 9, j2, u, 18, 9, 9);
             }
         }
     }

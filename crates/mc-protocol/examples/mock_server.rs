@@ -100,6 +100,16 @@ fn handle(stream: TcpStream) {
                         entity_id: 8,
                         metadata: vec![(10, mc_protocol::MetaValue::Item(Some(mc_protocol::Slot { id: 264, count: 3, damage: 0, nbt: None })))],
                     }));
+                    if std::env::var_os("MOCK_FX").is_some() {
+                        // Speed II, Regeneration, Poison, Jump Boost; 20 -> 13 damage; 4 absorption; diamond chestplate.
+                        for (id, amp, dur) in [(1i8, 1i8, 2400), (10, 0, 900), (19, 0, 32767), (8, 2, 61)] {
+                            play(PlayClientbound::EntityEffect(EntityEffect { entity_id: 42, effect_id: id, amplifier: amp, duration: dur, hide_particles: 1 }));
+                        }
+                        play(PlayClientbound::UpdateHealth(UpdateHealth { health: 20.0, food: 17, saturation: 0.0 }));
+                        play(PlayClientbound::SetSlot(SetSlot { window_id: 0, slot: 6, item: Some(mc_protocol::Slot { id: 311, count: 1, damage: 0, nbt: None }) }));
+                        play(PlayClientbound::EntityMetadata(EntityMetadata { entity_id: 42, metadata: vec![(17, mc_protocol::MetaValue::Float(4.0))] }));
+                        play(PlayClientbound::UpdateHealth(UpdateHealth { health: 13.0, food: 17, saturation: 0.0 }));
+                    }
                     if std::env::var_os("MOCK_CHEST").is_some() {
                         play(PlayClientbound::OpenWindow(OpenWindow { window_id: 3, kind: "minecraft:chest".into(), title: r#"{"text":"Kit Selector","color":"dark_red"}"#.into(), slots: 27, entity_id: 0 }));
                         let mut items: Vec<Option<mc_protocol::Slot>> = vec![None; 63];
