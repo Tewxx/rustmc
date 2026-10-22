@@ -23,6 +23,10 @@ pub trait BlockAccess {
         None
     }
 
+    fn moving_piston(&self, _pos: BlockPos) -> Option<crate::geometry::MovingPiston> {
+        None
+    }
+
     fn block(&self, pos: BlockPos) -> &'static Block {
         self.state(pos).block()
     }
@@ -85,7 +89,7 @@ fn solid_attachable(n: &Block) -> bool {
 }
 
 /// `BlockFence.canConnectTo`: fences of the same material, any fence gate, or a solid block.
-fn fence_connects(fence: &Block, n: &Block) -> bool {
+pub(crate) fn fence_connects(fence: &Block, n: &Block) -> bool {
     if n.id == ids::BARRIER {
         return false;
     }
@@ -96,7 +100,7 @@ fn fence_connects(fence: &Block, n: &Block) -> bool {
 }
 
 /// `BlockWall.canConnectTo`: the same wall block, any fence gate, or a solid block.
-fn wall_connects(wall: &Block, n: &Block) -> bool {
+pub(crate) fn wall_connects(wall: &Block, n: &Block) -> bool {
     if n.id == ids::BARRIER {
         return false;
     }
@@ -107,7 +111,7 @@ fn wall_connects(wall: &Block, n: &Block) -> bool {
 }
 
 /// `BlockPane.canPaneConnectToBlock`.
-fn pane_connects(pane: &Block, n: &Block) -> bool {
+pub(crate) fn pane_connects(pane: &Block, n: &Block) -> bool {
     n.full_block
         || n.id == pane.id
         || matches!(n.id, ids::GLASS | ids::STAINED_GLASS | ids::STAINED_GLASS_PANE)

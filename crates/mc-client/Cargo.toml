@@ -9,10 +9,13 @@ path = "src/main.rs"
 
 [dependencies]
 mc-core = { path = "../mc-core" }
+mc-data = { path = "../mc-data" }
 mc-assets = { path = "../mc-assets" }
 mc-world = { path = "../mc-world" }
+mc-gen = { path = "../mc-gen" }
 mc-render = { path = "../mc-render" }
 mc-gui = { path = "../mc-gui" }
+mc-entity = { path = "../mc-entity" }
 glam = "0.29"
 pollster = "0.4"
 wgpu = "24"

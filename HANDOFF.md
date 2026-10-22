@@ -15,18 +15,72 @@ never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`
 | Core math (`MathHelper`, AABB, Vec3, BlockPos, EnumFacing, NBT) | Bit-exact ports, tested | `crates/mc-core` |
 | Block registry: all 198 blocks, 7806 states, materials, sounds, `getActualState` (golden-tested) | Done | `crates/mc-data` |
 | Assets: layered packs, blockstates, models, baking, atlas, colormaps | Done | `crates/mc-assets` |
-| World: 1.8 chunks, Anvil loader, demo terrain, ~80-block id table | Done | `crates/mc-world` |
+| State → model mapping for all 7806 states; neighbor-derived models, block tints, 61 biome color profiles | Java-golden-tested; regular JSON models wired into meshing | `mc-data/{model_location,color,biome}.rs`, `mc-render/src/models.rs` |
+| Block bounds, selection/collision boxes, per-block ray traces, side rendering | Ordered Java replay verified; includes mutable bounds and moving pistons | `mc-data/src/geometry/` |
+| World: 1.8 chunks, Anvil loader, saved biomes/tile-entity NBT, demo terrain | Partial (no tick, entities, save or incremental light yet) | `crates/mc-world` |
 | Sky/block light (vanilla steady state, edge-seeded BFS) | Done, single-threaded | `mc-world/src/light.rs` |
 | Smooth lighting + AO (`BlockModelRenderer` port), lightmap | Done | `mc-render/src/ao.rs`, `lightmap.rs` |
 | Chunk meshing | Done, **single-threaded, full rebuild only** | `mc-render/src/mesh.rs` |
 | wgpu world renderer | One draw per chunk, CPU frustum culling | `mc-render/src/gpu.rs` |
 | GUI: font, HUD, F3, chat, title/pause/options/video/controls | Done | `crates/mc-gui`, `mc-render/src/gui_gpu.rs` |
-| Client: state machine, input, settings (`options.txt`) | Done (fly camera, no player) | `crates/mc-client/src/main.rs` |
+| Local player: 20 TPS movement, gravity, jump, sprint, sneak ledges, slab steps, collision, creative flight | Playable; full Java differential physics validation remains | `mc-client/src/player.rs` |
+| Steve body, F5 front/rear views, first-person arm and held block/item rendering | Working local milestone; animation/lighting parity remains | `mc-render/src/avatar.rs` |
+| Creative catalogue, tabs, search, stack/cursor operations, hotbar icons; local commands, break/place/pick | Working; special item behavior/NBT and complete placement rules remain | `mc-client/src/{inventory,commands,main}.rs` |
+| Client: state machine, input, settings (`options.txt`) | Local playable creative world, death/respawn screen | `crates/mc-client/src/main.rs` |
+
+## User priority: playable game (latest steering)
+
+Latest steering also rejects the visual appearance as far from 1:1. Do not call the playable
+prototype visually accurate. A visual audit found and fixed discarded model display transforms,
+inventory/held objects incorrectly using world-state models, animated item PNG strips squeezed
+into icons, alpha blending on an sRGB surface, and skipped translucent model blocks. The client
+now bakes actual item models, honors inherited display transforms, prefers a raw UNORM target,
+and renders translucent faces in a separate sorted pass. Player geometry is drawn before that
+pass; the first-person hand follows it. Steve's scale/root and arm rest angle now follow Java.
+
+The flat sky is replaced by overworld sky planes, biome/time sky and fog colors, sunrise fan,
+sun/moon and fast/fancy cloud geometry from the Java paths. Runtime time is still fixed to noon;
+stars, weather effects and non-overworld skies remain unimplemented. `item_transforms.json`
+checks all 1,595 JSON models against Java parent resolution; `sky.json` checks 1,080 overworld
+biome/time/partial-tick samples. These validate components, not a full rendered scene.
+
+**Next visual work:** establish same-world, same-camera Java/Rust image comparisons. Terrain is
+still the sine-wave demo unless an Anvil world is supplied. Fluids, special block renderers,
+texture mipmaps/animations, full player/item lighting and several GUI details still differ.
+Do not hide those gaps behind screenshot smoke tests or unrelated foundation work.
+
+The user's existing `target/release/rustmc.exe` session can lock that executable during builds.
+Do not kill their session or discard its edits. Build an alternate executable with
+`cargo rustc --release --offline -p mc-client --bin rustmc -- -o target/release/rustmc-updated.exe`;
+`Play-RustMC.cmd` prefers that alternate file. Normal `cargo build` can fail with Windows error 5
+while the old window is open. The active window does not automatically receive code changes.
+
+The user explicitly rejected further foundation-only progress while the app remained a spectator
+viewer. The current checkpoint adds a real local player, visible hand/body, a creative inventory,
+world editing and commands. **Keep playability first.** Read `PLAYING.md` for controls and limits;
+double-click `Play-RustMC.cmd` or launch `rustmc --play` to enter directly.
+
+Tests exercise ground/wall/ceiling collisions, jump, slab steps, sneak edges, flight, selection,
+menu-to-hotbar operations, command mutation/error atomicity, break/place/pick and preventing placement
+inside the player. The creative catalogue is extracted from Java (`DumpCreative`, `creative.tsv`)
+and its icon assets are checked against the actual jar. It is metadata, not a complete Item/NBT port.
+Editing blocks now invalidates light in neighbouring chunks and receives light from unchanged
+boundary sources, fixing stale light after border edits.
+
+Current limits: local simulation only; no packets or integrated server. Edits/inventory are session-only.
+Crafting, container interaction, item-use behavior, drops, mobs, fluids, redstone and full survival are
+still missing. Special block renderers and several placement rules remain incomplete. Do not call
+this full parity or claim the new controller has Java golden validation. Next work should validate
+player traces against Java and extend persistent gameplay and real block/item interaction before
+returning to unrelated foundations.
 
 Run: `cargo run --release --bin rustmc -- --radius 8`
 Screenshot any screen headless: `rustmc --screenshot out.png --screen title|pause|options|video|controls|hud|debug|chat`
-Tests: `cargo test --release` (50 passing; `mc-render/tests/vanilla_jar.rs` runs against the real jar,
-`mc-world/tests/golden_blocks.rs` against `golden/blocks.json`; both skip when their input is missing).
+Tests: `cargo test --release --workspace --offline` (77 tests). Golden/real-jar tests skip when their
+inputs are missing; the local verification used all inputs. New dumps: `models.json` (7806 mappings),
+`colors.json` (7806 states with mixed-biome neighborhoods), `biomes.json` (61 profiles, 200 samples each).
+`geometry.json` replays 37,506 scenes covering every state, 487,578 rays and 112,518 masked collision
+list queries, including 300 moving-piston tile-entity scenes.
 Benchmark: `rustmc --radius 8 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
 Golden data: `powershell -ExecutionPolicy Bypass -File tools/extract/extract.ps1` (needs a JDK 8 and MCP's
 compiled `bin/minecraft`; writes `golden/`, which is gitignored because it's derived from Mojang code).
@@ -36,6 +90,27 @@ rewrites `crates/mc-data/src/generated/` (committed; never edit by hand).
 
 **The plan now lives in `ROADMAP.md`** (segments S0–S13). The performance sections below are scheduled
 there as S8/S12; read the roadmap first.
+
+Earlier checkpoint (2026-10-21): **S1d implemented.** Geometry APIs live on an explicit
+`BlockGeometry` owned by the serial caller. Keep the same instance across calls: vanilla stores
+mutable bounds on singleton blocks, and a stair ray trace permanently changes later bounds until
+other operations replace them. Raw bounds can be inverted (vines); `Bounds` preserves that while
+world AABBs normalize like Java. Collision lists retain Java order, strict mask intersections and
+f32 coordinate arithmetic, including at large coordinates. Saved piston NBT now feeds moving-box
+geometry. `mesh::build_with_geometry` applies `setBlockBoundsBasedOnState` and `shouldSideBeRendered`,
+with one persistent context on the client. Regression checks cover adjacent glass, matching slab
+halves across materials, and visible inset faces beneath solid blocks. `shots/s1d-final.png` is a
+render smoke check. The playable checkpoint above now consumes these geometry APIs for the local
+player's collision, block selection and placement.
+
+Previous checkpoint (S1c): removed the partial
+`mc-world/src/blocks.rs` table; lighting/AO use registry properties. Model lookup is a dense state
+array and shares baked geometry across ignored properties. Fancy/Fast changes now remesh; solid
+layers skip alpha testing (needed for fast leaves). Absent variants show the missing cube, and
+unresolved weighted alternatives are skipped in vanilla order. Anvil biomes and flower pots now
+reach actual-state/tint logic. `shots/s1c-final.png` is a render smoke check, **not** a vanilla
+pixel-parity claim. Plant position offsets, fluids, translucency,
+tile-entity rendering and the all-block vanilla screenshot comparison remain outstanding.
 
 Measured (RTX 3060, radius 8 = 289 chunks, 732k quads):
 - Startup: light **1.66 s**, mesh **2.6 s** (both single-threaded) — too slow.

@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 mc-core = { path = "../mc-core" }
+mc-data = { path = "../mc-data" }
 mc-assets = { path = "../mc-assets" }
 mc-world = { path = "../mc-world" }
 mc-gui = { path = "../mc-gui" }
@@ -13,3 +14,6 @@ bytemuck = { version = "1", features = ["derive"] }
 glam = { version = "0.29", features = ["bytemuck"] }
 winit = "0.30"
 wgpu = "24"
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }

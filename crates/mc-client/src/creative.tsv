@@ -1,0 +1,1223 @@
+0	1	0	64	minecraft:stone	Stone	stone	1
+0	1	1	64	minecraft:stone	Granite	granite	1
+0	1	2	64	minecraft:stone	Polished Granite	granite_smooth	1
+0	1	3	64	minecraft:stone	Diorite	diorite	1
+0	1	4	64	minecraft:stone	Polished Diorite	diorite_smooth	1
+0	1	5	64	minecraft:stone	Andesite	andesite	1
+0	1	6	64	minecraft:stone	Polished Andesite	andesite_smooth	1
+0	2	0	64	minecraft:grass	Grass Block	grass	2
+0	3	0	64	minecraft:dirt	Dirt	dirt	3
+0	3	1	64	minecraft:dirt	Coarse Dirt	coarse_dirt	3
+0	3	2	64	minecraft:dirt	Podzol	podzol	3
+0	4	0	64	minecraft:cobblestone	Cobblestone	cobblestone	4
+0	5	0	64	minecraft:planks	Oak Wood Planks	oak_planks	5
+0	5	1	64	minecraft:planks	Spruce Wood Planks	spruce_planks	5
+0	5	2	64	minecraft:planks	Birch Wood Planks	birch_planks	5
+0	5	3	64	minecraft:planks	Jungle Wood Planks	jungle_planks	5
+0	5	4	64	minecraft:planks	Acacia Wood Planks	acacia_planks	5
+0	5	5	64	minecraft:planks	Dark Oak Wood Planks	dark_oak_planks	5
+0	7	0	64	minecraft:bedrock	Bedrock	bedrock	7
+0	12	0	64	minecraft:sand	Sand	sand	12
+0	12	1	64	minecraft:sand	Red Sand	red_sand	12
+0	13	0	64	minecraft:gravel	Gravel	gravel	13
+0	14	0	64	minecraft:gold_ore	Gold Ore	gold_ore	14
+0	15	0	64	minecraft:iron_ore	Iron Ore	iron_ore	15
+0	16	0	64	minecraft:coal_ore	Coal Ore	coal_ore	16
+0	17	0	64	minecraft:log	Oak Wood	oak_log	17
+0	17	1	64	minecraft:log	Spruce Wood	spruce_log	17
+0	17	2	64	minecraft:log	Birch Wood	birch_log	17
+0	17	3	64	minecraft:log	Jungle Wood	jungle_log	17
+0	19	0	64	minecraft:sponge	Sponge	sponge	19
+0	19	1	64	minecraft:sponge	Wet Sponge	sponge_wet	19
+0	20	0	64	minecraft:glass	Glass	glass	20
+0	21	0	64	minecraft:lapis_ore	Lapis Lazuli Ore	lapis_ore	21
+0	22	0	64	minecraft:lapis_block	Lapis Lazuli Block	lapis_block	22
+0	24	0	64	minecraft:sandstone	Sandstone	sandstone	24
+0	24	1	64	minecraft:sandstone	Chiseled Sandstone	chiseled_sandstone	24
+0	24	2	64	minecraft:sandstone	Smooth Sandstone	smooth_sandstone	24
+0	35	0	64	minecraft:wool	Wool	white_wool	35
+0	35	1	64	minecraft:wool	Orange Wool	orange_wool	35
+0	35	2	64	minecraft:wool	Magenta Wool	magenta_wool	35
+0	35	3	64	minecraft:wool	Light Blue Wool	light_blue_wool	35
+0	35	4	64	minecraft:wool	Yellow Wool	yellow_wool	35
+0	35	5	64	minecraft:wool	Lime Wool	lime_wool	35
+0	35	6	64	minecraft:wool	Pink Wool	pink_wool	35
+0	35	7	64	minecraft:wool	Gray Wool	gray_wool	35
+0	35	8	64	minecraft:wool	Light Gray Wool	silver_wool	35
+0	35	9	64	minecraft:wool	Cyan Wool	cyan_wool	35
+0	35	10	64	minecraft:wool	Purple Wool	purple_wool	35
+0	35	11	64	minecraft:wool	Blue Wool	blue_wool	35
+0	35	12	64	minecraft:wool	Brown Wool	brown_wool	35
+0	35	13	64	minecraft:wool	Green Wool	green_wool	35
+0	35	14	64	minecraft:wool	Red Wool	red_wool	35
+0	35	15	64	minecraft:wool	Black Wool	black_wool	35
+0	41	0	64	minecraft:gold_block	Block of Gold	gold_block	41
+0	42	0	64	minecraft:iron_block	Block of Iron	iron_block	42
+0	44	0	64	minecraft:stone_slab	Stone Slab	stone_slab	44
+0	44	1	64	minecraft:stone_slab	Sandstone Slab	sandstone_slab	44
+0	44	3	64	minecraft:stone_slab	Cobblestone Slab	cobblestone_slab	44
+0	44	4	64	minecraft:stone_slab	Bricks Slab	brick_slab	44
+0	44	5	64	minecraft:stone_slab	Stone Bricks Slab	stone_brick_slab	44
+0	44	6	64	minecraft:stone_slab	Nether Brick Slab	nether_brick_slab	44
+0	44	7	64	minecraft:stone_slab	Quartz Slab	quartz_slab	44
+0	45	0	64	minecraft:brick_block	Bricks	brick_block	45
+0	47	0	64	minecraft:bookshelf	Bookshelf	bookshelf	47
+0	48	0	64	minecraft:mossy_cobblestone	Moss Stone	mossy_cobblestone	48
+0	49	0	64	minecraft:obsidian	Obsidian	obsidian	49
+0	53	0	64	minecraft:oak_stairs	Oak Wood Stairs	oak_stairs	53
+0	56	0	64	minecraft:diamond_ore	Diamond Ore	diamond_ore	56
+0	57	0	64	minecraft:diamond_block	Block of Diamond	diamond_block	57
+0	67	0	64	minecraft:stone_stairs	Cobblestone Stairs	stone_stairs	67
+0	73	0	64	minecraft:redstone_ore	Redstone Ore	redstone_ore	73
+0	79	0	64	minecraft:ice	Ice	ice	79
+0	80	0	64	minecraft:snow	Snow	snow	80
+0	82	0	64	minecraft:clay	Clay	clay	82
+0	86	0	64	minecraft:pumpkin	Pumpkin	pumpkin	86
+0	87	0	64	minecraft:netherrack	Netherrack	netherrack	87
+0	88	0	64	minecraft:soul_sand	Soul Sand	soul_sand	88
+0	89	0	64	minecraft:glowstone	Glowstone	glowstone	89
+0	91	0	64	minecraft:lit_pumpkin	Jack o'Lantern	lit_pumpkin	91
+0	95	0	64	minecraft:stained_glass	White Stained Glass	white_stained_glass	95
+0	95	1	64	minecraft:stained_glass	Orange Stained Glass	orange_stained_glass	95
+0	95	2	64	minecraft:stained_glass	Magenta Stained Glass	magenta_stained_glass	95
+0	95	3	64	minecraft:stained_glass	Light Blue Stained Glass	light_blue_stained_glass	95
+0	95	4	64	minecraft:stained_glass	Yellow Stained Glass	yellow_stained_glass	95
+0	95	5	64	minecraft:stained_glass	Lime Stained Glass	lime_stained_glass	95
+0	95	6	64	minecraft:stained_glass	Pink Stained Glass	pink_stained_glass	95
+0	95	7	64	minecraft:stained_glass	Gray Stained Glass	gray_stained_glass	95
+0	95	8	64	minecraft:stained_glass	Light Gray Stained Glass	silver_stained_glass	95
+0	95	9	64	minecraft:stained_glass	Cyan Stained Glass	cyan_stained_glass	95
+0	95	10	64	minecraft:stained_glass	Purple Stained Glass	purple_stained_glass	95
+0	95	11	64	minecraft:stained_glass	Blue Stained Glass	blue_stained_glass	95
+0	95	12	64	minecraft:stained_glass	Brown Stained Glass	brown_stained_glass	95
+0	95	13	64	minecraft:stained_glass	Green Stained Glass	green_stained_glass	95
+0	95	14	64	minecraft:stained_glass	Red Stained Glass	red_stained_glass	95
+0	95	15	64	minecraft:stained_glass	Black Stained Glass	black_stained_glass	95
+0	98	0	64	minecraft:stonebrick	Stone Bricks	stonebrick	98
+0	98	1	64	minecraft:stonebrick	Mossy Stone Bricks	mossy_stonebrick	98
+0	98	2	64	minecraft:stonebrick	Cracked Stone Bricks	cracked_stonebrick	98
+0	98	3	64	minecraft:stonebrick	Chiseled Stone Bricks	chiseled_stonebrick	98
+0	103	0	64	minecraft:melon_block	Melon	melon_block	103
+0	108	0	64	minecraft:brick_stairs	Brick Stairs	brick_stairs	108
+0	109	0	64	minecraft:stone_brick_stairs	Stone Brick Stairs	stone_brick_stairs	109
+0	110	0	64	minecraft:mycelium	Mycelium	mycelium	110
+0	112	0	64	minecraft:nether_brick	Nether Brick	nether_brick	112
+0	114	0	64	minecraft:nether_brick_stairs	Nether Brick Stairs	nether_brick_stairs	114
+0	121	0	64	minecraft:end_stone	End Stone	end_stone	121
+0	126	0	64	minecraft:wooden_slab	Oak Wood Slab	oak_slab	126
+0	126	1	64	minecraft:wooden_slab	Spruce Wood Slab	spruce_slab	126
+0	126	2	64	minecraft:wooden_slab	Birch Wood Slab	birch_slab	126
+0	126	3	64	minecraft:wooden_slab	Jungle Wood Slab	jungle_slab	126
+0	126	4	64	minecraft:wooden_slab	Acacia Wood Slab	acacia_slab	126
+0	126	5	64	minecraft:wooden_slab	Dark Oak Wood Slab	dark_oak_slab	126
+0	128	0	64	minecraft:sandstone_stairs	Sandstone Stairs	sandstone_stairs	128
+0	129	0	64	minecraft:emerald_ore	Emerald Ore	emerald_ore	129
+0	133	0	64	minecraft:emerald_block	Block of Emerald	emerald_block	133
+0	134	0	64	minecraft:spruce_stairs	Spruce Wood Stairs	spruce_stairs	134
+0	135	0	64	minecraft:birch_stairs	Birch Wood Stairs	birch_stairs	135
+0	136	0	64	minecraft:jungle_stairs	Jungle Wood Stairs	jungle_stairs	136
+0	139	0	64	minecraft:cobblestone_wall	Cobblestone Wall	cobblestone_wall	139
+0	139	1	64	minecraft:cobblestone_wall	Mossy Cobblestone Wall	mossy_cobblestone_wall	139
+0	153	0	64	minecraft:quartz_ore	Nether Quartz Ore	quartz_ore	153
+0	155	0	64	minecraft:quartz_block	Block of Quartz	quartz_block	155
+0	155	1	64	minecraft:quartz_block	Chiseled Quartz Block	chiseled_quartz_block	155
+0	155	2	64	minecraft:quartz_block	Pillar Quartz Block	quartz_column	155
+0	156	0	64	minecraft:quartz_stairs	Quartz Stairs	quartz_stairs	156
+0	159	0	64	minecraft:stained_hardened_clay	White Stained Clay	white_stained_hardened_clay	159
+0	159	1	64	minecraft:stained_hardened_clay	Orange Stained Clay	orange_stained_hardened_clay	159
+0	159	2	64	minecraft:stained_hardened_clay	Magenta Stained Clay	magenta_stained_hardened_clay	159
+0	159	3	64	minecraft:stained_hardened_clay	Light Blue Stained Clay	light_blue_stained_hardened_clay	159
+0	159	4	64	minecraft:stained_hardened_clay	Yellow Stained Clay	yellow_stained_hardened_clay	159
+0	159	5	64	minecraft:stained_hardened_clay	Lime Stained Clay	lime_stained_hardened_clay	159
+0	159	6	64	minecraft:stained_hardened_clay	Pink Stained Clay	pink_stained_hardened_clay	159
+0	159	7	64	minecraft:stained_hardened_clay	Gray Stained Clay	gray_stained_hardened_clay	159
+0	159	8	64	minecraft:stained_hardened_clay	Light Gray Stained Clay	silver_stained_hardened_clay	159
+0	159	9	64	minecraft:stained_hardened_clay	Cyan Stained Clay	cyan_stained_hardened_clay	159
+0	159	10	64	minecraft:stained_hardened_clay	Purple Stained Clay	purple_stained_hardened_clay	159
+0	159	11	64	minecraft:stained_hardened_clay	Blue Stained Clay	blue_stained_hardened_clay	159
+0	159	12	64	minecraft:stained_hardened_clay	Brown Stained Clay	brown_stained_hardened_clay	159
+0	159	13	64	minecraft:stained_hardened_clay	Green Stained Clay	green_stained_hardened_clay	159
+0	159	14	64	minecraft:stained_hardened_clay	Red Stained Clay	red_stained_hardened_clay	159
+0	159	15	64	minecraft:stained_hardened_clay	Black Stained Clay	black_stained_hardened_clay	159
+0	162	0	64	minecraft:log2	Acacia Wood	acacia_log	162
+0	162	1	64	minecraft:log2	Dark Oak Wood	dark_oak_log	162
+0	163	0	64	minecraft:acacia_stairs	Acacia Wood Stairs	acacia_stairs	163
+0	164	0	64	minecraft:dark_oak_stairs	Dark Oak Wood Stairs	dark_oak_stairs	164
+0	168	0	64	minecraft:prismarine	Prismarine	prismarine	168
+0	168	1	64	minecraft:prismarine	Prismarine Bricks	prismarine_bricks	168
+0	168	2	64	minecraft:prismarine	Dark Prismarine	dark_prismarine	168
+0	169	0	64	minecraft:sea_lantern	Sea Lantern	sea_lantern	169
+0	170	0	64	minecraft:hay_block	Hay Bale	hay_block	170
+0	172	0	64	minecraft:hardened_clay	Hardened Clay	hardened_clay	172
+0	173	0	64	minecraft:coal_block	Block of Coal	coal_block	173
+0	174	0	64	minecraft:packed_ice	Packed Ice	packed_ice	174
+0	179	0	64	minecraft:red_sandstone	Red Sandstone	red_sandstone	179
+0	179	1	64	minecraft:red_sandstone	Chiseled Red Sandstone	chiseled_red_sandstone	179
+0	179	2	64	minecraft:red_sandstone	Smooth Red Sandstone	smooth_red_sandstone	179
+0	180	0	64	minecraft:red_sandstone_stairs	Red Sandstone Stairs	red_sandstone_stairs	180
+0	182	0	64	minecraft:stone_slab2	Red Sandstone Slab	red_sandstone_slab	182
+1	6	0	64	minecraft:sapling	Oak Sapling	oak_sapling	6
+1	6	1	64	minecraft:sapling	Spruce Sapling	spruce_sapling	6
+1	6	2	64	minecraft:sapling	Birch Sapling	birch_sapling	6
+1	6	3	64	minecraft:sapling	Jungle Sapling	jungle_sapling	6
+1	6	4	64	minecraft:sapling	Acacia Sapling	acacia_sapling	6
+1	6	5	64	minecraft:sapling	Dark Oak Sapling	dark_oak_sapling	6
+1	18	0	64	minecraft:leaves	Oak Leaves	oak_leaves	18
+1	18	1	64	minecraft:leaves	Spruce Leaves	spruce_leaves	18
+1	18	2	64	minecraft:leaves	Birch Leaves	birch_leaves	18
+1	18	3	64	minecraft:leaves	Jungle Leaves	jungle_leaves	18
+1	30	0	64	minecraft:web	Cobweb	web	30
+1	31	1	64	minecraft:tallgrass	Grass	tall_grass	31
+1	31	2	64	minecraft:tallgrass	Fern	fern	31
+1	32	0	64	minecraft:deadbush	Dead Bush	dead_bush	32
+1	37	0	64	minecraft:yellow_flower	Dandelion	dandelion	37
+1	38	0	64	minecraft:red_flower	Poppy	poppy	38
+1	38	1	64	minecraft:red_flower	Blue Orchid	blue_orchid	38
+1	38	2	64	minecraft:red_flower	Allium	allium	38
+1	38	3	64	minecraft:red_flower	Azure Bluet	houstonia	38
+1	38	4	64	minecraft:red_flower	Red Tulip	red_tulip	38
+1	38	5	64	minecraft:red_flower	Orange Tulip	orange_tulip	38
+1	38	6	64	minecraft:red_flower	White Tulip	white_tulip	38
+1	38	7	64	minecraft:red_flower	Pink Tulip	pink_tulip	38
+1	38	8	64	minecraft:red_flower	Oxeye Daisy	oxeye_daisy	38
+1	39	0	64	minecraft:brown_mushroom	Mushroom	brown_mushroom	39
+1	40	0	64	minecraft:red_mushroom	Mushroom	red_mushroom	40
+1	50	0	64	minecraft:torch	Torch	torch	50
+1	54	0	64	minecraft:chest	Chest	chest	54
+1	58	0	64	minecraft:crafting_table	Crafting Table	crafting_table	58
+1	61	0	64	minecraft:furnace	Furnace	furnace	61
+1	65	0	64	minecraft:ladder	Ladder	ladder	65
+1	78	0	64	minecraft:snow_layer	Snow	snow_layer	78
+1	81	0	64	minecraft:cactus	Cactus	cactus	81
+1	84	0	64	minecraft:jukebox	Jukebox	jukebox	84
+1	85	0	64	minecraft:fence	Oak Fence	oak_fence	85
+1	97	0	64	minecraft:monster_egg	Stone Monster Egg	stone_monster_egg	97
+1	97	1	64	minecraft:monster_egg	Cobblestone Monster Egg	cobblestone_monster_egg	97
+1	97	2	64	minecraft:monster_egg	Stone Brick Monster Egg	stone_brick_monster_egg	97
+1	97	3	64	minecraft:monster_egg	Mossy Stone Brick Monster Egg	mossy_brick_monster_egg	97
+1	97	4	64	minecraft:monster_egg	Cracked Stone Brick Monster Egg	cracked_brick_monster_egg	97
+1	97	5	64	minecraft:monster_egg	Chiseled Stone Brick Monster Egg	chiseled_brick_monster_egg	97
+1	101	0	64	minecraft:iron_bars	Iron Bars	iron_bars	101
+1	102	0	64	minecraft:glass_pane	Glass Pane	glass_pane	102
+1	106	0	64	minecraft:vine	Vines	vine	106
+1	111	0	64	minecraft:waterlily	Lily Pad	waterlily	111
+1	113	0	64	minecraft:nether_brick_fence	Nether Brick Fence	nether_brick_fence	113
+1	116	0	64	minecraft:enchanting_table	Enchantment Table	enchanting_table	116
+1	120	0	64	minecraft:end_portal_frame	End Portal	end_portal_frame	120
+1	130	0	64	minecraft:ender_chest	Ender Chest	ender_chest	130
+1	145	0	64	minecraft:anvil	Anvil	anvil_intact	145
+1	145	1	64	minecraft:anvil	Slightly Damaged Anvil	anvil_slightly_damaged	145
+1	145	2	64	minecraft:anvil	Very Damaged Anvil	anvil_very_damaged	145
+1	146	0	64	minecraft:trapped_chest	Trapped Chest	trapped_chest	146
+1	160	0	64	minecraft:stained_glass_pane	White Stained Glass Pane	white_stained_glass_pane	160
+1	160	1	64	minecraft:stained_glass_pane	Orange Stained Glass Pane	orange_stained_glass_pane	160
+1	160	2	64	minecraft:stained_glass_pane	Magenta Stained Glass Pane	magenta_stained_glass_pane	160
+1	160	3	64	minecraft:stained_glass_pane	Light Blue Stained Glass Pane	light_blue_stained_glass_pane	160
+1	160	4	64	minecraft:stained_glass_pane	Yellow Stained Glass Pane	yellow_stained_glass_pane	160
+1	160	5	64	minecraft:stained_glass_pane	Lime Stained Glass Pane	lime_stained_glass_pane	160
+1	160	6	64	minecraft:stained_glass_pane	Pink Stained Glass Pane	pink_stained_glass_pane	160
+1	160	7	64	minecraft:stained_glass_pane	Gray Stained Glass Pane	gray_stained_glass_pane	160
+1	160	8	64	minecraft:stained_glass_pane	Light Gray Stained Glass Pane	silver_stained_glass_pane	160
+1	160	9	64	minecraft:stained_glass_pane	Cyan Stained Glass Pane	cyan_stained_glass_pane	160
+1	160	10	64	minecraft:stained_glass_pane	Purple Stained Glass Pane	purple_stained_glass_pane	160
+1	160	11	64	minecraft:stained_glass_pane	Blue Stained Glass Pane	blue_stained_glass_pane	160
+1	160	12	64	minecraft:stained_glass_pane	Brown Stained Glass Pane	brown_stained_glass_pane	160
+1	160	13	64	minecraft:stained_glass_pane	Green Stained Glass Pane	green_stained_glass_pane	160
+1	160	14	64	minecraft:stained_glass_pane	Red Stained Glass Pane	red_stained_glass_pane	160
+1	160	15	64	minecraft:stained_glass_pane	Black Stained Glass Pane	black_stained_glass_pane	160
+1	161	0	64	minecraft:leaves2	Acacia Leaves	acacia_leaves	161
+1	161	1	64	minecraft:leaves2	Dark Oak Leaves	dark_oak_leaves	161
+1	165	0	64	minecraft:slime	Slime Block	slime	165
+1	171	0	64	minecraft:carpet	Carpet	white_carpet	171
+1	171	1	64	minecraft:carpet	Orange Carpet	orange_carpet	171
+1	171	2	64	minecraft:carpet	Magenta Carpet	magenta_carpet	171
+1	171	3	64	minecraft:carpet	Light Blue Carpet	light_blue_carpet	171
+1	171	4	64	minecraft:carpet	Yellow Carpet	yellow_carpet	171
+1	171	5	64	minecraft:carpet	Lime Carpet	lime_carpet	171
+1	171	6	64	minecraft:carpet	Pink Carpet	pink_carpet	171
+1	171	7	64	minecraft:carpet	Gray Carpet	gray_carpet	171
+1	171	8	64	minecraft:carpet	Light Gray Carpet	silver_carpet	171
+1	171	9	64	minecraft:carpet	Cyan Carpet	cyan_carpet	171
+1	171	10	64	minecraft:carpet	Purple Carpet	purple_carpet	171
+1	171	11	64	minecraft:carpet	Blue Carpet	blue_carpet	171
+1	171	12	64	minecraft:carpet	Brown Carpet	brown_carpet	171
+1	171	13	64	minecraft:carpet	Green Carpet	green_carpet	171
+1	171	14	64	minecraft:carpet	Red Carpet	red_carpet	171
+1	171	15	64	minecraft:carpet	Black Carpet	black_carpet	171
+1	175	0	64	minecraft:double_plant	Sunflower	sunflower	175
+1	175	1	64	minecraft:double_plant	Lilac	syringa	175
+1	175	2	64	minecraft:double_plant	Double Tallgrass	double_grass	175
+1	175	3	64	minecraft:double_plant	Large Fern	double_fern	175
+1	175	4	64	minecraft:double_plant	Rose Bush	double_rose	175
+1	175	5	64	minecraft:double_plant	Peony	paeonia	175
+1	188	0	64	minecraft:spruce_fence	Spruce Fence	spruce_fence	188
+1	189	0	64	minecraft:birch_fence	Birch Fence	birch_fence	189
+1	190	0	64	minecraft:jungle_fence	Jungle Fence	jungle_fence	190
+1	191	0	64	minecraft:dark_oak_fence	Dark Oak Fence	dark_oak_fence	191
+1	192	0	64	minecraft:acacia_fence	Acacia Fence	acacia_fence	192
+1	321	0	64	minecraft:painting	Painting	painting	0
+1	323	0	16	minecraft:sign	Sign	sign	0
+1	355	0	1	minecraft:bed	Bed	bed	0
+1	389	0	64	minecraft:item_frame	Item Frame	item_frame	0
+1	390	0	64	minecraft:flower_pot	Flower Pot	flower_pot	0
+1	397	0	64	minecraft:skull	Skeleton Skull	skull_skeleton	0
+1	397	1	64	minecraft:skull	Wither Skeleton Skull	skull_wither	0
+1	397	2	64	minecraft:skull	Zombie Head	skull_zombie	0
+1	397	3	64	minecraft:skull	Head	skull_char	0
+1	397	4	64	minecraft:skull	Creeper Head	skull_creeper	0
+1	416	0	16	minecraft:armor_stand	Armor Stand	armor_stand	0
+1	425	15	16	minecraft:banner	White Banner	banner	176
+1	425	14	16	minecraft:banner	Orange Banner	banner	176
+1	425	13	16	minecraft:banner	Magenta Banner	banner	176
+1	425	12	16	minecraft:banner	Light Blue Banner	banner	176
+1	425	11	16	minecraft:banner	Yellow Banner	banner	176
+1	425	10	16	minecraft:banner	Lime Banner	banner	176
+1	425	9	16	minecraft:banner	Pink Banner	banner	176
+1	425	8	16	minecraft:banner	Gray Banner	banner	176
+1	425	7	16	minecraft:banner	Light Gray Banner	banner	176
+1	425	6	16	minecraft:banner	Cyan Banner	banner	176
+1	425	5	16	minecraft:banner	Purple Banner	banner	176
+1	425	4	16	minecraft:banner	Blue Banner	banner	176
+1	425	3	16	minecraft:banner	Brown Banner	banner	176
+1	425	2	16	minecraft:banner	Green Banner	banner	176
+1	425	1	16	minecraft:banner	Red Banner	banner	176
+1	425	0	16	minecraft:banner	Black Banner	banner	176
+2	23	0	64	minecraft:dispenser	Dispenser	dispenser	23
+2	25	0	64	minecraft:noteblock	Note Block	noteblock	25
+2	29	0	64	minecraft:sticky_piston	Sticky Piston	sticky_piston	29
+2	33	0	64	minecraft:piston	Piston	piston	33
+2	46	0	64	minecraft:tnt	TNT	tnt	46
+2	69	0	64	minecraft:lever	Lever	lever	69
+2	70	0	64	minecraft:stone_pressure_plate	Stone Pressure Plate	stone_pressure_plate	70
+2	72	0	64	minecraft:wooden_pressure_plate	Wooden Pressure Plate	wooden_pressure_plate	72
+2	76	0	64	minecraft:redstone_torch	Redstone Torch	redstone_torch	76
+2	77	0	64	minecraft:stone_button	Button	stone_button	77
+2	96	0	64	minecraft:trapdoor	Wooden Trapdoor	trapdoor	96
+2	107	0	64	minecraft:fence_gate	Oak Fence Gate	oak_fence_gate	107
+2	123	0	64	minecraft:redstone_lamp	Redstone Lamp	redstone_lamp	123
+2	131	0	64	minecraft:tripwire_hook	Tripwire Hook	tripwire_hook	131
+2	143	0	64	minecraft:wooden_button	Button	wooden_button	143
+2	147	0	64	minecraft:light_weighted_pressure_plate	Weighted Pressure Plate (Light)	light_weighted_pressure_plate	147
+2	148	0	64	minecraft:heavy_weighted_pressure_plate	Weighted Pressure Plate (Heavy)	heavy_weighted_pressure_plate	148
+2	151	0	64	minecraft:daylight_detector	Daylight Sensor	daylight_detector	151
+2	152	0	64	minecraft:redstone_block	Block of Redstone	redstone_block	152
+2	154	0	64	minecraft:hopper	Hopper	hopper	154
+2	158	0	64	minecraft:dropper	Dropper	dropper	158
+2	167	0	64	minecraft:iron_trapdoor	Iron Trapdoor	iron_trapdoor	167
+2	183	0	64	minecraft:spruce_fence_gate	Spruce Fence Gate	spruce_fence_gate	183
+2	184	0	64	minecraft:birch_fence_gate	Birch Fence Gate	birch_fence_gate	184
+2	185	0	64	minecraft:jungle_fence_gate	Jungle Fence Gate	jungle_fence_gate	185
+2	186	0	64	minecraft:dark_oak_fence_gate	Dark Oak Fence Gate	dark_oak_fence_gate	186
+2	187	0	64	minecraft:acacia_fence_gate	Acacia Fence Gate	acacia_fence_gate	187
+2	324	0	64	minecraft:wooden_door	Oak Door	oak_door	0
+2	330	0	64	minecraft:iron_door	Iron Door	iron_door	0
+2	331	0	64	minecraft:redstone	Redstone	redstone	0
+2	356	0	64	minecraft:repeater	Redstone Repeater	repeater	0
+2	404	0	64	minecraft:comparator	Redstone Comparator	comparator	0
+2	427	0	64	minecraft:spruce_door	Spruce Door	spruce_door	0
+2	428	0	64	minecraft:birch_door	Birch Door	birch_door	0
+2	429	0	64	minecraft:jungle_door	Jungle Door	jungle_door	0
+2	430	0	64	minecraft:acacia_door	Acacia Door	acacia_door	0
+2	431	0	64	minecraft:dark_oak_door	Dark Oak Door	dark_oak_door	0
+3	27	0	64	minecraft:golden_rail	Powered Rail	golden_rail	27
+3	28	0	64	minecraft:detector_rail	Detector Rail	detector_rail	28
+3	66	0	64	minecraft:rail	Rail	rail	66
+3	157	0	64	minecraft:activator_rail	Activator Rail	activator_rail	157
+3	328	0	1	minecraft:minecart	Minecart	minecart	0
+3	329	0	1	minecraft:saddle	Saddle	saddle	0
+3	333	0	1	minecraft:boat	Boat	boat	0
+3	342	0	1	minecraft:chest_minecart	Minecart with Chest	chest_minecart	0
+3	343	0	1	minecraft:furnace_minecart	Minecart with Furnace	furnace_minecart	0
+3	398	0	1	minecraft:carrot_on_a_stick	Carrot on a Stick	carrot_on_a_stick	0
+3	407	0	1	minecraft:tnt_minecart	Minecart with TNT	tnt_minecart	0
+3	408	0	1	minecraft:hopper_minecart	Minecart with Hopper	hopper_minecart	0
+4	138	0	64	minecraft:beacon	Beacon	beacon	138
+4	325	0	16	minecraft:bucket	Bucket	bucket	0
+4	326	0	1	minecraft:water_bucket	Water Bucket	water_bucket	0
+4	327	0	1	minecraft:lava_bucket	Lava Bucket	lava_bucket	0
+4	332	0	16	minecraft:snowball	Snowball	snowball	0
+4	335	0	1	minecraft:milk_bucket	Milk	milk_bucket	0
+4	339	0	64	minecraft:paper	Paper	paper	0
+4	340	0	64	minecraft:book	Book	book	0
+4	341	0	64	minecraft:slime_ball	Slimeball	slime_ball	0
+4	352	0	64	minecraft:bone	Bone	bone	0
+4	368	0	16	minecraft:ender_pearl	Ender Pearl	ender_pearl	0
+4	381	0	64	minecraft:ender_eye	Eye of Ender	ender_eye	0
+4	383	50	64	minecraft:spawn_egg	Spawn Creeper	spawn_egg	0
+4	383	51	64	minecraft:spawn_egg	Spawn Skeleton	spawn_egg	0
+4	383	52	64	minecraft:spawn_egg	Spawn Spider	spawn_egg	0
+4	383	54	64	minecraft:spawn_egg	Spawn Zombie	spawn_egg	0
+4	383	55	64	minecraft:spawn_egg	Spawn Slime	spawn_egg	0
+4	383	56	64	minecraft:spawn_egg	Spawn Ghast	spawn_egg	0
+4	383	57	64	minecraft:spawn_egg	Spawn Zombie Pigman	spawn_egg	0
+4	383	58	64	minecraft:spawn_egg	Spawn Enderman	spawn_egg	0
+4	383	59	64	minecraft:spawn_egg	Spawn Cave Spider	spawn_egg	0
+4	383	60	64	minecraft:spawn_egg	Spawn Silverfish	spawn_egg	0
+4	383	61	64	minecraft:spawn_egg	Spawn Blaze	spawn_egg	0
+4	383	62	64	minecraft:spawn_egg	Spawn Magma Cube	spawn_egg	0
+4	383	65	64	minecraft:spawn_egg	Spawn Bat	spawn_egg	0
+4	383	66	64	minecraft:spawn_egg	Spawn Witch	spawn_egg	0
+4	383	67	64	minecraft:spawn_egg	Spawn Endermite	spawn_egg	0
+4	383	68	64	minecraft:spawn_egg	Spawn Guardian	spawn_egg	0
+4	383	90	64	minecraft:spawn_egg	Spawn Pig	spawn_egg	0
+4	383	91	64	minecraft:spawn_egg	Spawn Sheep	spawn_egg	0
+4	383	92	64	minecraft:spawn_egg	Spawn Cow	spawn_egg	0
+4	383	93	64	minecraft:spawn_egg	Spawn Chicken	spawn_egg	0
+4	383	94	64	minecraft:spawn_egg	Spawn Squid	spawn_egg	0
+4	383	95	64	minecraft:spawn_egg	Spawn Wolf	spawn_egg	0
+4	383	96	64	minecraft:spawn_egg	Spawn Mooshroom	spawn_egg	0
+4	383	98	64	minecraft:spawn_egg	Spawn Ocelot	spawn_egg	0
+4	383	100	64	minecraft:spawn_egg	Spawn Horse	spawn_egg	0
+4	383	101	64	minecraft:spawn_egg	Spawn Rabbit	spawn_egg	0
+4	383	120	64	minecraft:spawn_egg	Spawn Villager	spawn_egg	0
+4	384	0	64	minecraft:experience_bottle	Bottle o' Enchanting	experience_bottle	0
+4	385	0	64	minecraft:fire_charge	Fire Charge	fire_charge	0
+4	386	0	1	minecraft:writable_book	Book and Quill	writable_book	0
+4	395	0	64	minecraft:map	Empty Map	map	0
+4	402	0	64	minecraft:firework_charge	Firework Star	firework_charge	0
+4	417	0	1	minecraft:iron_horse_armor	Iron Horse Armor	iron_horse_armor	0
+4	418	0	1	minecraft:golden_horse_armor	Gold Horse Armor	golden_horse_armor	0
+4	419	0	1	minecraft:diamond_horse_armor	Diamond Horse Armor	diamond_horse_armor	0
+4	2256	0	1	minecraft:record_13	Music Disc	record_13	0
+4	2257	0	1	minecraft:record_cat	Music Disc	record_cat	0
+4	2258	0	1	minecraft:record_blocks	Music Disc	record_blocks	0
+4	2259	0	1	minecraft:record_chirp	Music Disc	record_chirp	0
+4	2260	0	1	minecraft:record_far	Music Disc	record_far	0
+4	2261	0	1	minecraft:record_mall	Music Disc	record_mall	0
+4	2262	0	1	minecraft:record_mellohi	Music Disc	record_mellohi	0
+4	2263	0	1	minecraft:record_stal	Music Disc	record_stal	0
+4	2264	0	1	minecraft:record_strad	Music Disc	record_strad	0
+4	2265	0	1	minecraft:record_ward	Music Disc	record_ward	0
+4	2266	0	1	minecraft:record_11	Music Disc	record_11	0
+4	2267	0	1	minecraft:record_wait	Music Disc	record_wait	0
+5	1	0	64	minecraft:stone	Stone	stone	1
+5	1	1	64	minecraft:stone	Granite	granite	1
+5	1	2	64	minecraft:stone	Polished Granite	granite_smooth	1
+5	1	3	64	minecraft:stone	Diorite	diorite	1
+5	1	4	64	minecraft:stone	Polished Diorite	diorite_smooth	1
+5	1	5	64	minecraft:stone	Andesite	andesite	1
+5	1	6	64	minecraft:stone	Polished Andesite	andesite_smooth	1
+5	2	0	64	minecraft:grass	Grass Block	grass	2
+5	3	0	64	minecraft:dirt	Dirt	dirt	3
+5	3	1	64	minecraft:dirt	Coarse Dirt	coarse_dirt	3
+5	3	2	64	minecraft:dirt	Podzol	podzol	3
+5	4	0	64	minecraft:cobblestone	Cobblestone	cobblestone	4
+5	5	0	64	minecraft:planks	Oak Wood Planks	oak_planks	5
+5	5	1	64	minecraft:planks	Spruce Wood Planks	spruce_planks	5
+5	5	2	64	minecraft:planks	Birch Wood Planks	birch_planks	5
+5	5	3	64	minecraft:planks	Jungle Wood Planks	jungle_planks	5
+5	5	4	64	minecraft:planks	Acacia Wood Planks	acacia_planks	5
+5	5	5	64	minecraft:planks	Dark Oak Wood Planks	dark_oak_planks	5
+5	6	0	64	minecraft:sapling	Oak Sapling	oak_sapling	6
+5	6	1	64	minecraft:sapling	Spruce Sapling	spruce_sapling	6
+5	6	2	64	minecraft:sapling	Birch Sapling	birch_sapling	6
+5	6	3	64	minecraft:sapling	Jungle Sapling	jungle_sapling	6
+5	6	4	64	minecraft:sapling	Acacia Sapling	acacia_sapling	6
+5	6	5	64	minecraft:sapling	Dark Oak Sapling	dark_oak_sapling	6
+5	7	0	64	minecraft:bedrock	Bedrock	bedrock	7
+5	12	0	64	minecraft:sand	Sand	sand	12
+5	12	1	64	minecraft:sand	Red Sand	red_sand	12
+5	13	0	64	minecraft:gravel	Gravel	gravel	13
+5	14	0	64	minecraft:gold_ore	Gold Ore	gold_ore	14
+5	15	0	64	minecraft:iron_ore	Iron Ore	iron_ore	15
+5	16	0	64	minecraft:coal_ore	Coal Ore	coal_ore	16
+5	17	0	64	minecraft:log	Oak Wood	oak_log	17
+5	17	1	64	minecraft:log	Spruce Wood	spruce_log	17
+5	17	2	64	minecraft:log	Birch Wood	birch_log	17
+5	17	3	64	minecraft:log	Jungle Wood	jungle_log	17
+5	18	0	64	minecraft:leaves	Oak Leaves	oak_leaves	18
+5	18	1	64	minecraft:leaves	Spruce Leaves	spruce_leaves	18
+5	18	2	64	minecraft:leaves	Birch Leaves	birch_leaves	18
+5	18	3	64	minecraft:leaves	Jungle Leaves	jungle_leaves	18
+5	19	0	64	minecraft:sponge	Sponge	sponge	19
+5	19	1	64	minecraft:sponge	Wet Sponge	sponge_wet	19
+5	20	0	64	minecraft:glass	Glass	glass	20
+5	21	0	64	minecraft:lapis_ore	Lapis Lazuli Ore	lapis_ore	21
+5	22	0	64	minecraft:lapis_block	Lapis Lazuli Block	lapis_block	22
+5	23	0	64	minecraft:dispenser	Dispenser	dispenser	23
+5	24	0	64	minecraft:sandstone	Sandstone	sandstone	24
+5	24	1	64	minecraft:sandstone	Chiseled Sandstone	chiseled_sandstone	24
+5	24	2	64	minecraft:sandstone	Smooth Sandstone	smooth_sandstone	24
+5	25	0	64	minecraft:noteblock	Note Block	noteblock	25
+5	27	0	64	minecraft:golden_rail	Powered Rail	golden_rail	27
+5	28	0	64	minecraft:detector_rail	Detector Rail	detector_rail	28
+5	29	0	64	minecraft:sticky_piston	Sticky Piston	sticky_piston	29
+5	30	0	64	minecraft:web	Cobweb	web	30
+5	31	1	64	minecraft:tallgrass	Grass	tall_grass	31
+5	31	2	64	minecraft:tallgrass	Fern	fern	31
+5	32	0	64	minecraft:deadbush	Dead Bush	dead_bush	32
+5	33	0	64	minecraft:piston	Piston	piston	33
+5	35	0	64	minecraft:wool	Wool	white_wool	35
+5	35	1	64	minecraft:wool	Orange Wool	orange_wool	35
+5	35	2	64	minecraft:wool	Magenta Wool	magenta_wool	35
+5	35	3	64	minecraft:wool	Light Blue Wool	light_blue_wool	35
+5	35	4	64	minecraft:wool	Yellow Wool	yellow_wool	35
+5	35	5	64	minecraft:wool	Lime Wool	lime_wool	35
+5	35	6	64	minecraft:wool	Pink Wool	pink_wool	35
+5	35	7	64	minecraft:wool	Gray Wool	gray_wool	35
+5	35	8	64	minecraft:wool	Light Gray Wool	silver_wool	35
+5	35	9	64	minecraft:wool	Cyan Wool	cyan_wool	35
+5	35	10	64	minecraft:wool	Purple Wool	purple_wool	35
+5	35	11	64	minecraft:wool	Blue Wool	blue_wool	35
+5	35	12	64	minecraft:wool	Brown Wool	brown_wool	35
+5	35	13	64	minecraft:wool	Green Wool	green_wool	35
+5	35	14	64	minecraft:wool	Red Wool	red_wool	35
+5	35	15	64	minecraft:wool	Black Wool	black_wool	35
+5	37	0	64	minecraft:yellow_flower	Dandelion	dandelion	37
+5	38	0	64	minecraft:red_flower	Poppy	poppy	38
+5	38	1	64	minecraft:red_flower	Blue Orchid	blue_orchid	38
+5	38	2	64	minecraft:red_flower	Allium	allium	38
+5	38	3	64	minecraft:red_flower	Azure Bluet	houstonia	38
+5	38	4	64	minecraft:red_flower	Red Tulip	red_tulip	38
+5	38	5	64	minecraft:red_flower	Orange Tulip	orange_tulip	38
+5	38	6	64	minecraft:red_flower	White Tulip	white_tulip	38
+5	38	7	64	minecraft:red_flower	Pink Tulip	pink_tulip	38
+5	38	8	64	minecraft:red_flower	Oxeye Daisy	oxeye_daisy	38
+5	39	0	64	minecraft:brown_mushroom	Mushroom	brown_mushroom	39
+5	40	0	64	minecraft:red_mushroom	Mushroom	red_mushroom	40
+5	41	0	64	minecraft:gold_block	Block of Gold	gold_block	41
+5	42	0	64	minecraft:iron_block	Block of Iron	iron_block	42
+5	44	0	64	minecraft:stone_slab	Stone Slab	stone_slab	44
+5	44	1	64	minecraft:stone_slab	Sandstone Slab	sandstone_slab	44
+5	44	3	64	minecraft:stone_slab	Cobblestone Slab	cobblestone_slab	44
+5	44	4	64	minecraft:stone_slab	Bricks Slab	brick_slab	44
+5	44	5	64	minecraft:stone_slab	Stone Bricks Slab	stone_brick_slab	44
+5	44	6	64	minecraft:stone_slab	Nether Brick Slab	nether_brick_slab	44
+5	44	7	64	minecraft:stone_slab	Quartz Slab	quartz_slab	44
+5	45	0	64	minecraft:brick_block	Bricks	brick_block	45
+5	46	0	64	minecraft:tnt	TNT	tnt	46
+5	47	0	64	minecraft:bookshelf	Bookshelf	bookshelf	47
+5	48	0	64	minecraft:mossy_cobblestone	Moss Stone	mossy_cobblestone	48
+5	49	0	64	minecraft:obsidian	Obsidian	obsidian	49
+5	50	0	64	minecraft:torch	Torch	torch	50
+5	53	0	64	minecraft:oak_stairs	Oak Wood Stairs	oak_stairs	53
+5	54	0	64	minecraft:chest	Chest	chest	54
+5	56	0	64	minecraft:diamond_ore	Diamond Ore	diamond_ore	56
+5	57	0	64	minecraft:diamond_block	Block of Diamond	diamond_block	57
+5	58	0	64	minecraft:crafting_table	Crafting Table	crafting_table	58
+5	61	0	64	minecraft:furnace	Furnace	furnace	61
+5	65	0	64	minecraft:ladder	Ladder	ladder	65
+5	66	0	64	minecraft:rail	Rail	rail	66
+5	67	0	64	minecraft:stone_stairs	Cobblestone Stairs	stone_stairs	67
+5	69	0	64	minecraft:lever	Lever	lever	69
+5	70	0	64	minecraft:stone_pressure_plate	Stone Pressure Plate	stone_pressure_plate	70
+5	72	0	64	minecraft:wooden_pressure_plate	Wooden Pressure Plate	wooden_pressure_plate	72
+5	73	0	64	minecraft:redstone_ore	Redstone Ore	redstone_ore	73
+5	76	0	64	minecraft:redstone_torch	Redstone Torch	redstone_torch	76
+5	77	0	64	minecraft:stone_button	Button	stone_button	77
+5	78	0	64	minecraft:snow_layer	Snow	snow_layer	78
+5	79	0	64	minecraft:ice	Ice	ice	79
+5	80	0	64	minecraft:snow	Snow	snow	80
+5	81	0	64	minecraft:cactus	Cactus	cactus	81
+5	82	0	64	minecraft:clay	Clay	clay	82
+5	84	0	64	minecraft:jukebox	Jukebox	jukebox	84
+5	85	0	64	minecraft:fence	Oak Fence	oak_fence	85
+5	86	0	64	minecraft:pumpkin	Pumpkin	pumpkin	86
+5	87	0	64	minecraft:netherrack	Netherrack	netherrack	87
+5	88	0	64	minecraft:soul_sand	Soul Sand	soul_sand	88
+5	89	0	64	minecraft:glowstone	Glowstone	glowstone	89
+5	91	0	64	minecraft:lit_pumpkin	Jack o'Lantern	lit_pumpkin	91
+5	95	0	64	minecraft:stained_glass	White Stained Glass	white_stained_glass	95
+5	95	1	64	minecraft:stained_glass	Orange Stained Glass	orange_stained_glass	95
+5	95	2	64	minecraft:stained_glass	Magenta Stained Glass	magenta_stained_glass	95
+5	95	3	64	minecraft:stained_glass	Light Blue Stained Glass	light_blue_stained_glass	95
+5	95	4	64	minecraft:stained_glass	Yellow Stained Glass	yellow_stained_glass	95
+5	95	5	64	minecraft:stained_glass	Lime Stained Glass	lime_stained_glass	95
+5	95	6	64	minecraft:stained_glass	Pink Stained Glass	pink_stained_glass	95
+5	95	7	64	minecraft:stained_glass	Gray Stained Glass	gray_stained_glass	95
+5	95	8	64	minecraft:stained_glass	Light Gray Stained Glass	silver_stained_glass	95
+5	95	9	64	minecraft:stained_glass	Cyan Stained Glass	cyan_stained_glass	95
+5	95	10	64	minecraft:stained_glass	Purple Stained Glass	purple_stained_glass	95
+5	95	11	64	minecraft:stained_glass	Blue Stained Glass	blue_stained_glass	95
+5	95	12	64	minecraft:stained_glass	Brown Stained Glass	brown_stained_glass	95
+5	95	13	64	minecraft:stained_glass	Green Stained Glass	green_stained_glass	95
+5	95	14	64	minecraft:stained_glass	Red Stained Glass	red_stained_glass	95
+5	95	15	64	minecraft:stained_glass	Black Stained Glass	black_stained_glass	95
+5	96	0	64	minecraft:trapdoor	Wooden Trapdoor	trapdoor	96
+5	97	0	64	minecraft:monster_egg	Stone Monster Egg	stone_monster_egg	97
+5	97	1	64	minecraft:monster_egg	Cobblestone Monster Egg	cobblestone_monster_egg	97
+5	97	2	64	minecraft:monster_egg	Stone Brick Monster Egg	stone_brick_monster_egg	97
+5	97	3	64	minecraft:monster_egg	Mossy Stone Brick Monster Egg	mossy_brick_monster_egg	97
+5	97	4	64	minecraft:monster_egg	Cracked Stone Brick Monster Egg	cracked_brick_monster_egg	97
+5	97	5	64	minecraft:monster_egg	Chiseled Stone Brick Monster Egg	chiseled_brick_monster_egg	97
+5	98	0	64	minecraft:stonebrick	Stone Bricks	stonebrick	98
+5	98	1	64	minecraft:stonebrick	Mossy Stone Bricks	mossy_stonebrick	98
+5	98	2	64	minecraft:stonebrick	Cracked Stone Bricks	cracked_stonebrick	98
+5	98	3	64	minecraft:stonebrick	Chiseled Stone Bricks	chiseled_stonebrick	98
+5	101	0	64	minecraft:iron_bars	Iron Bars	iron_bars	101
+5	102	0	64	minecraft:glass_pane	Glass Pane	glass_pane	102
+5	103	0	64	minecraft:melon_block	Melon	melon_block	103
+5	106	0	64	minecraft:vine	Vines	vine	106
+5	107	0	64	minecraft:fence_gate	Oak Fence Gate	oak_fence_gate	107
+5	108	0	64	minecraft:brick_stairs	Brick Stairs	brick_stairs	108
+5	109	0	64	minecraft:stone_brick_stairs	Stone Brick Stairs	stone_brick_stairs	109
+5	110	0	64	minecraft:mycelium	Mycelium	mycelium	110
+5	111	0	64	minecraft:waterlily	Lily Pad	waterlily	111
+5	112	0	64	minecraft:nether_brick	Nether Brick	nether_brick	112
+5	113	0	64	minecraft:nether_brick_fence	Nether Brick Fence	nether_brick_fence	113
+5	114	0	64	minecraft:nether_brick_stairs	Nether Brick Stairs	nether_brick_stairs	114
+5	116	0	64	minecraft:enchanting_table	Enchantment Table	enchanting_table	116
+5	120	0	64	minecraft:end_portal_frame	End Portal	end_portal_frame	120
+5	121	0	64	minecraft:end_stone	End Stone	end_stone	121
+5	123	0	64	minecraft:redstone_lamp	Redstone Lamp	redstone_lamp	123
+5	126	0	64	minecraft:wooden_slab	Oak Wood Slab	oak_slab	126
+5	126	1	64	minecraft:wooden_slab	Spruce Wood Slab	spruce_slab	126
+5	126	2	64	minecraft:wooden_slab	Birch Wood Slab	birch_slab	126
+5	126	3	64	minecraft:wooden_slab	Jungle Wood Slab	jungle_slab	126
+5	126	4	64	minecraft:wooden_slab	Acacia Wood Slab	acacia_slab	126
+5	126	5	64	minecraft:wooden_slab	Dark Oak Wood Slab	dark_oak_slab	126
+5	128	0	64	minecraft:sandstone_stairs	Sandstone Stairs	sandstone_stairs	128
+5	129	0	64	minecraft:emerald_ore	Emerald Ore	emerald_ore	129
+5	130	0	64	minecraft:ender_chest	Ender Chest	ender_chest	130
+5	131	0	64	minecraft:tripwire_hook	Tripwire Hook	tripwire_hook	131
+5	133	0	64	minecraft:emerald_block	Block of Emerald	emerald_block	133
+5	134	0	64	minecraft:spruce_stairs	Spruce Wood Stairs	spruce_stairs	134
+5	135	0	64	minecraft:birch_stairs	Birch Wood Stairs	birch_stairs	135
+5	136	0	64	minecraft:jungle_stairs	Jungle Wood Stairs	jungle_stairs	136
+5	138	0	64	minecraft:beacon	Beacon	beacon	138
+5	139	0	64	minecraft:cobblestone_wall	Cobblestone Wall	cobblestone_wall	139
+5	139	1	64	minecraft:cobblestone_wall	Mossy Cobblestone Wall	mossy_cobblestone_wall	139
+5	143	0	64	minecraft:wooden_button	Button	wooden_button	143
+5	145	0	64	minecraft:anvil	Anvil	anvil_intact	145
+5	145	1	64	minecraft:anvil	Slightly Damaged Anvil	anvil_slightly_damaged	145
+5	145	2	64	minecraft:anvil	Very Damaged Anvil	anvil_very_damaged	145
+5	146	0	64	minecraft:trapped_chest	Trapped Chest	trapped_chest	146
+5	147	0	64	minecraft:light_weighted_pressure_plate	Weighted Pressure Plate (Light)	light_weighted_pressure_plate	147
+5	148	0	64	minecraft:heavy_weighted_pressure_plate	Weighted Pressure Plate (Heavy)	heavy_weighted_pressure_plate	148
+5	151	0	64	minecraft:daylight_detector	Daylight Sensor	daylight_detector	151
+5	152	0	64	minecraft:redstone_block	Block of Redstone	redstone_block	152
+5	153	0	64	minecraft:quartz_ore	Nether Quartz Ore	quartz_ore	153
+5	154	0	64	minecraft:hopper	Hopper	hopper	154
+5	155	0	64	minecraft:quartz_block	Block of Quartz	quartz_block	155
+5	155	1	64	minecraft:quartz_block	Chiseled Quartz Block	chiseled_quartz_block	155
+5	155	2	64	minecraft:quartz_block	Pillar Quartz Block	quartz_column	155
+5	156	0	64	minecraft:quartz_stairs	Quartz Stairs	quartz_stairs	156
+5	157	0	64	minecraft:activator_rail	Activator Rail	activator_rail	157
+5	158	0	64	minecraft:dropper	Dropper	dropper	158
+5	159	0	64	minecraft:stained_hardened_clay	White Stained Clay	white_stained_hardened_clay	159
+5	159	1	64	minecraft:stained_hardened_clay	Orange Stained Clay	orange_stained_hardened_clay	159
+5	159	2	64	minecraft:stained_hardened_clay	Magenta Stained Clay	magenta_stained_hardened_clay	159
+5	159	3	64	minecraft:stained_hardened_clay	Light Blue Stained Clay	light_blue_stained_hardened_clay	159
+5	159	4	64	minecraft:stained_hardened_clay	Yellow Stained Clay	yellow_stained_hardened_clay	159
+5	159	5	64	minecraft:stained_hardened_clay	Lime Stained Clay	lime_stained_hardened_clay	159
+5	159	6	64	minecraft:stained_hardened_clay	Pink Stained Clay	pink_stained_hardened_clay	159
+5	159	7	64	minecraft:stained_hardened_clay	Gray Stained Clay	gray_stained_hardened_clay	159
+5	159	8	64	minecraft:stained_hardened_clay	Light Gray Stained Clay	silver_stained_hardened_clay	159
+5	159	9	64	minecraft:stained_hardened_clay	Cyan Stained Clay	cyan_stained_hardened_clay	159
+5	159	10	64	minecraft:stained_hardened_clay	Purple Stained Clay	purple_stained_hardened_clay	159
+5	159	11	64	minecraft:stained_hardened_clay	Blue Stained Clay	blue_stained_hardened_clay	159
+5	159	12	64	minecraft:stained_hardened_clay	Brown Stained Clay	brown_stained_hardened_clay	159
+5	159	13	64	minecraft:stained_hardened_clay	Green Stained Clay	green_stained_hardened_clay	159
+5	159	14	64	minecraft:stained_hardened_clay	Red Stained Clay	red_stained_hardened_clay	159
+5	159	15	64	minecraft:stained_hardened_clay	Black Stained Clay	black_stained_hardened_clay	159
+5	160	0	64	minecraft:stained_glass_pane	White Stained Glass Pane	white_stained_glass_pane	160
+5	160	1	64	minecraft:stained_glass_pane	Orange Stained Glass Pane	orange_stained_glass_pane	160
+5	160	2	64	minecraft:stained_glass_pane	Magenta Stained Glass Pane	magenta_stained_glass_pane	160
+5	160	3	64	minecraft:stained_glass_pane	Light Blue Stained Glass Pane	light_blue_stained_glass_pane	160
+5	160	4	64	minecraft:stained_glass_pane	Yellow Stained Glass Pane	yellow_stained_glass_pane	160
+5	160	5	64	minecraft:stained_glass_pane	Lime Stained Glass Pane	lime_stained_glass_pane	160
+5	160	6	64	minecraft:stained_glass_pane	Pink Stained Glass Pane	pink_stained_glass_pane	160
+5	160	7	64	minecraft:stained_glass_pane	Gray Stained Glass Pane	gray_stained_glass_pane	160
+5	160	8	64	minecraft:stained_glass_pane	Light Gray Stained Glass Pane	silver_stained_glass_pane	160
+5	160	9	64	minecraft:stained_glass_pane	Cyan Stained Glass Pane	cyan_stained_glass_pane	160
+5	160	10	64	minecraft:stained_glass_pane	Purple Stained Glass Pane	purple_stained_glass_pane	160
+5	160	11	64	minecraft:stained_glass_pane	Blue Stained Glass Pane	blue_stained_glass_pane	160
+5	160	12	64	minecraft:stained_glass_pane	Brown Stained Glass Pane	brown_stained_glass_pane	160
+5	160	13	64	minecraft:stained_glass_pane	Green Stained Glass Pane	green_stained_glass_pane	160
+5	160	14	64	minecraft:stained_glass_pane	Red Stained Glass Pane	red_stained_glass_pane	160
+5	160	15	64	minecraft:stained_glass_pane	Black Stained Glass Pane	black_stained_glass_pane	160
+5	161	0	64	minecraft:leaves2	Acacia Leaves	acacia_leaves	161
+5	161	1	64	minecraft:leaves2	Dark Oak Leaves	dark_oak_leaves	161
+5	162	0	64	minecraft:log2	Acacia Wood	acacia_log	162
+5	162	1	64	minecraft:log2	Dark Oak Wood	dark_oak_log	162
+5	163	0	64	minecraft:acacia_stairs	Acacia Wood Stairs	acacia_stairs	163
+5	164	0	64	minecraft:dark_oak_stairs	Dark Oak Wood Stairs	dark_oak_stairs	164
+5	165	0	64	minecraft:slime	Slime Block	slime	165
+5	167	0	64	minecraft:iron_trapdoor	Iron Trapdoor	iron_trapdoor	167
+5	168	0	64	minecraft:prismarine	Prismarine	prismarine	168
+5	168	1	64	minecraft:prismarine	Prismarine Bricks	prismarine_bricks	168
+5	168	2	64	minecraft:prismarine	Dark Prismarine	dark_prismarine	168
+5	169	0	64	minecraft:sea_lantern	Sea Lantern	sea_lantern	169
+5	170	0	64	minecraft:hay_block	Hay Bale	hay_block	170
+5	171	0	64	minecraft:carpet	Carpet	white_carpet	171
+5	171	1	64	minecraft:carpet	Orange Carpet	orange_carpet	171
+5	171	2	64	minecraft:carpet	Magenta Carpet	magenta_carpet	171
+5	171	3	64	minecraft:carpet	Light Blue Carpet	light_blue_carpet	171
+5	171	4	64	minecraft:carpet	Yellow Carpet	yellow_carpet	171
+5	171	5	64	minecraft:carpet	Lime Carpet	lime_carpet	171
+5	171	6	64	minecraft:carpet	Pink Carpet	pink_carpet	171
+5	171	7	64	minecraft:carpet	Gray Carpet	gray_carpet	171
+5	171	8	64	minecraft:carpet	Light Gray Carpet	silver_carpet	171
+5	171	9	64	minecraft:carpet	Cyan Carpet	cyan_carpet	171
+5	171	10	64	minecraft:carpet	Purple Carpet	purple_carpet	171
+5	171	11	64	minecraft:carpet	Blue Carpet	blue_carpet	171
+5	171	12	64	minecraft:carpet	Brown Carpet	brown_carpet	171
+5	171	13	64	minecraft:carpet	Green Carpet	green_carpet	171
+5	171	14	64	minecraft:carpet	Red Carpet	red_carpet	171
+5	171	15	64	minecraft:carpet	Black Carpet	black_carpet	171
+5	172	0	64	minecraft:hardened_clay	Hardened Clay	hardened_clay	172
+5	173	0	64	minecraft:coal_block	Block of Coal	coal_block	173
+5	174	0	64	minecraft:packed_ice	Packed Ice	packed_ice	174
+5	175	0	64	minecraft:double_plant	Sunflower	sunflower	175
+5	175	1	64	minecraft:double_plant	Lilac	syringa	175
+5	175	2	64	minecraft:double_plant	Double Tallgrass	double_grass	175
+5	175	3	64	minecraft:double_plant	Large Fern	double_fern	175
+5	175	4	64	minecraft:double_plant	Rose Bush	double_rose	175
+5	175	5	64	minecraft:double_plant	Peony	paeonia	175
+5	179	0	64	minecraft:red_sandstone	Red Sandstone	red_sandstone	179
+5	179	1	64	minecraft:red_sandstone	Chiseled Red Sandstone	chiseled_red_sandstone	179
+5	179	2	64	minecraft:red_sandstone	Smooth Red Sandstone	smooth_red_sandstone	179
+5	180	0	64	minecraft:red_sandstone_stairs	Red Sandstone Stairs	red_sandstone_stairs	180
+5	182	0	64	minecraft:stone_slab2	Red Sandstone Slab	red_sandstone_slab	182
+5	183	0	64	minecraft:spruce_fence_gate	Spruce Fence Gate	spruce_fence_gate	183
+5	184	0	64	minecraft:birch_fence_gate	Birch Fence Gate	birch_fence_gate	184
+5	185	0	64	minecraft:jungle_fence_gate	Jungle Fence Gate	jungle_fence_gate	185
+5	186	0	64	minecraft:dark_oak_fence_gate	Dark Oak Fence Gate	dark_oak_fence_gate	186
+5	187	0	64	minecraft:acacia_fence_gate	Acacia Fence Gate	acacia_fence_gate	187
+5	188	0	64	minecraft:spruce_fence	Spruce Fence	spruce_fence	188
+5	189	0	64	minecraft:birch_fence	Birch Fence	birch_fence	189
+5	190	0	64	minecraft:jungle_fence	Jungle Fence	jungle_fence	190
+5	191	0	64	minecraft:dark_oak_fence	Dark Oak Fence	dark_oak_fence	191
+5	192	0	64	minecraft:acacia_fence	Acacia Fence	acacia_fence	192
+5	256	0	1	minecraft:iron_shovel	Iron Shovel	iron_shovel	0
+5	257	0	1	minecraft:iron_pickaxe	Iron Pickaxe	iron_pickaxe	0
+5	258	0	1	minecraft:iron_axe	Iron Axe	iron_axe	0
+5	259	0	1	minecraft:flint_and_steel	Flint and Steel	flint_and_steel	0
+5	260	0	64	minecraft:apple	Apple	apple	0
+5	261	0	1	minecraft:bow	Bow	bow	0
+5	262	0	64	minecraft:arrow	Arrow	arrow	0
+5	263	0	64	minecraft:coal	Coal	coal	0
+5	263	1	64	minecraft:coal	Charcoal	charcoal	0
+5	264	0	64	minecraft:diamond	Diamond	diamond	0
+5	265	0	64	minecraft:iron_ingot	Iron Ingot	iron_ingot	0
+5	266	0	64	minecraft:gold_ingot	Gold Ingot	gold_ingot	0
+5	267	0	1	minecraft:iron_sword	Iron Sword	iron_sword	0
+5	268	0	1	minecraft:wooden_sword	Wooden Sword	wooden_sword	0
+5	269	0	1	minecraft:wooden_shovel	Wooden Shovel	wooden_shovel	0
+5	270	0	1	minecraft:wooden_pickaxe	Wooden Pickaxe	wooden_pickaxe	0
+5	271	0	1	minecraft:wooden_axe	Wooden Axe	wooden_axe	0
+5	272	0	1	minecraft:stone_sword	Stone Sword	stone_sword	0
+5	273	0	1	minecraft:stone_shovel	Stone Shovel	stone_shovel	0
+5	274	0	1	minecraft:stone_pickaxe	Stone Pickaxe	stone_pickaxe	0
+5	275	0	1	minecraft:stone_axe	Stone Axe	stone_axe	0
+5	276	0	1	minecraft:diamond_sword	Diamond Sword	diamond_sword	0
+5	277	0	1	minecraft:diamond_shovel	Diamond Shovel	diamond_shovel	0
+5	278	0	1	minecraft:diamond_pickaxe	Diamond Pickaxe	diamond_pickaxe	0
+5	279	0	1	minecraft:diamond_axe	Diamond Axe	diamond_axe	0
+5	280	0	64	minecraft:stick	Stick	stick	0
+5	281	0	64	minecraft:bowl	Bowl	bowl	0
+5	282	0	1	minecraft:mushroom_stew	Mushroom Stew	mushroom_stew	0
+5	283	0	1	minecraft:golden_sword	Golden Sword	golden_sword	0
+5	284	0	1	minecraft:golden_shovel	Golden Shovel	golden_shovel	0
+5	285	0	1	minecraft:golden_pickaxe	Golden Pickaxe	golden_pickaxe	0
+5	286	0	1	minecraft:golden_axe	Golden Axe	golden_axe	0
+5	287	0	64	minecraft:string	String	string	0
+5	288	0	64	minecraft:feather	Feather	feather	0
+5	289	0	64	minecraft:gunpowder	Gunpowder	gunpowder	0
+5	290	0	1	minecraft:wooden_hoe	Wooden Hoe	wooden_hoe	0
+5	291	0	1	minecraft:stone_hoe	Stone Hoe	stone_hoe	0
+5	292	0	1	minecraft:iron_hoe	Iron Hoe	iron_hoe	0
+5	293	0	1	minecraft:diamond_hoe	Diamond Hoe	diamond_hoe	0
+5	294	0	1	minecraft:golden_hoe	Golden Hoe	golden_hoe	0
+5	295	0	64	minecraft:wheat_seeds	Seeds	wheat_seeds	0
+5	296	0	64	minecraft:wheat	Wheat	wheat	0
+5	297	0	64	minecraft:bread	Bread	bread	0
+5	298	0	1	minecraft:leather_helmet	Leather Cap	leather_helmet	0
+5	299	0	1	minecraft:leather_chestplate	Leather Tunic	leather_chestplate	0
+5	300	0	1	minecraft:leather_leggings	Leather Pants	leather_leggings	0
+5	301	0	1	minecraft:leather_boots	Leather Boots	leather_boots	0
+5	302	0	1	minecraft:chainmail_helmet	Chain Helmet	chainmail_helmet	0
+5	303	0	1	minecraft:chainmail_chestplate	Chain Chestplate	chainmail_chestplate	0
+5	304	0	1	minecraft:chainmail_leggings	Chain Leggings	chainmail_leggings	0
+5	305	0	1	minecraft:chainmail_boots	Chain Boots	chainmail_boots	0
+5	306	0	1	minecraft:iron_helmet	Iron Helmet	iron_helmet	0
+5	307	0	1	minecraft:iron_chestplate	Iron Chestplate	iron_chestplate	0
+5	308	0	1	minecraft:iron_leggings	Iron Leggings	iron_leggings	0
+5	309	0	1	minecraft:iron_boots	Iron Boots	iron_boots	0
+5	310	0	1	minecraft:diamond_helmet	Diamond Helmet	diamond_helmet	0
+5	311	0	1	minecraft:diamond_chestplate	Diamond Chestplate	diamond_chestplate	0
+5	312	0	1	minecraft:diamond_leggings	Diamond Leggings	diamond_leggings	0
+5	313	0	1	minecraft:diamond_boots	Diamond Boots	diamond_boots	0
+5	314	0	1	minecraft:golden_helmet	Golden Helmet	golden_helmet	0
+5	315	0	1	minecraft:golden_chestplate	Golden Chestplate	golden_chestplate	0
+5	316	0	1	minecraft:golden_leggings	Golden Leggings	golden_leggings	0
+5	317	0	1	minecraft:golden_boots	Golden Boots	golden_boots	0
+5	318	0	64	minecraft:flint	Flint	flint	0
+5	319	0	64	minecraft:porkchop	Raw Porkchop	porkchop	0
+5	320	0	64	minecraft:cooked_porkchop	Cooked Porkchop	cooked_porkchop	0
+5	321	0	64	minecraft:painting	Painting	painting	0
+5	322	0	64	minecraft:golden_apple	Golden Apple	golden_apple	0
+5	322	1	64	minecraft:golden_apple	Golden Apple	golden_apple	0
+5	323	0	16	minecraft:sign	Sign	sign	0
+5	324	0	64	minecraft:wooden_door	Oak Door	oak_door	0
+5	325	0	16	minecraft:bucket	Bucket	bucket	0
+5	326	0	1	minecraft:water_bucket	Water Bucket	water_bucket	0
+5	327	0	1	minecraft:lava_bucket	Lava Bucket	lava_bucket	0
+5	328	0	1	minecraft:minecart	Minecart	minecart	0
+5	329	0	1	minecraft:saddle	Saddle	saddle	0
+5	330	0	64	minecraft:iron_door	Iron Door	iron_door	0
+5	331	0	64	minecraft:redstone	Redstone	redstone	0
+5	332	0	16	minecraft:snowball	Snowball	snowball	0
+5	333	0	1	minecraft:boat	Boat	boat	0
+5	334	0	64	minecraft:leather	Leather	leather	0
+5	335	0	1	minecraft:milk_bucket	Milk	milk_bucket	0
+5	336	0	64	minecraft:brick	Brick	brick	0
+5	337	0	64	minecraft:clay_ball	Clay	clay_ball	0
+5	338	0	64	minecraft:reeds	Sugar Canes	reeds	0
+5	339	0	64	minecraft:paper	Paper	paper	0
+5	340	0	64	minecraft:book	Book	book	0
+5	341	0	64	minecraft:slime_ball	Slimeball	slime_ball	0
+5	342	0	1	minecraft:chest_minecart	Minecart with Chest	chest_minecart	0
+5	343	0	1	minecraft:furnace_minecart	Minecart with Furnace	furnace_minecart	0
+5	344	0	16	minecraft:egg	Egg	egg	0
+5	345	0	64	minecraft:compass	Compass	compass	0
+5	346	0	1	minecraft:fishing_rod	Fishing Rod	fishing_rod	0
+5	347	0	64	minecraft:clock	Clock	clock	0
+5	348	0	64	minecraft:glowstone_dust	Glowstone Dust	glowstone_dust	0
+5	349	0	64	minecraft:fish	Raw Fish	cod	0
+5	349	1	64	minecraft:fish	Raw Salmon	salmon	0
+5	349	2	64	minecraft:fish	Clownfish	clownfish	0
+5	349	3	64	minecraft:fish	Pufferfish	pufferfish	0
+5	350	0	64	minecraft:cooked_fish	Cooked Fish	cooked_cod	0
+5	350	1	64	minecraft:cooked_fish	Cooked Salmon	cooked_salmon	0
+5	351	0	64	minecraft:dye	Ink Sac	dye_black	0
+5	351	1	64	minecraft:dye	Rose Red	dye_red	0
+5	351	2	64	minecraft:dye	Cactus Green	dye_green	0
+5	351	3	64	minecraft:dye	Cocoa Beans	dye_brown	0
+5	351	4	64	minecraft:dye	Lapis Lazuli	dye_blue	0
+5	351	5	64	minecraft:dye	Purple Dye	dye_purple	0
+5	351	6	64	minecraft:dye	Cyan Dye	dye_cyan	0
+5	351	7	64	minecraft:dye	Light Gray Dye	dye_silver	0
+5	351	8	64	minecraft:dye	Gray Dye	dye_gray	0
+5	351	9	64	minecraft:dye	Pink Dye	dye_pink	0
+5	351	10	64	minecraft:dye	Lime Dye	dye_lime	0
+5	351	11	64	minecraft:dye	Dandelion Yellow	dye_yellow	0
+5	351	12	64	minecraft:dye	Light Blue Dye	dye_light_blue	0
+5	351	13	64	minecraft:dye	Magenta Dye	dye_magenta	0
+5	351	14	64	minecraft:dye	Orange Dye	dye_orange	0
+5	351	15	64	minecraft:dye	Bone Meal	dye_white	0
+5	352	0	64	minecraft:bone	Bone	bone	0
+5	353	0	64	minecraft:sugar	Sugar	sugar	0
+5	354	0	1	minecraft:cake	Cake	cake	0
+5	355	0	1	minecraft:bed	Bed	bed	0
+5	356	0	64	minecraft:repeater	Redstone Repeater	repeater	0
+5	357	0	64	minecraft:cookie	Cookie	cookie	0
+5	359	0	1	minecraft:shears	Shears	shears	0
+5	360	0	64	minecraft:melon	Melon	melon	0
+5	361	0	64	minecraft:pumpkin_seeds	Pumpkin Seeds	pumpkin_seeds	0
+5	362	0	64	minecraft:melon_seeds	Melon Seeds	melon_seeds	0
+5	363	0	64	minecraft:beef	Raw Beef	beef	0
+5	364	0	64	minecraft:cooked_beef	Steak	cooked_beef	0
+5	365	0	64	minecraft:chicken	Raw Chicken	chicken	0
+5	366	0	64	minecraft:cooked_chicken	Cooked Chicken	cooked_chicken	0
+5	367	0	64	minecraft:rotten_flesh	Rotten Flesh	rotten_flesh	0
+5	368	0	16	minecraft:ender_pearl	Ender Pearl	ender_pearl	0
+5	369	0	64	minecraft:blaze_rod	Blaze Rod	blaze_rod	0
+5	370	0	64	minecraft:ghast_tear	Ghast Tear	ghast_tear	0
+5	371	0	64	minecraft:gold_nugget	Gold Nugget	gold_nugget	0
+5	372	0	64	minecraft:nether_wart	Nether Wart	nether_wart	0
+5	373	0	1	minecraft:potion	Water Bottle	bottle_drinkable	0
+5	373	8193	1	minecraft:potion	Potion of Regeneration	bottle_drinkable	0
+5	373	8225	1	minecraft:potion	Potion of Regeneration	bottle_drinkable	0
+5	373	8257	1	minecraft:potion	Potion of Regeneration	bottle_drinkable	0
+5	373	16385	1	minecraft:potion	Splash Potion of Regeneration	bottle_splash	0
+5	373	16417	1	minecraft:potion	Splash Potion of Regeneration	bottle_splash	0
+5	373	16449	1	minecraft:potion	Splash Potion of Regeneration	bottle_splash	0
+5	373	8194	1	minecraft:potion	Potion of Swiftness	bottle_drinkable	0
+5	373	8226	1	minecraft:potion	Potion of Swiftness	bottle_drinkable	0
+5	373	8258	1	minecraft:potion	Potion of Swiftness	bottle_drinkable	0
+5	373	16386	1	minecraft:potion	Splash Potion of Swiftness	bottle_splash	0
+5	373	16418	1	minecraft:potion	Splash Potion of Swiftness	bottle_splash	0
+5	373	16450	1	minecraft:potion	Splash Potion of Swiftness	bottle_splash	0
+5	373	8227	1	minecraft:potion	Potion of Fire Resistance	bottle_drinkable	0
+5	373	8259	1	minecraft:potion	Potion of Fire Resistance	bottle_drinkable	0
+5	373	16419	1	minecraft:potion	Splash Potion of Fire Resistance	bottle_splash	0
+5	373	16451	1	minecraft:potion	Splash Potion of Fire Resistance	bottle_splash	0
+5	373	8196	1	minecraft:potion	Potion of Poison	bottle_drinkable	0
+5	373	8228	1	minecraft:potion	Potion of Poison	bottle_drinkable	0
+5	373	8260	1	minecraft:potion	Potion of Poison	bottle_drinkable	0
+5	373	16388	1	minecraft:potion	Splash Potion of Poison	bottle_splash	0
+5	373	16420	1	minecraft:potion	Splash Potion of Poison	bottle_splash	0
+5	373	16452	1	minecraft:potion	Splash Potion of Poison	bottle_splash	0
+5	373	8261	1	minecraft:potion	Potion of Healing	bottle_drinkable	0
+5	373	8229	1	minecraft:potion	Potion of Healing	bottle_drinkable	0
+5	373	16453	1	minecraft:potion	Splash Potion of Healing	bottle_splash	0
+5	373	16421	1	minecraft:potion	Splash Potion of Healing	bottle_splash	0
+5	373	8230	1	minecraft:potion	Potion of Night Vision	bottle_drinkable	0
+5	373	8262	1	minecraft:potion	Potion of Night Vision	bottle_drinkable	0
+5	373	16422	1	minecraft:potion	Splash Potion of Night Vision	bottle_splash	0
+5	373	16454	1	minecraft:potion	Splash Potion of Night Vision	bottle_splash	0
+5	373	8232	1	minecraft:potion	Potion of Weakness	bottle_drinkable	0
+5	373	8264	1	minecraft:potion	Potion of Weakness	bottle_drinkable	0
+5	373	16424	1	minecraft:potion	Splash Potion of Weakness	bottle_splash	0
+5	373	16456	1	minecraft:potion	Splash Potion of Weakness	bottle_splash	0
+5	373	8201	1	minecraft:potion	Potion of Strength	bottle_drinkable	0
+5	373	8233	1	minecraft:potion	Potion of Strength	bottle_drinkable	0
+5	373	8265	1	minecraft:potion	Potion of Strength	bottle_drinkable	0
+5	373	16393	1	minecraft:potion	Splash Potion of Strength	bottle_splash	0
+5	373	16425	1	minecraft:potion	Splash Potion of Strength	bottle_splash	0
+5	373	16457	1	minecraft:potion	Splash Potion of Strength	bottle_splash	0
+5	373	8234	1	minecraft:potion	Potion of Slowness	bottle_drinkable	0
+5	373	8266	1	minecraft:potion	Potion of Slowness	bottle_drinkable	0
+5	373	16426	1	minecraft:potion	Splash Potion of Slowness	bottle_splash	0
+5	373	16458	1	minecraft:potion	Splash Potion of Slowness	bottle_splash	0
+5	373	8203	1	minecraft:potion	Potion of Leaping	bottle_drinkable	0
+5	373	8235	1	minecraft:potion	Potion of Leaping	bottle_drinkable	0
+5	373	8267	1	minecraft:potion	Potion of Leaping	bottle_drinkable	0
+5	373	16395	1	minecraft:potion	Splash Potion of Leaping	bottle_splash	0
+5	373	16427	1	minecraft:potion	Splash Potion of Leaping	bottle_splash	0
+5	373	16459	1	minecraft:potion	Splash Potion of Leaping	bottle_splash	0
+5	373	8268	1	minecraft:potion	Potion of Harming	bottle_drinkable	0
+5	373	8236	1	minecraft:potion	Potion of Harming	bottle_drinkable	0
+5	373	16460	1	minecraft:potion	Splash Potion of Harming	bottle_splash	0
+5	373	16428	1	minecraft:potion	Splash Potion of Harming	bottle_splash	0
+5	373	8237	1	minecraft:potion	Potion of Water Breathing	bottle_drinkable	0
+5	373	8269	1	minecraft:potion	Potion of Water Breathing	bottle_drinkable	0
+5	373	16429	1	minecraft:potion	Splash Potion of Water Breathing	bottle_splash	0
+5	373	16461	1	minecraft:potion	Splash Potion of Water Breathing	bottle_splash	0
+5	373	8238	1	minecraft:potion	Potion of Invisibility	bottle_drinkable	0
+5	373	8270	1	minecraft:potion	Potion of Invisibility	bottle_drinkable	0
+5	373	16430	1	minecraft:potion	Splash Potion of Invisibility	bottle_splash	0
+5	373	16462	1	minecraft:potion	Splash Potion of Invisibility	bottle_splash	0
+5	374	0	64	minecraft:glass_bottle	Glass Bottle	glass_bottle	0
+5	375	0	64	minecraft:spider_eye	Spider Eye	spider_eye	0
+5	376	0	64	minecraft:fermented_spider_eye	Fermented Spider Eye	fermented_spider_eye	0
+5	377	0	64	minecraft:blaze_powder	Blaze Powder	blaze_powder	0
+5	378	0	64	minecraft:magma_cream	Magma Cream	magma_cream	0
+5	379	0	64	minecraft:brewing_stand	Brewing Stand	brewing_stand	0
+5	380	0	64	minecraft:cauldron	Cauldron	cauldron	0
+5	381	0	64	minecraft:ender_eye	Eye of Ender	ender_eye	0
+5	382	0	64	minecraft:speckled_melon	Glistering Melon	speckled_melon	0
+5	383	50	64	minecraft:spawn_egg	Spawn Creeper	spawn_egg	0
+5	383	51	64	minecraft:spawn_egg	Spawn Skeleton	spawn_egg	0
+5	383	52	64	minecraft:spawn_egg	Spawn Spider	spawn_egg	0
+5	383	54	64	minecraft:spawn_egg	Spawn Zombie	spawn_egg	0
+5	383	55	64	minecraft:spawn_egg	Spawn Slime	spawn_egg	0
+5	383	56	64	minecraft:spawn_egg	Spawn Ghast	spawn_egg	0
+5	383	57	64	minecraft:spawn_egg	Spawn Zombie Pigman	spawn_egg	0
+5	383	58	64	minecraft:spawn_egg	Spawn Enderman	spawn_egg	0
+5	383	59	64	minecraft:spawn_egg	Spawn Cave Spider	spawn_egg	0
+5	383	60	64	minecraft:spawn_egg	Spawn Silverfish	spawn_egg	0
+5	383	61	64	minecraft:spawn_egg	Spawn Blaze	spawn_egg	0
+5	383	62	64	minecraft:spawn_egg	Spawn Magma Cube	spawn_egg	0
+5	383	65	64	minecraft:spawn_egg	Spawn Bat	spawn_egg	0
+5	383	66	64	minecraft:spawn_egg	Spawn Witch	spawn_egg	0
+5	383	67	64	minecraft:spawn_egg	Spawn Endermite	spawn_egg	0
+5	383	68	64	minecraft:spawn_egg	Spawn Guardian	spawn_egg	0
+5	383	90	64	minecraft:spawn_egg	Spawn Pig	spawn_egg	0
+5	383	91	64	minecraft:spawn_egg	Spawn Sheep	spawn_egg	0
+5	383	92	64	minecraft:spawn_egg	Spawn Cow	spawn_egg	0
+5	383	93	64	minecraft:spawn_egg	Spawn Chicken	spawn_egg	0
+5	383	94	64	minecraft:spawn_egg	Spawn Squid	spawn_egg	0
+5	383	95	64	minecraft:spawn_egg	Spawn Wolf	spawn_egg	0
+5	383	96	64	minecraft:spawn_egg	Spawn Mooshroom	spawn_egg	0
+5	383	98	64	minecraft:spawn_egg	Spawn Ocelot	spawn_egg	0
+5	383	100	64	minecraft:spawn_egg	Spawn Horse	spawn_egg	0
+5	383	101	64	minecraft:spawn_egg	Spawn Rabbit	spawn_egg	0
+5	383	120	64	minecraft:spawn_egg	Spawn Villager	spawn_egg	0
+5	384	0	64	minecraft:experience_bottle	Bottle o' Enchanting	experience_bottle	0
+5	385	0	64	minecraft:fire_charge	Fire Charge	fire_charge	0
+5	386	0	1	minecraft:writable_book	Book and Quill	writable_book	0
+5	388	0	64	minecraft:emerald	Emerald	emerald	0
+5	389	0	64	minecraft:item_frame	Item Frame	item_frame	0
+5	390	0	64	minecraft:flower_pot	Flower Pot	flower_pot	0
+5	391	0	64	minecraft:carrot	Carrot	carrot	0
+5	392	0	64	minecraft:potato	Potato	potato	0
+5	393	0	64	minecraft:baked_potato	Baked Potato	baked_potato	0
+5	394	0	64	minecraft:poisonous_potato	Poisonous Potato	poisonous_potato	0
+5	395	0	64	minecraft:map	Empty Map	map	0
+5	396	0	64	minecraft:golden_carrot	Golden Carrot	golden_carrot	0
+5	397	0	64	minecraft:skull	Skeleton Skull	skull_skeleton	0
+5	397	1	64	minecraft:skull	Wither Skeleton Skull	skull_wither	0
+5	397	2	64	minecraft:skull	Zombie Head	skull_zombie	0
+5	397	3	64	minecraft:skull	Head	skull_char	0
+5	397	4	64	minecraft:skull	Creeper Head	skull_creeper	0
+5	398	0	1	minecraft:carrot_on_a_stick	Carrot on a Stick	carrot_on_a_stick	0
+5	399	0	64	minecraft:nether_star	Nether Star	nether_star	0
+5	400	0	64	minecraft:pumpkin_pie	Pumpkin Pie	pumpkin_pie	0
+5	402	0	64	minecraft:firework_charge	Firework Star	firework_charge	0
+5	404	0	64	minecraft:comparator	Redstone Comparator	comparator	0
+5	405	0	64	minecraft:netherbrick	Nether Brick	netherbrick	0
+5	406	0	64	minecraft:quartz	Nether Quartz	quartz	0
+5	407	0	1	minecraft:tnt_minecart	Minecart with TNT	tnt_minecart	0
+5	408	0	1	minecraft:hopper_minecart	Minecart with Hopper	hopper_minecart	0
+5	409	0	64	minecraft:prismarine_shard	Prismarine Shard	prismarine_shard	0
+5	410	0	64	minecraft:prismarine_crystals	Prismarine Crystals	prismarine_crystals	0
+5	411	0	64	minecraft:rabbit	Raw Rabbit	rabbit	0
+5	412	0	64	minecraft:cooked_rabbit	Cooked Rabbit	cooked_rabbit	0
+5	413	0	1	minecraft:rabbit_stew	Rabbit Stew	rabbit_stew	0
+5	414	0	64	minecraft:rabbit_foot	Rabbit's Foot	rabbit_foot	0
+5	415	0	64	minecraft:rabbit_hide	Rabbit Hide	rabbit_hide	0
+5	416	0	16	minecraft:armor_stand	Armor Stand	armor_stand	0
+5	417	0	1	minecraft:iron_horse_armor	Iron Horse Armor	iron_horse_armor	0
+5	418	0	1	minecraft:golden_horse_armor	Gold Horse Armor	golden_horse_armor	0
+5	419	0	1	minecraft:diamond_horse_armor	Diamond Horse Armor	diamond_horse_armor	0
+5	420	0	64	minecraft:lead	Lead	lead	0
+5	421	0	64	minecraft:name_tag	Name Tag	name_tag	0
+5	423	0	64	minecraft:mutton	Raw Mutton	mutton	0
+5	424	0	64	minecraft:cooked_mutton	Cooked Mutton	cooked_mutton	0
+5	425	15	16	minecraft:banner	White Banner	banner	176
+5	425	14	16	minecraft:banner	Orange Banner	banner	176
+5	425	13	16	minecraft:banner	Magenta Banner	banner	176
+5	425	12	16	minecraft:banner	Light Blue Banner	banner	176
+5	425	11	16	minecraft:banner	Yellow Banner	banner	176
+5	425	10	16	minecraft:banner	Lime Banner	banner	176
+5	425	9	16	minecraft:banner	Pink Banner	banner	176
+5	425	8	16	minecraft:banner	Gray Banner	banner	176
+5	425	7	16	minecraft:banner	Light Gray Banner	banner	176
+5	425	6	16	minecraft:banner	Cyan Banner	banner	176
+5	425	5	16	minecraft:banner	Purple Banner	banner	176
+5	425	4	16	minecraft:banner	Blue Banner	banner	176
+5	425	3	16	minecraft:banner	Brown Banner	banner	176
+5	425	2	16	minecraft:banner	Green Banner	banner	176
+5	425	1	16	minecraft:banner	Red Banner	banner	176
+5	425	0	16	minecraft:banner	Black Banner	banner	176
+5	427	0	64	minecraft:spruce_door	Spruce Door	spruce_door	0
+5	428	0	64	minecraft:birch_door	Birch Door	birch_door	0
+5	429	0	64	minecraft:jungle_door	Jungle Door	jungle_door	0
+5	430	0	64	minecraft:acacia_door	Acacia Door	acacia_door	0
+5	431	0	64	minecraft:dark_oak_door	Dark Oak Door	dark_oak_door	0
+5	2256	0	1	minecraft:record_13	Music Disc	record_13	0
+5	2257	0	1	minecraft:record_cat	Music Disc	record_cat	0
+5	2258	0	1	minecraft:record_blocks	Music Disc	record_blocks	0
+5	2259	0	1	minecraft:record_chirp	Music Disc	record_chirp	0
+5	2260	0	1	minecraft:record_far	Music Disc	record_far	0
+5	2261	0	1	minecraft:record_mall	Music Disc	record_mall	0
+5	2262	0	1	minecraft:record_mellohi	Music Disc	record_mellohi	0
+5	2263	0	1	minecraft:record_stal	Music Disc	record_stal	0
+5	2264	0	1	minecraft:record_strad	Music Disc	record_strad	0
+5	2265	0	1	minecraft:record_ward	Music Disc	record_ward	0
+5	2266	0	1	minecraft:record_11	Music Disc	record_11	0
+5	2267	0	1	minecraft:record_wait	Music Disc	record_wait	0
+6	260	0	64	minecraft:apple	Apple	apple	0
+6	282	0	1	minecraft:mushroom_stew	Mushroom Stew	mushroom_stew	0
+6	297	0	64	minecraft:bread	Bread	bread	0
+6	319	0	64	minecraft:porkchop	Raw Porkchop	porkchop	0
+6	320	0	64	minecraft:cooked_porkchop	Cooked Porkchop	cooked_porkchop	0
+6	322	0	64	minecraft:golden_apple	Golden Apple	golden_apple	0
+6	322	1	64	minecraft:golden_apple	Golden Apple	golden_apple	0
+6	349	0	64	minecraft:fish	Raw Fish	cod	0
+6	349	1	64	minecraft:fish	Raw Salmon	salmon	0
+6	349	2	64	minecraft:fish	Clownfish	clownfish	0
+6	349	3	64	minecraft:fish	Pufferfish	pufferfish	0
+6	350	0	64	minecraft:cooked_fish	Cooked Fish	cooked_cod	0
+6	350	1	64	minecraft:cooked_fish	Cooked Salmon	cooked_salmon	0
+6	354	0	1	minecraft:cake	Cake	cake	0
+6	357	0	64	minecraft:cookie	Cookie	cookie	0
+6	360	0	64	minecraft:melon	Melon	melon	0
+6	363	0	64	minecraft:beef	Raw Beef	beef	0
+6	364	0	64	minecraft:cooked_beef	Steak	cooked_beef	0
+6	365	0	64	minecraft:chicken	Raw Chicken	chicken	0
+6	366	0	64	minecraft:cooked_chicken	Cooked Chicken	cooked_chicken	0
+6	367	0	64	minecraft:rotten_flesh	Rotten Flesh	rotten_flesh	0
+6	375	0	64	minecraft:spider_eye	Spider Eye	spider_eye	0
+6	391	0	64	minecraft:carrot	Carrot	carrot	0
+6	392	0	64	minecraft:potato	Potato	potato	0
+6	393	0	64	minecraft:baked_potato	Baked Potato	baked_potato	0
+6	394	0	64	minecraft:poisonous_potato	Poisonous Potato	poisonous_potato	0
+6	400	0	64	minecraft:pumpkin_pie	Pumpkin Pie	pumpkin_pie	0
+6	411	0	64	minecraft:rabbit	Raw Rabbit	rabbit	0
+6	412	0	64	minecraft:cooked_rabbit	Cooked Rabbit	cooked_rabbit	0
+6	413	0	1	minecraft:rabbit_stew	Rabbit Stew	rabbit_stew	0
+6	423	0	64	minecraft:mutton	Raw Mutton	mutton	0
+6	424	0	64	minecraft:cooked_mutton	Cooked Mutton	cooked_mutton	0
+7	256	0	1	minecraft:iron_shovel	Iron Shovel	iron_shovel	0
+7	257	0	1	minecraft:iron_pickaxe	Iron Pickaxe	iron_pickaxe	0
+7	258	0	1	minecraft:iron_axe	Iron Axe	iron_axe	0
+7	259	0	1	minecraft:flint_and_steel	Flint and Steel	flint_and_steel	0
+7	269	0	1	minecraft:wooden_shovel	Wooden Shovel	wooden_shovel	0
+7	270	0	1	minecraft:wooden_pickaxe	Wooden Pickaxe	wooden_pickaxe	0
+7	271	0	1	minecraft:wooden_axe	Wooden Axe	wooden_axe	0
+7	273	0	1	minecraft:stone_shovel	Stone Shovel	stone_shovel	0
+7	274	0	1	minecraft:stone_pickaxe	Stone Pickaxe	stone_pickaxe	0
+7	275	0	1	minecraft:stone_axe	Stone Axe	stone_axe	0
+7	277	0	1	minecraft:diamond_shovel	Diamond Shovel	diamond_shovel	0
+7	278	0	1	minecraft:diamond_pickaxe	Diamond Pickaxe	diamond_pickaxe	0
+7	279	0	1	minecraft:diamond_axe	Diamond Axe	diamond_axe	0
+7	284	0	1	minecraft:golden_shovel	Golden Shovel	golden_shovel	0
+7	285	0	1	minecraft:golden_pickaxe	Golden Pickaxe	golden_pickaxe	0
+7	286	0	1	minecraft:golden_axe	Golden Axe	golden_axe	0
+7	290	0	1	minecraft:wooden_hoe	Wooden Hoe	wooden_hoe	0
+7	291	0	1	minecraft:stone_hoe	Stone Hoe	stone_hoe	0
+7	292	0	1	minecraft:iron_hoe	Iron Hoe	iron_hoe	0
+7	293	0	1	minecraft:diamond_hoe	Diamond Hoe	diamond_hoe	0
+7	294	0	1	minecraft:golden_hoe	Golden Hoe	golden_hoe	0
+7	345	0	64	minecraft:compass	Compass	compass	0
+7	346	0	1	minecraft:fishing_rod	Fishing Rod	fishing_rod	0
+7	347	0	64	minecraft:clock	Clock	clock	0
+7	359	0	1	minecraft:shears	Shears	shears	0
+7	420	0	64	minecraft:lead	Lead	lead	0
+7	421	0	64	minecraft:name_tag	Name Tag	name_tag	0
+7	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+7	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+7	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+7	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+7	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+7	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	261	0	1	minecraft:bow	Bow	bow	0
+8	262	0	64	minecraft:arrow	Arrow	arrow	0
+8	267	0	1	minecraft:iron_sword	Iron Sword	iron_sword	0
+8	268	0	1	minecraft:wooden_sword	Wooden Sword	wooden_sword	0
+8	272	0	1	minecraft:stone_sword	Stone Sword	stone_sword	0
+8	276	0	1	minecraft:diamond_sword	Diamond Sword	diamond_sword	0
+8	283	0	1	minecraft:golden_sword	Golden Sword	golden_sword	0
+8	298	0	1	minecraft:leather_helmet	Leather Cap	leather_helmet	0
+8	299	0	1	minecraft:leather_chestplate	Leather Tunic	leather_chestplate	0
+8	300	0	1	minecraft:leather_leggings	Leather Pants	leather_leggings	0
+8	301	0	1	minecraft:leather_boots	Leather Boots	leather_boots	0
+8	302	0	1	minecraft:chainmail_helmet	Chain Helmet	chainmail_helmet	0
+8	303	0	1	minecraft:chainmail_chestplate	Chain Chestplate	chainmail_chestplate	0
+8	304	0	1	minecraft:chainmail_leggings	Chain Leggings	chainmail_leggings	0
+8	305	0	1	minecraft:chainmail_boots	Chain Boots	chainmail_boots	0
+8	306	0	1	minecraft:iron_helmet	Iron Helmet	iron_helmet	0
+8	307	0	1	minecraft:iron_chestplate	Iron Chestplate	iron_chestplate	0
+8	308	0	1	minecraft:iron_leggings	Iron Leggings	iron_leggings	0
+8	309	0	1	minecraft:iron_boots	Iron Boots	iron_boots	0
+8	310	0	1	minecraft:diamond_helmet	Diamond Helmet	diamond_helmet	0
+8	311	0	1	minecraft:diamond_chestplate	Diamond Chestplate	diamond_chestplate	0
+8	312	0	1	minecraft:diamond_leggings	Diamond Leggings	diamond_leggings	0
+8	313	0	1	minecraft:diamond_boots	Diamond Boots	diamond_boots	0
+8	314	0	1	minecraft:golden_helmet	Golden Helmet	golden_helmet	0
+8	315	0	1	minecraft:golden_chestplate	Golden Chestplate	golden_chestplate	0
+8	316	0	1	minecraft:golden_leggings	Golden Leggings	golden_leggings	0
+8	317	0	1	minecraft:golden_boots	Golden Boots	golden_boots	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+8	403	0	1	minecraft:enchanted_book	Enchanted Book	enchanted_book	0
+9	370	0	64	minecraft:ghast_tear	Ghast Tear	ghast_tear	0
+9	373	0	1	minecraft:potion	Water Bottle	bottle_drinkable	0
+9	373	8193	1	minecraft:potion	Potion of Regeneration	bottle_drinkable	0
+9	373	8225	1	minecraft:potion	Potion of Regeneration	bottle_drinkable	0
+9	373	8257	1	minecraft:potion	Potion of Regeneration	bottle_drinkable	0
+9	373	16385	1	minecraft:potion	Splash Potion of Regeneration	bottle_splash	0
+9	373	16417	1	minecraft:potion	Splash Potion of Regeneration	bottle_splash	0
+9	373	16449	1	minecraft:potion	Splash Potion of Regeneration	bottle_splash	0
+9	373	8194	1	minecraft:potion	Potion of Swiftness	bottle_drinkable	0
+9	373	8226	1	minecraft:potion	Potion of Swiftness	bottle_drinkable	0
+9	373	8258	1	minecraft:potion	Potion of Swiftness	bottle_drinkable	0
+9	373	16386	1	minecraft:potion	Splash Potion of Swiftness	bottle_splash	0
+9	373	16418	1	minecraft:potion	Splash Potion of Swiftness	bottle_splash	0
+9	373	16450	1	minecraft:potion	Splash Potion of Swiftness	bottle_splash	0
+9	373	8227	1	minecraft:potion	Potion of Fire Resistance	bottle_drinkable	0
+9	373	8259	1	minecraft:potion	Potion of Fire Resistance	bottle_drinkable	0
+9	373	16419	1	minecraft:potion	Splash Potion of Fire Resistance	bottle_splash	0
+9	373	16451	1	minecraft:potion	Splash Potion of Fire Resistance	bottle_splash	0
+9	373	8196	1	minecraft:potion	Potion of Poison	bottle_drinkable	0
+9	373	8228	1	minecraft:potion	Potion of Poison	bottle_drinkable	0
+9	373	8260	1	minecraft:potion	Potion of Poison	bottle_drinkable	0
+9	373	16388	1	minecraft:potion	Splash Potion of Poison	bottle_splash	0
+9	373	16420	1	minecraft:potion	Splash Potion of Poison	bottle_splash	0
+9	373	16452	1	minecraft:potion	Splash Potion of Poison	bottle_splash	0
+9	373	8261	1	minecraft:potion	Potion of Healing	bottle_drinkable	0
+9	373	8229	1	minecraft:potion	Potion of Healing	bottle_drinkable	0
+9	373	16453	1	minecraft:potion	Splash Potion of Healing	bottle_splash	0
+9	373	16421	1	minecraft:potion	Splash Potion of Healing	bottle_splash	0
+9	373	8230	1	minecraft:potion	Potion of Night Vision	bottle_drinkable	0
+9	373	8262	1	minecraft:potion	Potion of Night Vision	bottle_drinkable	0
+9	373	16422	1	minecraft:potion	Splash Potion of Night Vision	bottle_splash	0
+9	373	16454	1	minecraft:potion	Splash Potion of Night Vision	bottle_splash	0
+9	373	8232	1	minecraft:potion	Potion of Weakness	bottle_drinkable	0
+9	373	8264	1	minecraft:potion	Potion of Weakness	bottle_drinkable	0
+9	373	16424	1	minecraft:potion	Splash Potion of Weakness	bottle_splash	0
+9	373	16456	1	minecraft:potion	Splash Potion of Weakness	bottle_splash	0
+9	373	8201	1	minecraft:potion	Potion of Strength	bottle_drinkable	0
+9	373	8233	1	minecraft:potion	Potion of Strength	bottle_drinkable	0
+9	373	8265	1	minecraft:potion	Potion of Strength	bottle_drinkable	0
+9	373	16393	1	minecraft:potion	Splash Potion of Strength	bottle_splash	0
+9	373	16425	1	minecraft:potion	Splash Potion of Strength	bottle_splash	0
+9	373	16457	1	minecraft:potion	Splash Potion of Strength	bottle_splash	0
+9	373	8234	1	minecraft:potion	Potion of Slowness	bottle_drinkable	0
+9	373	8266	1	minecraft:potion	Potion of Slowness	bottle_drinkable	0
+9	373	16426	1	minecraft:potion	Splash Potion of Slowness	bottle_splash	0
+9	373	16458	1	minecraft:potion	Splash Potion of Slowness	bottle_splash	0
+9	373	8203	1	minecraft:potion	Potion of Leaping	bottle_drinkable	0
+9	373	8235	1	minecraft:potion	Potion of Leaping	bottle_drinkable	0
+9	373	8267	1	minecraft:potion	Potion of Leaping	bottle_drinkable	0
+9	373	16395	1	minecraft:potion	Splash Potion of Leaping	bottle_splash	0
+9	373	16427	1	minecraft:potion	Splash Potion of Leaping	bottle_splash	0
+9	373	16459	1	minecraft:potion	Splash Potion of Leaping	bottle_splash	0
+9	373	8268	1	minecraft:potion	Potion of Harming	bottle_drinkable	0
+9	373	8236	1	minecraft:potion	Potion of Harming	bottle_drinkable	0
+9	373	16460	1	minecraft:potion	Splash Potion of Harming	bottle_splash	0
+9	373	16428	1	minecraft:potion	Splash Potion of Harming	bottle_splash	0
+9	373	8237	1	minecraft:potion	Potion of Water Breathing	bottle_drinkable	0
+9	373	8269	1	minecraft:potion	Potion of Water Breathing	bottle_drinkable	0
+9	373	16429	1	minecraft:potion	Splash Potion of Water Breathing	bottle_splash	0
+9	373	16461	1	minecraft:potion	Splash Potion of Water Breathing	bottle_splash	0
+9	373	8238	1	minecraft:potion	Potion of Invisibility	bottle_drinkable	0
+9	373	8270	1	minecraft:potion	Potion of Invisibility	bottle_drinkable	0
+9	373	16430	1	minecraft:potion	Splash Potion of Invisibility	bottle_splash	0
+9	373	16462	1	minecraft:potion	Splash Potion of Invisibility	bottle_splash	0
+9	374	0	64	minecraft:glass_bottle	Glass Bottle	glass_bottle	0
+9	376	0	64	minecraft:fermented_spider_eye	Fermented Spider Eye	fermented_spider_eye	0
+9	377	0	64	minecraft:blaze_powder	Blaze Powder	blaze_powder	0
+9	378	0	64	minecraft:magma_cream	Magma Cream	magma_cream	0
+9	379	0	64	minecraft:brewing_stand	Brewing Stand	brewing_stand	0
+9	380	0	64	minecraft:cauldron	Cauldron	cauldron	0
+9	382	0	64	minecraft:speckled_melon	Glistering Melon	speckled_melon	0
+9	396	0	64	minecraft:golden_carrot	Golden Carrot	golden_carrot	0
+9	414	0	64	minecraft:rabbit_foot	Rabbit's Foot	rabbit_foot	0
+10	263	0	64	minecraft:coal	Coal	coal	0
+10	263	1	64	minecraft:coal	Charcoal	charcoal	0
+10	264	0	64	minecraft:diamond	Diamond	diamond	0
+10	265	0	64	minecraft:iron_ingot	Iron Ingot	iron_ingot	0
+10	266	0	64	minecraft:gold_ingot	Gold Ingot	gold_ingot	0
+10	280	0	64	minecraft:stick	Stick	stick	0
+10	281	0	64	minecraft:bowl	Bowl	bowl	0
+10	287	0	64	minecraft:string	String	string	0
+10	288	0	64	minecraft:feather	Feather	feather	0
+10	289	0	64	minecraft:gunpowder	Gunpowder	gunpowder	0
+10	295	0	64	minecraft:wheat_seeds	Seeds	wheat_seeds	0
+10	296	0	64	minecraft:wheat	Wheat	wheat	0
+10	318	0	64	minecraft:flint	Flint	flint	0
+10	334	0	64	minecraft:leather	Leather	leather	0
+10	336	0	64	minecraft:brick	Brick	brick	0
+10	337	0	64	minecraft:clay_ball	Clay	clay_ball	0
+10	338	0	64	minecraft:reeds	Sugar Canes	reeds	0
+10	344	0	16	minecraft:egg	Egg	egg	0
+10	348	0	64	minecraft:glowstone_dust	Glowstone Dust	glowstone_dust	0
+10	351	0	64	minecraft:dye	Ink Sac	dye_black	0
+10	351	1	64	minecraft:dye	Rose Red	dye_red	0
+10	351	2	64	minecraft:dye	Cactus Green	dye_green	0
+10	351	3	64	minecraft:dye	Cocoa Beans	dye_brown	0
+10	351	4	64	minecraft:dye	Lapis Lazuli	dye_blue	0
+10	351	5	64	minecraft:dye	Purple Dye	dye_purple	0
+10	351	6	64	minecraft:dye	Cyan Dye	dye_cyan	0
+10	351	7	64	minecraft:dye	Light Gray Dye	dye_silver	0
+10	351	8	64	minecraft:dye	Gray Dye	dye_gray	0
+10	351	9	64	minecraft:dye	Pink Dye	dye_pink	0
+10	351	10	64	minecraft:dye	Lime Dye	dye_lime	0
+10	351	11	64	minecraft:dye	Dandelion Yellow	dye_yellow	0
+10	351	12	64	minecraft:dye	Light Blue Dye	dye_light_blue	0
+10	351	13	64	minecraft:dye	Magenta Dye	dye_magenta	0
+10	351	14	64	minecraft:dye	Orange Dye	dye_orange	0
+10	351	15	64	minecraft:dye	Bone Meal	dye_white	0
+10	353	0	64	minecraft:sugar	Sugar	sugar	0
+10	361	0	64	minecraft:pumpkin_seeds	Pumpkin Seeds	pumpkin_seeds	0
+10	362	0	64	minecraft:melon_seeds	Melon Seeds	melon_seeds	0
+10	369	0	64	minecraft:blaze_rod	Blaze Rod	blaze_rod	0
+10	371	0	64	minecraft:gold_nugget	Gold Nugget	gold_nugget	0
+10	372	0	64	minecraft:nether_wart	Nether Wart	nether_wart	0
+10	388	0	64	minecraft:emerald	Emerald	emerald	0
+10	399	0	64	minecraft:nether_star	Nether Star	nether_star	0
+10	405	0	64	minecraft:netherbrick	Nether Brick	netherbrick	0
+10	406	0	64	minecraft:quartz	Nether Quartz	quartz	0
+10	409	0	64	minecraft:prismarine_shard	Prismarine Shard	prismarine_shard	0
+10	410	0	64	minecraft:prismarine_crystals	Prismarine Crystals	prismarine_crystals	0
+10	415	0	64	minecraft:rabbit_hide	Rabbit Hide	rabbit_hide	0

@@ -11,6 +11,9 @@ pub mod screens;
 pub mod settings;
 pub mod widgets;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemStack { pub item: usize, pub count: u8 }
+
 use font::FontRenderer;
 use lang::Lang;
 use mc_assets::AssetSource;
@@ -41,6 +44,10 @@ impl Scaled {
 
 /// Shared GUI state (`Minecraft` fields the GUI reads).
 pub struct Ui {
+    /// Slots 0..9 are the hotbar; 9..36 are the main player inventory.
+    pub inventory: [Option<ItemStack>; 36],
+    pub selected_slot: usize,
+    pub shift_down: bool,
     pub font: FontRenderer,
     pub lang: Lang,
     pub settings: Settings,
@@ -54,6 +61,7 @@ pub struct Ui {
 impl Ui {
     pub fn new(assets: &AssetSource, settings: Settings) -> Self {
         Self {
+            inventory: [None; 36], selected_slot: 0, shift_down: false,
             font: FontRenderer::load(assets),
             lang: Lang::load(assets, "en_US"),
             settings,

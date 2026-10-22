@@ -1,18 +1,87 @@
-//! 16×256×16 chunk column with 1.8 storage: 16 sections of `id << 4 | meta`, plus light.
+//! 16×256×16 chunk column with 1.8 storage (`Chunk` + `ExtendedBlockStorage`).
+//!
+//! Blocks are stored as `id << 4 | meta` like `Block.BLOCK_STATE_IDS`. Light is one byte per
+//! block (vanilla packs nibbles; values are identical). Methods that only touch this column live
+//! here; the ones that reach into neighbouring chunks (`relightBlock`, `recheckGaps`, …) are on
+//! [`crate::World`].
+
+use mc_core::{nbt::Compound, BlockPos};
+use mc_data::StateId;
+use std::collections::HashMap;
 
 pub const SECTION_VOLUME: usize = 16 * 16 * 16;
-pub const COLUMN_VOLUME: usize = 16 * 16 * 256;
 
 #[derive(Clone)]
 pub struct Section {
     /// Indexed `y << 8 | z << 4 | x`, like `ExtendedBlockStorage`.
     pub blocks: Box<[u16; SECTION_VOLUME]>,
+    pub sky_light: Box<[u8; SECTION_VOLUME]>,
+    pub block_light: Box<[u8; SECTION_VOLUME]>,
+    /// `blockRefCount`: non-air blocks.
+    pub block_count: u16,
+    /// `tickRefCount`: blocks that tick randomly.
+    pub tick_count: u16,
 }
 
 impl Section {
-    fn empty() -> Self {
-        Self { blocks: Box::new([0; SECTION_VOLUME]) }
+    pub fn empty() -> Self {
+        Self {
+            blocks: Box::new([0; SECTION_VOLUME]),
+            sky_light: Box::new([0; SECTION_VOLUME]),
+            block_light: Box::new([0; SECTION_VOLUME]),
+            block_count: 0,
+            tick_count: 0,
+        }
     }
+
+    #[inline]
+    pub fn state(&self, i: usize) -> StateId {
+        StateId::from_raw(self.blocks[i])
+    }
+
+    /// `ExtendedBlockStorage.set`, keeping the reference counts.
+    #[inline]
+    pub fn set(&mut self, i: usize, state: StateId) {
+        let old = self.state(i).block();
+        if old.id != 0 {
+            self.block_count -= 1;
+            if old.ticks_randomly {
+                self.tick_count -= 1;
+            }
+        }
+        let new = state.block();
+        if new.id != 0 {
+            self.block_count += 1;
+            if new.ticks_randomly {
+                self.tick_count += 1;
+            }
+        }
+        self.blocks[i] = state.raw();
+    }
+
+    /// `removeInvalidBlocks`: recount after raw writes.
+    pub fn recount(&mut self) {
+        self.block_count = 0;
+        self.tick_count = 0;
+        for &raw in self.blocks.iter() {
+            let b = StateId::from_raw(raw).block();
+            if b.id != 0 {
+                self.block_count += 1;
+                if b.ticks_randomly {
+                    self.tick_count += 1;
+                }
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.block_count == 0
+    }
+}
+
+#[inline]
+pub fn section_index(x: usize, y: usize, z: usize) -> usize {
+    (y << 8) | (z << 4) | x
 }
 
 #[derive(Clone)]
@@ -20,16 +89,24 @@ pub struct Chunk {
     pub x: i32,
     pub z: i32,
     pub sections: [Option<Section>; 16],
-    /// Sky and block light (0–15), indexed `y << 8 | z << 4 | x`.
-    pub sky_light: Box<[u8; COLUMN_VOLUME]>,
-    pub block_light: Box<[u8; COLUMN_VOLUME]>,
-    /// True once light came from the save or was computed; false means it needs a pass.
-    pub light_valid: bool,
-}
-
-#[inline]
-pub fn column_index(x: usize, y: i32, z: usize) -> usize {
-    ((y as usize) << 8) | (z << 4) | x
+    /// Biome ids, indexed `z << 4 | x`; 255 = not yet assigned (vanilla's -1).
+    pub biomes: [u8; 256],
+    /// Saved tile-entity compounds keyed by absolute block position.
+    pub tile_entities: HashMap<BlockPos, Compound>,
+    /// `heightMap`: lowest y at which the column sees the sky (first y above an opaque block).
+    pub height_map: [i32; 256],
+    pub precipitation_height_map: [i32; 256],
+    pub update_skylight_columns: [bool; 256],
+    pub is_gap_lighting_updated: bool,
+    pub height_map_minimum: i32,
+    pub terrain_populated: bool,
+    pub light_populated: bool,
+    /// `field_150815_m`: ticked at least once by the world.
+    pub ticked: bool,
+    pub modified: bool,
+    pub inhabited_time: i64,
+    /// `queuedLightChecks`
+    pub queued_light_checks: i32,
 }
 
 impl Chunk {
@@ -38,9 +115,19 @@ impl Chunk {
             x,
             z,
             sections: Default::default(),
-            sky_light: vec![0; COLUMN_VOLUME].into_boxed_slice().try_into().unwrap(),
-            block_light: vec![0; COLUMN_VOLUME].into_boxed_slice().try_into().unwrap(),
-            light_valid: false,
+            biomes: [255; 256],
+            tile_entities: HashMap::new(),
+            height_map: [0; 256],
+            precipitation_height_map: [-999; 256],
+            update_skylight_columns: [false; 256],
+            is_gap_lighting_updated: false,
+            height_map_minimum: 0,
+            terrain_populated: false,
+            light_populated: false,
+            ticked: false,
+            modified: false,
+            inhabited_time: 0,
+            queued_light_checks: 4096,
         }
     }
 
@@ -51,19 +138,209 @@ impl Chunk {
         }
         match &self.sections[(y >> 4) as usize] {
             Some(s) => {
-                let v = s.blocks[((y as usize & 15) << 8) | (z << 4) | x];
+                let v = s.blocks[section_index(x, y as usize & 15, z)];
                 (v >> 4, (v & 15) as u8)
             }
             None => (0, 0),
         }
     }
 
+    /// Resolved state at local coords (`Chunk.getBlockState`).
+    #[inline]
+    pub fn state(&self, x: usize, y: i32, z: usize) -> StateId {
+        if !(0..256).contains(&y) {
+            return StateId::AIR;
+        }
+        match &self.sections[(y >> 4) as usize] {
+            Some(s) => s.state(section_index(x, y as usize & 15, z)),
+            None => StateId::AIR,
+        }
+    }
+
+    /// Raw write without lighting (what `ChunkPrimer` and loaders do). Creates the section.
     pub fn set(&mut self, x: usize, y: i32, z: usize, id: u16, meta: u8) {
         if !(0..256).contains(&y) {
             return;
         }
+        let raw = (id << 4) | (meta as u16 & 15);
         let s = self.sections[(y >> 4) as usize].get_or_insert_with(Section::empty);
-        s.blocks[((y as usize & 15) << 8) | (z << 4) | x] = (id << 4) | (meta as u16 & 15);
-        self.light_valid = false;
+        s.set(section_index(x, y as usize & 15, z), StateId::from_raw(raw));
+        // Keep unregistered raw values as stored, like the char array does.
+        s.blocks[section_index(x, y as usize & 15, z)] = raw;
+    }
+
+    /// Raw state write without lighting; air into a missing section is a no-op.
+    pub fn set_state_raw(&mut self, x: usize, y: i32, z: usize, state: StateId) {
+        if !(0..256).contains(&y) {
+            return;
+        }
+        let slot = &mut self.sections[(y >> 4) as usize];
+        if slot.is_none() {
+            if state.is_air() {
+                return;
+            }
+            *slot = Some(Section::empty());
+        }
+        slot.as_mut().unwrap().set(section_index(x, y as usize & 15, z), state);
+    }
+
+    /// `getBlockLightOpacity(x, y, z)` for local coords.
+    #[inline]
+    pub fn opacity(&self, x: usize, y: i32, z: usize) -> i32 {
+        self.state(x, y, z).block().light_opacity as i32
+    }
+
+    /// `getTopFilledSegment`: base y of the highest allocated section.
+    pub fn top_filled_segment(&self) -> i32 {
+        (0..16).rev().find(|&i| self.sections[i].is_some()).map_or(0, |i| (i as i32) << 4)
+    }
+
+    #[inline]
+    pub fn height(&self, x: usize, z: usize) -> i32 {
+        self.height_map[z << 4 | x]
+    }
+
+    /// `canSeeSky`
+    #[inline]
+    pub fn can_see_sky(&self, x: usize, y: i32, z: usize) -> bool {
+        y >= self.height_map[z << 4 | x]
+    }
+
+    /// `Chunk.getLightFor` with local coords; `y` must be in 0..256.
+    #[inline]
+    pub fn light_for(&self, sky: bool, x: usize, y: i32, z: usize) -> i32 {
+        match &self.sections[(y >> 4) as usize] {
+            None => {
+                if sky && self.can_see_sky(x, y, z) {
+                    15
+                } else {
+                    0
+                }
+            }
+            Some(s) => {
+                let i = section_index(x, y as usize & 15, z);
+                if sky {
+                    s.sky_light[i] as i32
+                } else {
+                    s.block_light[i] as i32
+                }
+            }
+        }
+    }
+
+    /// `getLightSubtracted`
+    pub fn light_subtracted(&self, x: usize, y: i32, z: usize, amount: i32) -> i32 {
+        match &self.sections[(y >> 4) as usize] {
+            None => {
+                if amount < 15 {
+                    15 - amount
+                } else {
+                    0
+                }
+            }
+            Some(s) => {
+                let i = section_index(x, y as usize & 15, z);
+                (s.sky_light[i] as i32 - amount).max(s.block_light[i] as i32)
+            }
+        }
+    }
+
+    /// `generateHeightMap` (client chunk data path: no sky light writes).
+    pub fn generate_height_map(&mut self) {
+        let top = self.top_filled_segment();
+        self.height_map_minimum = i32::MAX;
+        for x in 0..16 {
+            for z in 0..16 {
+                self.precipitation_height_map[x + (z << 4)] = -999;
+                for l in (1..=top + 16).rev() {
+                    if self.opacity(x, l - 1, z) != 0 {
+                        self.height_map[z << 4 | x] = l;
+                        self.height_map_minimum = self.height_map_minimum.min(l);
+                        break;
+                    }
+                }
+            }
+        }
+        self.modified = true;
+    }
+
+    /// `generateSkylightMap` (for a world with sky).
+    pub fn generate_skylight_map(&mut self) {
+        let top = self.top_filled_segment();
+        self.height_map_minimum = i32::MAX;
+        for x in 0..16 {
+            for z in 0..16 {
+                self.precipitation_height_map[x + (z << 4)] = -999;
+                for l in (1..=top + 16).rev() {
+                    if self.opacity(x, l - 1, z) != 0 {
+                        self.height_map[z << 4 | x] = l;
+                        self.height_map_minimum = self.height_map_minimum.min(l);
+                        break;
+                    }
+                }
+                let mut k1 = 15;
+                let mut i1 = top + 16 - 1;
+                loop {
+                    let mut j1 = self.opacity(x, i1, z);
+                    if j1 == 0 && k1 != 15 {
+                        j1 = 1;
+                    }
+                    k1 -= j1;
+                    if k1 > 0 {
+                        if let Some(s) = &mut self.sections[(i1 >> 4) as usize] {
+                            s.sky_light[section_index(x, i1 as usize & 15, z)] = k1 as u8;
+                        }
+                    }
+                    i1 -= 1;
+                    if i1 <= 0 || k1 <= 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        self.modified = true;
+    }
+
+    /// `getPrecipitationHeight` (local x/z), caching like vanilla.
+    pub fn precipitation_height(&mut self, x: usize, z: usize) -> i32 {
+        let k = x | z << 4;
+        if self.precipitation_height_map[k] == -999 {
+            let mut y = self.top_filled_segment() + 15;
+            let mut found = -1;
+            while y > 0 && found == -1 {
+                let m = self.state(x, y, z).block().material.props();
+                if !m.blocks_movement && !m.liquid {
+                    y -= 1;
+                } else {
+                    found = y + 1;
+                }
+            }
+            self.precipitation_height_map[k] = found;
+        }
+        self.precipitation_height_map[k]
+    }
+
+    /// `getAreLevelsEmpty`
+    pub fn levels_empty(&self, start: i32, end: i32) -> bool {
+        let (start, end) = (start.max(0), end.min(255));
+        let mut y = start;
+        while y <= end {
+            if self.sections[(y >> 4) as usize].as_ref().is_some_and(|s| !s.is_empty()) {
+                return false;
+            }
+            y += 16;
+        }
+        true
+    }
+
+    pub fn biome(&self, x: usize, z: usize) -> u8 {
+        self.biomes[z << 4 | x]
+    }
+
+    /// Recomputes section counts after raw writes (`removeInvalidBlocks`).
+    pub fn recount(&mut self) {
+        for s in self.sections.iter_mut().flatten() {
+            s.recount();
+        }
     }
 }

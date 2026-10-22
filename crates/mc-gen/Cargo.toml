@@ -1,0 +1,9 @@
+[package]
+name = "mc-gen"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mc-core = { path = "../mc-core" }
+mc-data = { path = "../mc-data" }
+mc-world = { path = "../mc-world" }

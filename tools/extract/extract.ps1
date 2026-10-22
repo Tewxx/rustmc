@@ -30,7 +30,10 @@ $jar = Join-Path $Mcp "jars\versions\1.8.9\1.8.9.jar"
 $cp = (@($classes, $jar) + $libs) -join ";"
 
 $out = Join-Path $PSScriptRoot "out"
-if (Test-Path $out) { Remove-Item -Recurse -Force $out }
+$out = [System.IO.Path]::GetFullPath($out)
+$expectedOut = [System.IO.Path]::GetFullPath((Join-Path $repo "tools\extract\out"))
+if ($out -ne $expectedOut) { throw "Refusing to clean unexpected extractor output path: $out" }
+if (Test-Path -LiteralPath $out) { Remove-Item -LiteralPath $out -Recurse -Force }
 New-Item -ItemType Directory -Force $out | Out-Null
 $sources = Get-ChildItem (Join-Path $PSScriptRoot "src") -Recurse -Filter *.java | ForEach-Object FullName
 

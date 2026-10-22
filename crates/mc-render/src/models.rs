@@ -1,15 +1,19 @@
-//! Bakes every block the id table knows into one atlas + per-(id, meta) model lists.
+//! Dense state lookup with one baked model per distinct vanilla model resource location.
 
 use mc_assets::atlas::Atlas;
 use mc_assets::blockstate::{BlockStateDef, Variant};
 use mc_assets::colormap::ColorMap;
 use mc_assets::model::{self, BakedModel, ModelLoader};
 use mc_assets::AssetSource;
-use mc_world::blocks::{self, BlockInfo, Tint};
+use mc_core::BlockPos;
+use mc_data::biome::Biome;
+use mc_data::color::{ColorAccess, Colorizer};
+use mc_data::model_location::ModelLocation;
+use mc_data::{Block, BlockAccess, StateId};
+use mc_world::World;
 use std::collections::HashMap;
 
 pub struct BlockEntry {
-    pub info: BlockInfo,
     /// Weighted alternatives in vanilla's sorted order.
     pub models: Vec<(i32, BakedModel)>,
     pub weights: Vec<i32>,
@@ -17,66 +21,170 @@ pub struct BlockEntry {
 
 pub struct BlockModels {
     pub atlas: Atlas,
-    entries: HashMap<(u16, u8), BlockEntry>,
-    grass: u32,
-    foliage: u32,
+    /// States differing only in ignored properties share the same model.
+    entries: Vec<Option<usize>>,
+    baked: Vec<BlockEntry>,
+    missing: Vec<ModelLocation>,
+    pub colors: BlockColors,
+    pub items: crate::items::ItemModels,
 }
 
-// Plains biome climate; real biomes come with chunk biome data later.
-const PLAINS_TEMP: f64 = 0.8;
-const PLAINS_RAIN: f64 = 0.4;
+/// `ModelBakery.LOCATIONS_BUILTIN_TEXTURES`
+const BUILTIN_TEXTURES: &[&str] = &[
+    "blocks/water_flow",
+    "blocks/water_still",
+    "blocks/lava_flow",
+    "blocks/lava_still",
+    "blocks/destroy_stage_0",
+    "blocks/destroy_stage_1",
+    "blocks/destroy_stage_2",
+    "blocks/destroy_stage_3",
+    "blocks/destroy_stage_4",
+    "blocks/destroy_stage_5",
+    "blocks/destroy_stage_6",
+    "blocks/destroy_stage_7",
+    "blocks/destroy_stage_8",
+    "blocks/destroy_stage_9",
+    "items/empty_armor_slot_helmet",
+    "items/empty_armor_slot_chestplate",
+    "items/empty_armor_slot_leggings",
+    "items/empty_armor_slot_boots",
+];
+
+pub struct BlockColors {
+    grass: Option<ColorMap>,
+    foliage: Option<ColorMap>,
+}
+
+impl BlockColors {
+    pub fn load(assets: &AssetSource) -> Self {
+        Self { grass: ColorMap::load(assets, "grass"), foliage: ColorMap::load(assets, "foliage") }
+    }
+}
+
+impl Colorizer for BlockColors {
+    fn grass(&self, temperature: f64, rainfall: f64) -> u32 {
+        self.grass.as_ref().map_or(0, |c| c.get(temperature, rainfall))
+    }
+    fn foliage(&self, temperature: f64, rainfall: f64) -> u32 {
+        self.foliage.as_ref().map_or(0, |c| c.get(temperature, rainfall))
+    }
+}
 
 impl BlockModels {
     pub fn load(assets: &AssetSource) -> Self {
         let mut loader = ModelLoader::new(assets);
-        let mut states: HashMap<String, Option<BlockStateDef>> = HashMap::new();
-        let mut pending: Vec<((u16, u8), BlockInfo, Vec<Variant>)> = Vec::new();
+        let mut definitions: HashMap<String, Option<BlockStateDef>> = HashMap::new();
+        let mut locations = HashMap::new();
+        let mut entries = vec![None; mc_data::block::STATE_COUNT];
+        let mut pending: Vec<Option<Vec<Variant>>> = Vec::new();
         let mut textures = Vec::new();
-
-        for (id, meta, info) in blocks::all_known() {
-            let def = states.entry(info.blockstate.clone()).or_insert_with(|| BlockStateDef::load(assets, &info.blockstate));
-            let Some(def) = def else { continue };
-            // Fall back to the first variant when our key guess differs from the file.
-            let Some(variants) = def.variants.get(&info.variant).or_else(|| def.variants.values().next()) else { continue };
-            for v in variants {
-                if let Some(m) = loader.get(&format!("block/{}", v.model)) {
-                    textures.extend(m.texture_names());
+        let mut missing = Vec::new();
+        for state in Block::all().iter().flat_map(Block::states) {
+            let Some(loc) = state.model_location() else { continue };
+            let index = *locations.entry(loc.clone()).or_insert_with(|| {
+                let def = definitions
+                    .entry(loc.name.clone())
+                    .or_insert_with(|| BlockStateDef::load(assets, loc.name.trim_start_matches("minecraft:")));
+                let variants = def.as_ref().and_then(|d| d.variants.get(&loc.variant));
+                let mut resolved = Vec::new();
+                if let Some(variants) = variants {
+                    for v in variants {
+                        if let Some(m) = loader.get(&format!("block/{}", v.model)) {
+                            textures.extend(m.texture_names());
+                            resolved.push(v.clone());
+                        }
+                    }
                 }
-            }
-            pending.push(((id, meta), info, variants.clone()));
+                // Vanilla uses the missing model for absent keys; choosing a different variant
+                // silently renders a valid-looking but incorrect block.
+                if resolved.is_empty() {
+                    missing.push(loc.clone());
+                }
+                // ModelBakery skips unresolved alternatives; the entire location falls back
+                // to the missing model only when none resolved.
+                pending.push(if resolved.is_empty() { None } else { Some(resolved) });
+                pending.len() - 1
+            });
+            entries[state.0 as usize] = Some(index);
         }
-
+        textures.extend(crate::items::ItemModels::textures(&mut loader));
+        textures.extend(BUILTIN_TEXTURES.iter().map(|t| t.to_string()));
+        // Block particle textures (breaking particles, `getParticleTexture`).
         let atlas = Atlas::build(assets, textures);
-        let mut entries = HashMap::new();
-        for (key, info, variants) in pending {
-            let mut models: Vec<(i32, BakedModel)> = variants
-                .iter()
-                .filter_map(|v| loader.get(&format!("block/{}", v.model)).map(|m| (v.weight, model::bake(m, v, &atlas))))
-                .collect();
-            model::sort_weighted(&mut models);
-            let weights = models.iter().map(|(w, _)| *w).collect();
-            entries.insert(key, BlockEntry { info, models, weights });
-        }
+        let items = crate::items::ItemModels::load(&mut loader, &atlas);
+        let baked = pending
+            .into_iter()
+            .map(|variants| {
+                let mut models = match variants {
+                    Some(variants) => variants
+                        .iter()
+                        .map(|v| {
+                            let m = loader.get(&format!("block/{}", v.model)).unwrap();
+                            (v.weight, model::bake(m, v, &atlas))
+                        })
+                        .collect(),
+                    None => vec![(1, model::missing_model(&atlas))],
+                };
+                model::sort_weighted(&mut models);
+                let weights = models.iter().map(|(w, _)| *w).collect();
+                BlockEntry { models, weights }
+            })
+            .collect();
+        Self { atlas, entries, baked, missing, colors: BlockColors::load(assets), items }
+    }
 
-        let grass = ColorMap::load(assets, "grass").map_or(0x91BD59, |c| c.get(PLAINS_TEMP, PLAINS_RAIN));
-        let foliage = ColorMap::load(assets, "foliage").map_or(0x77AB2F, |c| c.get(PLAINS_TEMP, PLAINS_RAIN));
-        Self { atlas, entries, grass, foliage }
+    pub fn get_state(&self, state: StateId) -> Option<&BlockEntry> {
+        self.entries[state.0 as usize].map(|i| &self.baked[i])
     }
 
     pub fn get(&self, id: u16, meta: u8) -> Option<&BlockEntry> {
-        self.entries.get(&(id, meta))
-    }
-
-    pub fn tint_color(&self, tint: Tint) -> u32 {
-        match tint {
-            Tint::None => 0xFFFFFF,
-            Tint::Grass => self.grass,
-            Tint::Foliage => self.foliage,
-            Tint::Fixed(c) => c,
+        if id > 0xFFF || meta > 15 {
+            return None;
         }
+        self.get_state(StateId::from_raw(id << 4 | meta as u16))
     }
 
-    pub fn is_opaque(&self, id: u16, meta: u8) -> bool {
-        self.entries.get(&(id, meta)).is_some_and(|e| e.info.opaque)
+    pub fn missing_locations(&self) -> &[ModelLocation] {
+        &self.missing
+    }
+
+    pub fn tint_color(&self, world: &World, state: StateId, pos: BlockPos) -> u32 {
+        state.block().color_multiplier(&ColorWorld { world, colors: &self.colors }, pos)
+    }
+}
+
+struct ColorWorld<'a> {
+    world: &'a World,
+    colors: &'a BlockColors,
+}
+
+impl BlockAccess for ColorWorld<'_> {
+    fn state(&self, pos: BlockPos) -> StateId {
+        self.world.state(pos)
+    }
+    fn flower_pot(&self, pos: BlockPos) -> Option<(i32, i32)> {
+        self.world.flower_pot(pos)
+    }
+    fn comparator_output(&self, pos: BlockPos) -> Option<i32> {
+        self.world.comparator_output(pos)
+    }
+}
+
+impl ColorWorld<'_> {
+    fn biome(&self, pos: BlockPos) -> &'static Biome {
+        Biome::by_id(self.world.biome_id(pos)).unwrap_or_else(|| Biome::by_id(1).unwrap())
+    }
+}
+
+impl ColorAccess for ColorWorld<'_> {
+    fn grass_color(&self, pos: BlockPos) -> u32 {
+        self.biome(pos).grass_color(pos, self.colors)
+    }
+    fn foliage_color(&self, pos: BlockPos) -> u32 {
+        self.biome(pos).foliage_color(pos, self.colors)
+    }
+    fn water_color(&self, pos: BlockPos) -> u32 {
+        self.biome(pos).water_color
     }
 }

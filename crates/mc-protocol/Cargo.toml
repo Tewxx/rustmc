@@ -1,0 +1,8 @@
+[package]
+name = "mc-protocol"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mc-core = { path = "../mc-core" }
+flate2 = "1"

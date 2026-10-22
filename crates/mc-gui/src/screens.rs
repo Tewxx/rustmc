@@ -18,10 +18,30 @@ pub enum Action {
     QuitToTitle,
     Quit,
     SendChat(String),
+    Respawn,
+}
+
+#[derive(Default)]
+pub struct DeathScreen {buttons:Vec<Button>}
+impl Screen for DeathScreen {
+    fn init(&mut self,_:&Ui,w:i32,h:i32) {
+        self.buttons=vec![Button::new(0,w/2-100,h/4+72,"Respawn"),Button::new(1,w/2-100,h/4+96,"Title screen")];
+    }
+    fn draw(&mut self,ui:&mut Ui,b:&mut GuiBatch,w:i32,h:i32,mx:i32,my:i32) {
+        b.gradient(0,0,w,h,0x60500000,0xa0803030);
+        ui.font.draw_centered(b,"You died!",w/2,30,0xffffffff);
+        ui.font.draw_centered(b,"Score: \u{a7}e0",w/2,100,0xffffffff);
+        draw_buttons(&mut self.buttons,ui,b,mx,my);
+    }
+    fn click(&mut self,ui:&mut Ui,mx:i32,my:i32)->Action {match click_buttons(&mut self.buttons,ui,mx,my) {Some(0)=>Action::Respawn,Some(1)=>Action::QuitToTitle,_=>Action::None}}
+    fn key(&mut self,_:&mut Ui,_:Key)->Action {Action::None}
+    fn pauses(&self)->bool {false}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
+    Inventory,
+    Number(usize),
     Escape,
     Enter,
     Backspace,
@@ -36,6 +56,7 @@ pub trait Screen {
     fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32);
     /// Returns the clicked button's id, if any (`actionPerformed`).
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action;
+    fn right_click(&mut self, _ui:&mut Ui, _mx:i32, _my:i32)->Action {Action::None}
     fn release(&mut self, _ui: &mut Ui) {}
     fn key(&mut self, _ui: &mut Ui, key: Key) -> Action {
         if key == Key::Escape { Action::Close } else { Action::None }
@@ -538,7 +559,7 @@ impl Screen for Chat {
                 self.cursor = (self.cursor + 1).min(self.text.chars().count());
                 Action::None
             }
-            Key::Other => Action::None,
+            Key::Other | Key::Inventory | Key::Number(_) => Action::None,
         }
     }
 

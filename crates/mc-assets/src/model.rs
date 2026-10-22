@@ -3,7 +3,7 @@
 use crate::atlas::{Atlas, MISSING};
 use crate::blockstate::Variant;
 use crate::AssetSource;
-use glam::{Mat3, Vec3};
+use glam::{Mat3, Mat4, Vec3};
 use mc_core::{Axis, Facing};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -40,6 +40,35 @@ pub struct UnbakedModel {
     pub textures: HashMap<String, String>,
     pub elements: Vec<Element>,
     pub ambient_occlusion: bool,
+    pub display: HashMap<String, ItemTransform>,
+    pub generated: bool,
+    pub built_in: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ItemTransform {
+    pub rotation: Vec3,
+    pub translation: Vec3,
+    pub scale: Vec3,
+}
+impl Default for ItemTransform {
+    fn default() -> Self {
+        Self {
+            rotation: Vec3::ZERO,
+            translation: Vec3::ZERO,
+            scale: Vec3::ONE,
+        }
+    }
+}
+impl ItemTransform {
+    /// ItemCameraTransforms.applyTransform: translate, Y, X, Z, scale.
+    pub fn matrix(self) -> Mat4 {
+        Mat4::from_translation(self.translation)
+            * Mat4::from_rotation_y(self.rotation.y.to_radians())
+            * Mat4::from_rotation_x(self.rotation.x.to_radians())
+            * Mat4::from_rotation_z(self.rotation.z.to_radians())
+            * Mat4::from_scale(self.scale)
+    }
 }
 
 impl UnbakedModel {
@@ -59,7 +88,9 @@ impl UnbakedModel {
     }
 
     pub fn texture_names(&self) -> impl Iterator<Item = String> + '_ {
-        self.elements.iter().flat_map(|e| e.faces.iter().map(|(_, f)| self.resolve_texture(&f.texture)))
+        self.elements
+            .iter()
+            .flat_map(|e| e.faces.iter().map(|(_, f)| self.resolve_texture(&f.texture)))
     }
 }
 
@@ -74,11 +105,15 @@ struct RawModel {
     textures: HashMap<String, String>,
     elements: Option<Vec<Element>>,
     ambient_occlusion: bool,
+    display: HashMap<String, ItemTransform>,
 }
 
 impl<'a> ModelLoader<'a> {
     pub fn new(assets: &'a AssetSource) -> Self {
-        Self { assets, cache: HashMap::new() }
+        Self {
+            assets,
+            cache: HashMap::new(),
+        }
     }
 
     pub fn get(&mut self, name: &str) -> Option<&UnbakedModel> {
@@ -96,34 +131,78 @@ impl<'a> ModelLoader<'a> {
         let raw = parse_raw(&self.assets.read_json(&format!("models/{name}.json"))?)?;
         let mut out = match &raw.parent {
             Some(p) if !p.starts_with("builtin/") => self.flatten(p, depth + 1)?,
-            _ => UnbakedModel { ambient_occlusion: true, ..Default::default() },
+            _ => UnbakedModel {
+                ambient_occlusion: true,
+                ..Default::default()
+            },
         };
         out.textures.extend(raw.textures);
         if let Some(e) = raw.elements {
             out.elements = e;
         }
         out.ambient_occlusion = out.ambient_occlusion && raw.ambient_occlusion;
+        out.generated |= raw.parent.as_deref() == Some("builtin/generated");
+        out.built_in |= raw.parent.as_deref() == Some("builtin/entity");
+        for (kind, transform) in raw.display {
+            if transform != ItemTransform::default() {
+                out.display.insert(kind, transform);
+            }
+        }
         Some(out)
     }
 }
 
 fn vec3(v: &Value) -> Option<Vec3> {
     let a = v.as_array()?;
-    Some(Vec3::new(a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32, a.get(2)?.as_f64()? as f32))
+    Some(Vec3::new(
+        a.first()?.as_f64()? as f32,
+        a.get(1)?.as_f64()? as f32,
+        a.get(2)?.as_f64()? as f32,
+    ))
 }
 
 fn parse_raw(json: &Value) -> Option<RawModel> {
+    let display = json
+        .get("display")
+        .and_then(Value::as_object)
+        .map(|o| {
+            o.iter()
+                .map(|(kind, v)| {
+                    let rotation = v.get("rotation").and_then(vec3).unwrap_or(Vec3::ZERO);
+                    let translation =
+                        (v.get("translation").and_then(vec3).unwrap_or(Vec3::ZERO) * 0.0625).clamp(Vec3::splat(-1.5), Vec3::splat(1.5));
+                    let scale = v
+                        .get("scale")
+                        .and_then(vec3)
+                        .unwrap_or(Vec3::ONE)
+                        .clamp(Vec3::splat(-4.), Vec3::splat(4.));
+                    (
+                        kind.clone(),
+                        ItemTransform {
+                            rotation,
+                            translation,
+                            scale,
+                        },
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let textures = json
         .get("textures")
         .and_then(Value::as_object)
         .map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect())
         .unwrap_or_default();
-    let elements = json.get("elements").and_then(Value::as_array).map(|a| a.iter().filter_map(parse_element).collect());
+    let elements = json
+        .get("elements")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(parse_element).collect());
     Some(RawModel {
         parent: json.get("parent").and_then(Value::as_str).map(str::to_string),
         textures,
         elements,
         ambient_occlusion: json.get("ambientocclusion").and_then(Value::as_bool).unwrap_or(true),
+        display,
     })
 }
 
@@ -147,9 +226,7 @@ fn parse_element(e: &Value) -> Option<Element> {
     for (k, f) in e.get("faces")?.as_object()? {
         let Some(dir) = Facing::by_name(k) else { continue };
         let uv = match f.get("uv").and_then(Value::as_array) {
-            Some(a) if a.len() == 4 => {
-                [0, 1, 2, 3].map(|i| a[i].as_f64().unwrap_or(0.0) as f32)
-            }
+            Some(a) if a.len() == 4 => [0, 1, 2, 3].map(|i| a[i].as_f64().unwrap_or(0.0) as f32),
             _ => default_uv(dir, from, to),
         };
         faces.push((
@@ -163,7 +240,13 @@ fn parse_element(e: &Value) -> Option<Element> {
             },
         ));
     }
-    Some(Element { from, to, rotation, shade: e.get("shade").and_then(Value::as_bool).unwrap_or(true), faces })
+    Some(Element {
+        from,
+        to,
+        rotation,
+        shade: e.get("shade").and_then(Value::as_bool).unwrap_or(true),
+        faces,
+    })
 }
 
 /// `BlockPart.getFaceUvs` (1.8 uses the same mapping for down and up).
@@ -173,6 +256,147 @@ fn default_uv(f: Facing, from: Vec3, to: Vec3) -> [f32; 4] {
         Facing::North | Facing::South => [from.x, 16.0 - to.y, to.x, 16.0 - from.y],
         Facing::West | Facing::East => [from.z, 16.0 - to.y, to.z, 16.0 - from.y],
     }
+}
+
+/// `ItemModelGenerator.makeItemModel`: a 1/16-thick slab per `layerN` texture plus one edge face
+/// per run of opaque texels bordering transparency. `None` when `layer0` is absent.
+pub fn generate_item_model(model: &UnbakedModel, atlas: &Atlas) -> Option<UnbakedModel> {
+    let mut elements = Vec::new();
+    for layer in 0..5 {
+        let key = format!("layer{layer}");
+        let texture = model.resolve_texture(&format!("#{key}"));
+        if texture == MISSING {
+            break;
+        }
+        let face = |uv: [f32; 4]| FaceDef { uv, texture: format!("#{key}"), cullface: None, rotation: 0, tint_index: layer };
+        elements.push(Element {
+            from: Vec3::new(0., 0., 7.5),
+            to: Vec3::new(16., 16., 8.5),
+            rotation: None,
+            shade: true,
+            faces: vec![(Facing::South, face([0., 0., 16., 16.])), (Facing::North, face([16., 0., 0., 16.]))],
+        });
+        let Some((size, pixels)) = atlas.native(&texture) else { continue };
+        let (w, h) = (size as i32, size as i32);
+        let transparent = |x: i32, y: i32| x < 0 || y < 0 || x >= w || y >= h || (pixels[(y * w + x) as usize] >> 24) & 255 == 0;
+        // (facing, min, max, fixed): UP(0,-1) DOWN(0,1) LEFT=east(-1,0) RIGHT=west(1,0)
+        #[derive(Clone, Copy, PartialEq)]
+        enum Span {
+            Up,
+            Down,
+            Left,
+            Right,
+        }
+        let mut spans: Vec<(Span, i32, i32, i32)> = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                let opaque = !transparent(x, y);
+                for (s, ox, oy) in [(Span::Up, 0, -1), (Span::Down, 0, 1), (Span::Left, -1, 0), (Span::Right, 1, 0)] {
+                    if !(transparent(x + ox, y + oy) && opaque) {
+                        continue;
+                    }
+                    let vertical = matches!(s, Span::Up | Span::Down);
+                    let fixed = if vertical { y } else { x };
+                    let along = if vertical { x } else { y };
+                    match spans.iter_mut().find(|sp| sp.0 == s && sp.3 == fixed) {
+                        Some(sp) => {
+                            if along < sp.1 {
+                                sp.1 = along;
+                            } else if along > sp.2 {
+                                sp.2 = along;
+                            }
+                        }
+                        None => spans.push((s, along, along, fixed)),
+                    }
+                }
+            }
+        }
+        let (f, f1) = (w as f32, h as f32);
+        for (s, min, max, fixed) in spans {
+            let (f12, f13, f14) = (min as f32, max as f32, fixed as f32);
+            let (mut f2, mut f3, mut f4, mut f5, mut f6, mut f7, mut f8, mut f9, f10, f11);
+            match s {
+                Span::Up => {
+                    f6 = f12;
+                    f2 = f12;
+                    f4 = f13 + 1.;
+                    f7 = f4;
+                    f8 = f14;
+                    f3 = f14;
+                    f9 = f14;
+                    f5 = f14;
+                    f10 = 16. / f;
+                    f11 = 16. / (f1 - 1.);
+                }
+                Span::Down => {
+                    f9 = f14;
+                    f8 = f14;
+                    f6 = f12;
+                    f2 = f12;
+                    f4 = f13 + 1.;
+                    f7 = f4;
+                    f3 = f14 + 1.;
+                    f5 = f14 + 1.;
+                    f10 = 16. / f;
+                    f11 = 16. / (f1 - 1.);
+                }
+                Span::Left => {
+                    f6 = f14;
+                    f2 = f14;
+                    f7 = f14;
+                    f4 = f14;
+                    f9 = f12;
+                    f3 = f12;
+                    f5 = f13 + 1.;
+                    f8 = f5;
+                    f10 = 16. / (f - 1.);
+                    f11 = 16. / f1;
+                }
+                Span::Right => {
+                    f7 = f14;
+                    f6 = f14;
+                    f2 = f14 + 1.;
+                    f4 = f14 + 1.;
+                    f9 = f12;
+                    f3 = f12;
+                    f5 = f13 + 1.;
+                    f8 = f5;
+                    f10 = 16. / (f - 1.);
+                    f11 = 16. / f1;
+                }
+            }
+            let (f15, f16) = (16. / f, 16. / f1);
+            f2 *= f15;
+            f4 *= f15;
+            f3 *= f16;
+            f5 *= f16;
+            f3 = 16. - f3;
+            f5 = 16. - f5;
+            f6 *= f10;
+            f7 *= f10;
+            f8 *= f11;
+            f9 *= f11;
+            let facing = match s {
+                Span::Up => Facing::Up,
+                Span::Down => Facing::Down,
+                Span::Left => Facing::East,
+                Span::Right => Facing::West,
+            };
+            let (from, to) = match s {
+                Span::Up => (Vec3::new(f2, f3, 7.5), Vec3::new(f4, f3, 8.5)),
+                Span::Down => (Vec3::new(f2, f5, 7.5), Vec3::new(f4, f5, 8.5)),
+                Span::Left => (Vec3::new(f2, f3, 7.5), Vec3::new(f2, f5, 8.5)),
+                Span::Right => (Vec3::new(f4, f3, 7.5), Vec3::new(f4, f5, 8.5)),
+            };
+            elements.push(Element { from, to, rotation: None, shade: true, faces: vec![(facing, face([f6, f8, f7, f9]))] });
+        }
+    }
+    if elements.is_empty() {
+        return None;
+    }
+    let mut out = model.clone();
+    out.elements = elements;
+    Some(out)
 }
 
 #[derive(Clone, Debug)]
@@ -195,19 +419,74 @@ pub struct BakedModel {
     pub ambient_occlusion: bool,
 }
 
+/// `ModelBakery.MODEL_MISSING`: a full cube with the missing sprite on every face.
+pub fn missing_model(atlas: &Atlas) -> BakedModel {
+    let model = UnbakedModel {
+        ambient_occlusion: true,
+        elements: vec![Element {
+            from: Vec3::ZERO,
+            to: Vec3::splat(16.0),
+            rotation: None,
+            shade: true,
+            faces: Facing::ALL
+                .into_iter()
+                .map(|f| {
+                    (
+                        f,
+                        FaceDef {
+                            uv: [0.0, 0.0, 16.0, 16.0],
+                            texture: MISSING.into(),
+                            cullface: Some(f),
+                            rotation: 0,
+                            tint_index: -1,
+                        },
+                    )
+                })
+                .collect(),
+        }],
+        ..Default::default()
+    };
+    bake(
+        &model,
+        &Variant {
+            model: String::new(),
+            x: 0,
+            y: 0,
+            uvlock: false,
+            weight: 1,
+        },
+        atlas,
+    )
+}
+
 // Corner order per face, from `EnumFaceDirection`. Each entry picks (x, y, z) from
 // min (false) or max (true).
 const FACE_VERTS: [[[bool; 3]; 4]; 6] = [
     // DOWN
-    [[false, false, true], [false, false, false], [true, false, false], [true, false, true]],
+    [
+        [false, false, true],
+        [false, false, false],
+        [true, false, false],
+        [true, false, true],
+    ],
     // UP
     [[false, true, false], [false, true, true], [true, true, true], [true, true, false]],
     // NORTH
-    [[true, true, false], [true, false, false], [false, false, false], [false, true, false]],
+    [
+        [true, true, false],
+        [true, false, false],
+        [false, false, false],
+        [false, true, false],
+    ],
     // SOUTH
     [[false, true, true], [false, false, true], [true, false, true], [true, true, true]],
     // WEST
-    [[false, true, false], [false, false, false], [false, false, true], [false, true, true]],
+    [
+        [false, true, false],
+        [false, false, false],
+        [false, false, true],
+        [false, true, true],
+    ],
     // EAST
     [[true, true, true], [true, false, true], [true, false, false], [true, true, false]],
 ];
@@ -348,7 +627,10 @@ pub fn bake(model: &UnbakedModel, variant: &Variant, atlas: &Atlas) -> BakedMode
             });
         }
     }
-    BakedModel { quads, ambient_occlusion: model.ambient_occlusion }
+    BakedModel {
+        quads,
+        ambient_occlusion: model.ambient_occlusion,
+    }
 }
 
 /// `WeightedBakedModel.getAlternativeModel` with `MathHelper.getPositionRandom`.

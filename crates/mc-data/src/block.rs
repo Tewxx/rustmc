@@ -57,6 +57,20 @@ pub struct SoundType {
     pub place_sound: &'static str,
 }
 
+/// Registry fields consumed by lighting and ambient occlusion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LightProps {
+    pub full_cube: bool,
+    pub normal_cube: bool,
+    pub translucent: bool,
+    pub opacity: u8,
+    pub emission: u8,
+}
+
+impl LightProps {
+    pub fn ao_value(self) -> f32 { if self.normal_cube { 0.2 } else { 1.0 } }
+}
+
 /// Static description of a block: what vanilla's `Block` holds after `Block.registerBlocks`.
 #[derive(Debug)]
 pub struct Block {
@@ -188,6 +202,14 @@ impl StateId {
     #[inline]
     pub fn is_air(self) -> bool {
         self.0 == 0
+    }
+
+    pub fn light_props(self) -> LightProps {
+        let b = self.block();
+        LightProps {
+            full_cube: b.full_cube, normal_cube: b.block_normal_cube,
+            translucent: b.translucent, opacity: b.light_opacity, emission: b.light_value,
+        }
     }
 
     /// Index within the block's own states.

@@ -23,6 +23,8 @@ struct VsOut {
     @location(1) color: vec4<f32>,
     @location(2) light_uv: vec2<f32>,
     @location(3) dist: f32,
+    @location(4) @interpolate(flat) alpha_test: f32,
+    @location(5) @interpolate(flat) translucent: f32,
 };
 
 @vertex
@@ -41,6 +43,8 @@ fn vs_main(
     // Vanilla lightmap texture matrix: (coord + 8) / 256, coord in 0..240.
     out.light_uv = (light.xy * 255.0 + 8.0) / 256.0;
     out.dist = length(rel);
+    out.alpha_test = light.z;
+    out.translucent = light.w;
     return out;
 }
 
@@ -52,9 +56,13 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = textureSample(atlas, atlas_sampler, in.uv);
-    // Vanilla cutout alpha test (GL_GREATER 0.1).
-    if (tex.a <= 0.1) {
+    // CUTOUT samples level 0 only (setBlurMipmap(false, false)); everything else is mipmapped.
+    var tex = textureSample(atlas, atlas_sampler, in.uv);
+    if (in.alpha_test > 0.75) {
+        tex = textureSampleLevel(atlas, atlas_sampler, in.uv, 0.0);
+    }
+    // Vanilla alpha test (GL_GREATER 0.1) for every layer except SOLID.
+    if (in.alpha_test > 0.25 && tex.a <= 0.1) {
         discard;
     }
     let light = textureSample(lightmap, lightmap_sampler, in.light_uv).rgb;
@@ -66,5 +74,5 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // The target re-encodes to sRGB on write; pre-decode so the stored value is the raw one.
         rgb = srgb_to_linear(rgb);
     }
-    return vec4<f32>(rgb, 1.0);
+    return vec4<f32>(rgb, select(1.0,tex.a,in.translucent>0.5));
 }

@@ -5,7 +5,9 @@ use crate::ao;
 use crate::models::BlockModels;
 use bytemuck::{Pod, Zeroable};
 use mc_assets::model::pick_weighted;
-use mc_world::blocks::Layer;
+use mc_core::BlockPos;
+use mc_data::geometry::BlockGeometry;
+use mc_data::{RenderLayer, StateId};
 use mc_world::World;
 
 #[repr(C)]
@@ -16,7 +18,7 @@ pub struct Vertex {
     pub uv: [f32; 2],
     /// Shade × AO × tint, in vanilla's (non-linear) color space.
     pub color: [u8; 4],
-    /// Lightmap coordinates: block light, sky light (0–240), unused, unused.
+    /// Lightmap coordinates (0–240), alpha-test enabled (0/255), translucent layer (0/255).
     pub light: [u8; 4],
 }
 
@@ -34,14 +36,18 @@ impl ChunkMesh {
     }
 }
 
-/// Meshes chunk `(cx, cz)`. Solid and cutout share one mesh; the shader alpha-tests.
+/// Meshes one chunk using fresh geometry state. Runtime clients should use `build_with_geometry`
+/// to retain vanilla's mutable Block bounds across ordered rendering/selection calls.
 /// `smooth_lighting` is `Minecraft.isAmbientOcclusionEnabled` (the option isn't Off).
-pub fn build(world: &World, models: &BlockModels, cx: i32, cz: i32, smooth_lighting: bool) -> ChunkMesh {
+pub fn build(world: &World, models: &BlockModels, cx: i32, cz: i32, smooth_lighting: bool, fancy_graphics: bool) -> ChunkMesh {
+    build_with_geometry(world, models, cx, cz, smooth_lighting, fancy_graphics, &mut BlockGeometry::new())
+}
+
+pub fn build_with_geometry(world: &World, models: &BlockModels, cx: i32, cz: i32, smooth_lighting: bool, fancy_graphics: bool, geometry: &mut BlockGeometry) -> ChunkMesh {
     let mut mesh = ChunkMesh::default();
     let Some(chunk) = world.chunks.get(&(cx, cz)) else { return mesh };
     let is_opaque = |p: (i32, i32, i32)| {
-        let (id, meta) = world.get(p.0, p.1, p.2);
-        models.is_opaque(id, meta)
+        world.state_at(p.0, p.1, p.2).block().is_opaque_cube(fancy_graphics)
     };
     for (sy, section) in chunk.sections.iter().enumerate() {
         if section.is_none() {
@@ -51,23 +57,30 @@ pub fn build(world: &World, models: &BlockModels, cx: i32, cz: i32, smooth_light
             let y = sy as i32 * 16 + ly;
             for lz in 0..16 {
                 for lx in 0..16 {
-                    let (id, meta) = chunk.get(lx, y, lz);
-                    if id == 0 {
-                        continue;
-                    }
-                    let Some(entry) = models.get(id, meta) else { continue };
-                    if entry.info.layer == Layer::Translucent || entry.models.is_empty() {
-                        continue;
-                    }
                     let (x, z) = (cx * 16 + lx as i32, cz * 16 + lz as i32);
+                    let pos = BlockPos::new(x, y, z);
+                    let (id, meta) = chunk.get(lx, y, lz);
+                    let stored = StateId::from_raw(id << 4 | meta as u16);
+                    let block = stored.block();
+                    let layer = block.render_layer(fancy_graphics);
+                    if block.render_type != 3 {
+                        continue;
+                    }
+                    let actual = stored.actual_state(world, pos);
+                    let Some(entry) = models.get_state(actual) else { continue };
+                    if entry.models.is_empty() { continue; }
                     let model = &entry.models[pick_weighted(&entry.weights, x, y, z)].1;
-                    let props = entry.info.props;
+                    geometry.update_bounds(stored, world, pos);
+                    let mut visible = [None; 6];
+                    let props = stored.light_props();
                     let smooth = smooth_lighting && props.emission == 0 && model.ambient_occlusion;
-                    let tint = models.tint_color(entry.info.tint);
+                    let tint = if model.quads.iter().any(|q| q.tint_index >= 0) {
+                        models.tint_color(world, stored, pos)
+                    } else { 0xFFFFFF };
                     for q in &model.quads {
                         if let Some(cull) = q.cullface {
-                            let (dx, dy, dz) = cull.offset();
-                            if is_opaque((x + dx, y + dy, z + dz)) {
+                            let show = *visible[cull.index()].get_or_insert_with(|| geometry.should_side_be_rendered(stored, world, pos, cull, fancy_graphics));
+                            if !show {
                                 continue;
                             }
                         }
@@ -99,7 +112,16 @@ pub fn build(world: &World, models: &BlockModels, cx: i32, cz: i32, smooth_light
                                 pos: [q.pos[i][0] + lx as f32, q.pos[i][1] + y as f32, q.pos[i][2] + lz as f32],
                                 uv: q.uv[i],
                                 color: [ch(tint_rgb[0]), ch(tint_rgb[1]), ch(tint_rgb[2]), 255],
-                                light: [(bright[i] & 0xFF) as u8, ((bright[i] >> 16) & 0xFF) as u8, 0, 0],
+                                light: [
+                                    (bright[i] & 0xFF) as u8,
+                                    ((bright[i] >> 16) & 0xFF) as u8,
+                                    match layer {
+                                        RenderLayer::Solid => 0,
+                                        RenderLayer::Cutout => 255,
+                                        _ => 128,
+                                    },
+                                    if layer == RenderLayer::Translucent { 255 } else { 0 },
+                                ],
                             }
                         });
                         mesh.push_quad(verts);

@@ -868,6 +868,9 @@ dependencies = [
  "image",
  "mc-assets",
  "mc-core",
+ "mc-data",
+ "mc-entity",
+ "mc-gen",
  "mc-gui",
  "mc-render",
  "mc-world",
@@ -889,11 +892,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "mc-entity"
+version = "0.1.0"
+dependencies = [
+ "mc-core",
+ "mc-data",
+]
+
+[[package]]
+name = "mc-gen"
+version = "0.1.0"
+dependencies = [
+ "mc-core",
+ "mc-data",
+ "mc-world",
+]
+
+[[package]]
 name = "mc-gui"
 version = "0.1.0"
 dependencies = [
  "image",
  "mc-assets",
+ "mc-core",
+]
+
+[[package]]
+name = "mc-logic"
+version = "0.1.0"
+dependencies = [
+ "mc-core",
+ "mc-data",
+]
+
+[[package]]
+name = "mc-protocol"
+version = "0.1.0"
+dependencies = [
+ "flate2",
  "mc-core",
 ]
 
@@ -906,8 +942,10 @@ dependencies = [
  "image",
  "mc-assets",
  "mc-core",
+ "mc-data",
  "mc-gui",
  "mc-world",
+ "serde_json",
  "wgpu",
  "winit",
 ]

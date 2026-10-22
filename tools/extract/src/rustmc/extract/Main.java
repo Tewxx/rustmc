@@ -15,7 +15,7 @@ import net.minecraft.init.Bootstrap;
 public final class Main {
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("usage: Main <out dir> [blocks|state_ids|materials|actual_states]...");
+            System.err.println("usage: Main <out dir> [blocks|state_ids|materials|actual_states|models|colors|biomes|geometry]...");
             System.exit(2);
         }
         File outDir = new File(args[0]);
@@ -23,6 +23,20 @@ public final class Main {
         Bootstrap.register();
 
         boolean all = args.length == 1;
+        if (all || contains(args,"sky")) {write(new File(outDir,"sky.json"),DumpSky.dump());}
+        if (all || contains(args,"item_transforms")) {write(new File(outDir,"item_transforms.json"),DumpItemTransforms.dump());}
+        if (all || contains(args, "item_models")) {
+            Writer w = new OutputStreamWriter(new FileOutputStream(new File(outDir, "item_models.tsv")), "UTF-8");
+            w.write(DumpItemModels.dump());
+            w.close();
+        }
+        if (all || contains(args, "creative")) {
+            DumpCreative.write(new File(outDir, "creative.tsv"));
+        }
+        if (all || contains(args, "items")) {
+            write(new File(outDir, "items.json"), DumpItems.dump());
+            write(new File(outDir, "enchantments.json"), DumpItems.enchantments(), false);
+        }
         if (all || contains(args, "blocks")) {
             write(new File(outDir, "blocks.json"), DumpBlocks.dump());
         }
@@ -34,6 +48,18 @@ public final class Main {
         }
         if (all || contains(args, "actual_states")) {
             write(new File(outDir, "actual_states.json"), DumpActualStates.dump(), false);
+        }
+        if (all || contains(args, "models")) {
+            write(new File(outDir, "models.json"), DumpModels.dump());
+        }
+        if (all || contains(args, "biomes")) {
+            write(new File(outDir, "biomes.json"), DumpColors.biomes(), false);
+        }
+        if (all || contains(args, "colors")) {
+            write(new File(outDir, "colors.json"), DumpColors.dump(), false);
+        }
+        if (all || contains(args, "geometry")) {
+            write(new File(outDir, "geometry.json"), DumpGeometry.dump(), false);
         }
     }
 

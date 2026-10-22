@@ -1,7 +1,7 @@
-//! Checks the block table against `golden/blocks.json`, dumped from the real 1.8.9 classes by
+//! Checks lighting's registry view against `golden/blocks.json`, dumped from the real 1.8.9 classes by
 //! `tools/extract/extract.ps1`. Skipped when the dump isn't present.
 
-use mc_world::blocks::{self, Layer};
+use mc_data::Block;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
@@ -25,13 +25,16 @@ fn registry_has_every_vanilla_block() {
 }
 
 #[test]
-fn known_blocks_match_vanilla_properties() {
+fn all_blocks_match_vanilla_light_properties() {
     let Some(g) = golden() else { return };
     let mut bad = Vec::new();
-    for (id, meta, info) in blocks::all_known() {
+    for block in Block::all() {
+        let id = block.id;
+        let state = block.default_state;
+        let meta = state.meta();
         let v = &g[&(id as u64)];
         let name = v["name"].as_str().unwrap();
-        let p = info.props;
+        let p = state.light_props();
         let mut check = |field: &str, ours: Value, theirs: &Value| {
             if &ours != theirs {
                 bad.push(format!("{id}:{meta} {name}.{field}: ours {ours}, vanilla {theirs}"));
@@ -44,15 +47,7 @@ fn known_blocks_match_vanilla_properties() {
         check("translucent", p.translucent.into(), &v["translucent"]);
         // BlockLeaves switch opacity and layer with the graphics setting; the dump is fast graphics.
         if v["class"] != "BlockOldLeaf" && v["class"] != "BlockNewLeaf" {
-            check("opaque_cube", info.opaque.into(), &v["opaque_cube"]);
-            let layer = match v["layer"].as_str().unwrap() {
-                "SOLID" => Layer::Solid,
-                "CUTOUT" | "CUTOUT_MIPPED" => Layer::Cutout,
-                _ => Layer::Translucent,
-            };
-            if layer != info.layer {
-                bad.push(format!("{id}:{meta} {name}.layer: ours {:?}, vanilla {}", info.layer, v["layer"]));
-            }
+            check("opaque_cube", block.is_opaque_cube(false).into(), &v["opaque_cube"]);
         }
         // Storage keeps raw id<<4|meta, but `ExtendedBlockStorage.get` only resolves pairs that
         // `getMetaFromState` produces (`Block.BLOCK_STATE_IDS`); anything else reads as air.

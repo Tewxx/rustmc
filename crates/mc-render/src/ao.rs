@@ -2,7 +2,7 @@
 //! `AmbientOcclusionFace.updateVertexBrightness` and their lookup tables.
 
 use mc_core::Facing;
-use mc_world::blocks;
+use mc_data::block::LightProps;
 use mc_world::World;
 
 /// `fillQuadBounds` output: 6 bounds, then `1 - bound` for each (the "flip" half).
@@ -133,9 +133,8 @@ fn off(p: Pos, f: Facing) -> Pos {
     (p.0 + x, p.1 + y, p.2 + z)
 }
 
-fn props(w: &World, p: Pos) -> blocks::LightProps {
-    let (id, meta) = w.get(p.0, p.1, p.2);
-    blocks::props(id, meta)
+fn props(w: &World, p: Pos) -> LightProps {
+    w.state_at(p.0, p.1, p.2).light_props()
 }
 
 fn ao_value(w: &World, p: Pos) -> f32 {

@@ -84,6 +84,26 @@ impl Tag {
         }
     }
 
+    pub fn as_ints(&self) -> Option<&[i32]> {
+        match self {
+            Tag::IntArray(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self { Tag::String(value) => Some(value), _ => None }
+    }
+
+    /// `NBTPrimitive.getFloat`, converting each numeric type directly to Java float.
+    pub fn as_f32(&self) -> Option<f32> {
+        Some(match *self {
+            Tag::Byte(v) => v as f32, Tag::Short(v) => v as f32, Tag::Int(v) => v as f32,
+            Tag::Long(v) => v as f32, Tag::Float(v) => v, Tag::Double(v) => v as f32,
+            _ => return None,
+        })
+    }
+
     /// Numeric tags coerced to i64, like `NBTTagCompound.getInteger` on any numeric type.
     pub fn as_i64(&self) -> Option<i64> {
         Some(match *self {

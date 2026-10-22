@@ -10,7 +10,8 @@ impl ColorMap {
     /// `name` is `grass` or `foliage`.
     pub fn load(assets: &AssetSource, name: &str) -> Option<Self> {
         let img = image::load_from_memory(&assets.read(&format!("textures/colormap/{name}.png"))?).ok()?.to_rgba8();
-        let pixels = img.pixels().map(|p| u32::from_be_bytes([0, p[0], p[1], p[2]])).collect();
+        if img.width() != 256 || img.height() != 256 { return None; }
+        let pixels = img.pixels().map(|p| u32::from_be_bytes([p[3], p[0], p[1], p[2]])).collect();
         Some(Self { pixels })
     }
 

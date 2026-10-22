@@ -3,7 +3,24 @@
 Goal: everything 1:1 with vanilla 1.8.9 (behaviour, visuals, protocol), multithreaded where vanilla's
 semantics allow it. Reference: `../MCP-919/src/minecraft/` (read-only, never copied in).
 
-## Where we are (audit, 2026-10-21)
+## Playability priority (latest user steering)
+
+The user also rejects the current visuals. Prioritize visible parity and a same-world Java/Rust
+image baseline. The new item-transform and sky-value golden checks validate individual components;
+they do not establish visual parity. Demo terrain, missing fluid/special rendering, mipmaps,
+animations, entity lighting and GUI details remain visible gaps.
+
+The user rejected foundation-only work while the app remained a terrain viewer. A local playable
+milestone now exists: grounded player physics, creative flight, Steve/hand rendering, F5 views,
+creative catalogue/search/hotbar, break/place/pick and local commands. Launch `Play-RustMC.cmd`.
+See `PLAYING.md` for controls and explicit limits. This is not full physics, item or server parity.
+
+Before returning to the foundation schedule below, validate movement against actual Java traces,
+make player/inventory/world edits persistent, and expand real block/item interactions. The local
+controller and commands must eventually move through the authoritative server/protocol path.
+Do not use this milestone as evidence that S3/S5/S7 or the integrated server are complete.
+
+## Original audit (2026-10-21, before the registry and playable milestones)
 
 - ~7k lines of Rust vs ~280k lines of Java reference (~3%). Tests: 32 passing.
 - What exists is a **terrain viewer**: assets/models/atlas, AO + smooth lighting, chunk meshing, wgpu
@@ -139,13 +156,36 @@ fire encouragement/flammability, diode/stem fields and `ids::*` constants. Golde
 blocks its logic inspects so rare branches are well sampled; `mc-data/tests/actual_state.rs` replays
 them all. Not yet wired into rendering (S1c).
 
-**S1c — state → model + tints, renderer switch.** Port `BlockModelShapes` state mappers (blockstate
-file, ignored properties, per-variant names) and block colors (`colorMultiplier`/`getRenderColor`).
-Renderer bakes every state; culling uses `is_opaque_cube(fancy_graphics)` from settings. Delete the
-`mc-world/src/blocks.rs` table. Golden: dump `BlockModelShapes` variant locations for every state.
+**S1c — state → model + tints, renderer switch (IMPLEMENTED 2026-10-21).** `mc-data/src/model_location.rs`
+ports `BlockModelShapes` state mappers; `golden/models.json` checks all 7806 states, including built-in
+renderer exclusions. `color.rs` ports block color methods and exact 3x3 biome blending; `biome.rs`
+implements climate/altitude and swamp/mesa/roofed-forest/mutation color rules using the scalar Java
+simplex noise path. Generated climate fields cover all 61 biomes. `golden/colors.json` checks every
+state in mixed-biome scenes; `golden/biomes.json` checks 12,200 color/temperature samples against Java
+(temperature bits exact). Tests use the real jar's colormaps, including ARGB values and f32→f64 climate.
+Renderer resolves actual states before model lookup, indexes a dense state array, shares geometry for
+identical model locations, honors graphics-dependent opacity/layers and remeshes on Fancy/Fast
+changes. Deleted the partial `mc-world/src/blocks.rs` table. Saved biome and tile-entity NBT now reaches
+the world accessors (pots/comparators). Missing variants and unresolved weighted alternatives follow
+`ModelBakery` fallback behavior. Regular JSON models for every mapped state bake with real textures.
+Regression checks cover chunk-border fences, snowy grass, invalid metadata and fast-leaf occlusion.
+Rendered demo screenshots were inspected; full all-block vanilla visual parity remains open for S9
+plant offsets, translucent/fluid layers and special renderers. Bounds/side culling landed in S1d below.
 
-**S1d — bounds.** `setBlockBoundsBasedOnState`, `addCollisionBoxesToList`, `getSelectedBoundingBox`,
-`collisionRayTrace` per state/neighbours. Golden: same fake-world harness as S1b.
+**S1d — bounds (IMPLEMENTED 2026-10-21).** `mc-data/src/geometry/` ports state-dependent raw bounds,
+`getSelectedBoundingBox`, `getCollisionBoundingBox`, ordered `addCollisionBoxesToList`, per-block
+`collisionRayTrace`, and all `shouldSideBeRendered` overrides. The caller owns `BlockGeometry` to
+preserve singleton-bound mutations without shared mutable registry data: stair ray-pass persistence,
+torch ray bounds, inverted vine bounds, compound collision order, zero-height snow boxes, lily pad
+boat exclusions and floating-point coordinate conversion all follow Java. `BlockAccess::moving_piston`
+supplies carried state/facing/lastProgress/extending; saved Anvil piston NBT is wired through.
+`GeometryWorld.java` runs the real methods without chunk IO or ticks; `golden/geometry.json` replays
+37,506 ordered scenes covering all 7806 states, 487,578 axis/oblique/tied/inside/zero/near-parallel rays,
+112,518 collision-list probes and 300 moving pistons. Every coordinate is compared by float bits,
+including bounds left by each call. Renderer uses the same geometry context and side rules; real-jar
+regressions cover glass, mixed-material slabs, inset faces and existing connected models. Full
+vanilla visual comparison is still open. World collision enumeration and voxel ray traversal will be
+added with world/player logic; the per-block APIs are ready for them.
 
 Original scope:
 - `mc-data`: every 1.8.9 block (ids 0–197) with its `BlockState` properties, exact
@@ -252,4 +292,6 @@ Original scope:
 
 ## Next action
 
-Follow the execution order above. Current position: **S1c** (state → model + tints, renderer switch), then S1d, SJ.
+Follow the execution order above. Current position: **SJ** (Java collection/hash/string/overflow
+semantics, golden-tested against JDK 8), then S3 and S5. S1c and S1d mappings/tints/geometry are in
+place; the client is still a terrain viewer, with no protocol/player/gameplay implementation yet.

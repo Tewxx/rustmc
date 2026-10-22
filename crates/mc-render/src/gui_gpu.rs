@@ -73,6 +73,10 @@ fn texture_from_rgba(device: &wgpu::Device, queue: &wgpu::Queue, w: u32, h: u32,
 }
 
 impl GuiRenderer {
+    pub fn register_rgba(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str, w: u32, h: u32, rgba: &[u8]) {
+        let t=texture_from_rgba(device,queue,w,h,rgba,path);
+        self.textures.insert(path.into(),Self::bind(device,&self.tex_layout,&self.nearest,&self.linear,&t));
+    }
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, assets: &AssetSource) -> Self {
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gui globals"),
@@ -312,14 +316,21 @@ impl GuiRenderer {
         }
     }
 
+    /// Binds an existing texture view (the shared block atlas's level 0) under `path`.
+    pub fn register_view(&mut self, device: &wgpu::Device, path: &str, view: &wgpu::TextureView) {
+        let g = Self::bind_view(device, &self.tex_layout, &self.nearest, &self.linear, view);
+        self.textures.insert(path.into(), g);
+    }
     fn bind(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, nearest: &wgpu::Sampler, linear: &wgpu::Sampler, t: &wgpu::Texture) -> GuiTexture {
-        let view = t.create_view(&Default::default());
+        Self::bind_view(device, layout, nearest, linear, &t.create_view(&Default::default()))
+    }
+    fn bind_view(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, nearest: &wgpu::Sampler, linear: &wgpu::Sampler, view: &wgpu::TextureView) -> GuiTexture {
         let mk = |s: &wgpu::Sampler| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("gui texture"),
                 layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(s) },
                 ],
             })
@@ -340,6 +351,11 @@ impl GuiRenderer {
                     if (x < 8) ^ (y < 8) { image::Rgba([0, 0, 0, 255]) } else { image::Rgba([248, 0, 248, 255]) }
                 })
             });
+        // Item animations are strips, not tall inventory icons. TextureMap uploads one
+        // frame per sprite; rendering the entire PNG squeezes compasses/clocks into lines.
+        let img=if path.starts_with("textures/items/") && img.height()>img.width() && assets.read(&format!("{path}.mcmeta")).is_some() {
+            image::imageops::crop_imm(&img,0,0,img.width(),img.width()).to_image()
+        } else {img};
         let t = texture_from_rgba(device, queue, img.width(), img.height(), &img, path);
         let bound = Self::bind(device, &self.tex_layout, &self.nearest, &self.linear, &t);
         self.textures.insert(path.to_string(), bound);

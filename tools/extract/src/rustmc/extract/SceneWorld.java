@@ -16,6 +16,7 @@ import net.minecraft.world.biome.BiomeGenBase;
 final class SceneWorld implements IBlockAccess {
     final Map<BlockPos, IBlockState> states = new HashMap<BlockPos, IBlockState>();
     final Map<BlockPos, TileEntity> tileEntities = new HashMap<BlockPos, TileEntity>();
+    final Map<BlockPos, BiomeGenBase> biomes = new HashMap<BlockPos, BiomeGenBase>();
 
     public TileEntity getTileEntity(BlockPos pos) {
         return tileEntities.get(pos);
@@ -36,7 +37,8 @@ final class SceneWorld implements IBlockAccess {
     }
 
     public BiomeGenBase getBiomeGenForCoords(BlockPos pos) {
-        return BiomeGenBase.plains;
+        BiomeGenBase biome = biomes.get(pos);
+        return biome != null ? biome : BiomeGenBase.plains;
     }
 
     public boolean extendedLevelsInChunkCache() {

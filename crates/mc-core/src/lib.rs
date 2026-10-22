@@ -7,6 +7,7 @@
 pub mod aabb;
 pub mod block_pos;
 pub mod facing;
+pub mod fxhash;
 pub mod math;
 pub mod nbt;
 pub mod random;
@@ -16,6 +17,7 @@ pub mod vec3;
 pub use aabb::Aabb;
 pub use block_pos::BlockPos;
 pub use facing::{Axis, Facing};
+pub use fxhash::{FxHashMap, FxHashSet};
 pub use random::JavaRandom;
 pub use vec3::Vec3;
 

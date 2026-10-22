@@ -5,10 +5,18 @@
 //! (`getActualState`, bounding boxes, ticks) is hand-ported on top of these types.
 
 pub mod actual_state;
+pub mod biome;
 pub mod block;
+pub mod color;
+pub mod enchantment;
+pub mod geometry;
+pub mod item;
 mod generated;
 pub mod material;
+pub mod model_location;
 
 pub use actual_state::BlockAccess;
 pub use block::{ids, Block, Property, PropertyKind, RenderLayer, SoundType, StateId};
 pub use material::{Material, MaterialProps};
+pub use item::Item;
+pub use enchantment::Enchantment;

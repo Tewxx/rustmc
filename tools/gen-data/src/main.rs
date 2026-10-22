@@ -25,17 +25,40 @@ fn main() {
     let materials = read("materials.json");
     let blocks = read("blocks.json");
     let state_ids = read("state_ids.json");
+    let biomes = read("biomes.json");
 
     std::fs::create_dir_all(&out).unwrap();
     let (mat_src, mat_index) = gen_materials(&materials);
     std::fs::write(out.join("materials.rs"), mat_src).unwrap();
     std::fs::write(out.join("blocks.rs"), gen_blocks(&blocks, &state_ids, &mat_index)).unwrap();
-    std::fs::write(out.join("mod.rs"), format!("{HEADER}pub mod blocks;\npub mod materials;\n")).unwrap();
+    std::fs::write(out.join("biomes.rs"), gen_biomes(&biomes)).unwrap();
+    std::fs::write(out.join("items.rs"), gen_items(&read("items.json"))).unwrap();
+    std::fs::write(out.join("enchantments.rs"), gen_enchantments(&read("enchantments.json"))).unwrap();
+    std::fs::write(out.join("mod.rs"), format!("{HEADER}pub mod biomes;\npub mod blocks;\npub mod enchantments;\npub mod items;\npub mod materials;\n")).unwrap();
     println!("wrote {}", out.display());
 }
 
 fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or_else(|| panic!("{k} is not a string in {v}"))
+}
+
+fn gen_biomes(biomes: &Value) -> String {
+    let list = biomes.as_array().unwrap();
+    let mut src = String::from(HEADER);
+    src.push_str("use crate::biome::{Biome, ColorMode};\n\n");
+    writeln!(src, "pub(crate) static BIOMES: [Biome; {}] = [", list.len()).unwrap();
+    let mut last = -1;
+    for biome in list {
+        let id = i(biome, "id");
+        assert!(id > last && id < 256);
+        last = id;
+        let mode = s(biome, "color_mode");
+        assert!(["Default", "Swamp", "Mesa", "RoofedForest"].contains(&mode));
+        writeln!(src, "    Biome {{ id: {id}, name: {:?}, temperature: {}, rainfall: {}, water_color: {}, color_base: {}, color_mode: ColorMode::{mode} }},",
+            s(biome, "name"), f32_lit(biome, "temperature"), f32_lit(biome, "rainfall"), i(biome, "water"), i(biome, "color_base")).unwrap();
+    }
+    src.push_str("];\n");
+    src
 }
 fn b(v: &Value, k: &str) -> bool {
     v[k].as_bool().unwrap_or_else(|| panic!("{k} is not a bool"))
@@ -307,4 +330,69 @@ fn write_table(src: &mut String, name: &str, ty: &str, values: &[u16]) {
         writeln!(src, "    {},", line.join(", ")).unwrap();
     }
     src.push_str("];\n\n");
+}
+
+fn gen_items(items: &Value) -> String {
+    let list = items.as_array().unwrap();
+    let mut src = String::from(HEADER);
+    src.push_str("use crate::item::{FieldValue, Item, ToolMaterial};\n\n");
+    writeln!(src, "pub(crate) static ITEMS: [Item; {}] = [", list.len()).unwrap();
+    let mut last = -1;
+    for it in list {
+        let id = i(it, "id");
+        assert!(id > last && id < 32000);
+        last = id;
+        let classes: Vec<String> = it["classes"].as_array().unwrap().iter().map(|c| format!("{:?}", c.as_str().unwrap())).collect();
+        let mut fields = Vec::new();
+        for (k, v) in it["fields"].as_object().unwrap() {
+            let fv = if let Some(n) = v.as_f64() {
+                format!("FieldValue::Num({n:?})")
+            } else if let Some(b) = v.as_bool() {
+                format!("FieldValue::Bool({b})")
+            } else if let Some(t) = v.as_str() {
+                format!("FieldValue::Str({t:?})")
+            } else if let Some(a) = v.as_array() {
+                format!("FieldValue::List(&[{}])", a.iter().map(|x| format!("{:?}", x.as_str().unwrap())).collect::<Vec<_>>().join(", "))
+            } else {
+                panic!("field {k}: {v}")
+            };
+            fields.push(format!("({k:?}, {fv})"));
+        }
+        let block = it["fields"].get("block").and_then(|b| b.as_str()).map(|b| format!("Some({b:?})")).unwrap_or("None".into());
+        let tool = match it.get("tool_material") {
+            Some(t) => format!(
+                "Some(ToolMaterial {{ name: {:?}, harvest_level: {}, max_uses: {}, efficiency: {}, damage: {}, enchantability: {} }})",
+                s(t, "name"), i(t, "harvest_level"), i(t, "max_uses"), f32_lit(t, "efficiency"), f32_lit(t, "damage"), i(t, "enchantability")
+            ),
+            None => "None".into(),
+        };
+        let container = s(it, "container");
+        writeln!(
+            src,
+            "    Item {{ id: {id}, name: {:?}, unlocalized: {:?}, max_stack: {}, max_damage: {}, has_subtypes: {}, enchantability: {}, full3d: {}, container: {}, classes: &[{}], block: {block}, tool: {tool}, fields: &[{}] }},",
+            s(it, "name"), s(it, "unlocalized"), i(it, "max_stack"), i(it, "max_damage"), b(it, "has_subtypes"), i(it, "enchantability"), b(it, "full3d"),
+            if container.is_empty() { "None".to_string() } else { format!("Some({container:?})") },
+            classes.join(", "), fields.join(", ")
+        ).unwrap();
+    }
+    src.push_str("];\n");
+    src
+}
+
+fn gen_enchantments(list: &Value) -> String {
+    let list = list.as_array().unwrap();
+    let mut src = String::from(HEADER);
+    src.push_str("use crate::enchantment::Enchantment;\n\n");
+    writeln!(src, "pub(crate) static ENCHANTMENTS: [Enchantment; {}] = [", list.len()).unwrap();
+    let ints = |v: &Value| v.as_array().unwrap().iter().map(|x| (x.as_f64().unwrap() as i64).to_string()).collect::<Vec<_>>().join(", ");
+    for e in list {
+        writeln!(
+            src,
+            "    Enchantment {{ id: {}, name: {:?}, class: {:?}, weight: {}, kind: {:?}, min_level: {}, max_level: {}, min_enchantability: &[{}], max_enchantability: &[{}], compatible: &[{}], table_items: &[{}], anvil_items: &[{}] }},",
+            i(e, "id"), s(e, "name"), s(e, "class"), i(e, "weight"), s(e, "type"), i(e, "min_level"), i(e, "max_level"),
+            ints(&e["min_enchantability"]), ints(&e["max_enchantability"]), ints(&e["compatible"]), ints(&e["table_items"]), ints(&e["anvil_items"])
+        ).unwrap();
+    }
+    src.push_str("];\n");
+    src
 }

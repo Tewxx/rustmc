@@ -1,0 +1,8 @@
+[package]
+name = "mc-entity"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mc-core = { path = "../mc-core" }
+mc-data = { path = "../mc-data" }
