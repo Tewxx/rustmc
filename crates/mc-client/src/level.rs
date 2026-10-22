@@ -210,3 +210,87 @@ impl Weather {
         (self.prev_thunder + (self.thunder - self.prev_thunder) * pt) * self.rain_strength(pt)
     }
 }
+
+/// `WorldBorder`: the server-driven border the client keeps (`S44PacketWorldBorder`).
+#[derive(Clone, Debug)]
+pub struct WorldBorder {
+    pub center: (f64, f64),
+    pub size: f64,
+    /// `getTargetSize` and the lerp the client interpolates toward.
+    pub target_size: f64,
+    pub lerp_start: f64,
+    pub lerp_end: f64,
+    pub warning_blocks: i32,
+    pub warning_time: i32,
+}
+
+impl Default for WorldBorder {
+    fn default() -> Self {
+        // WorldBorder's field defaults: a 60M-block square at 0,0.
+        Self { center: (0., 0.), size: 6.0e7, target_size: 6.0e7, lerp_start: 0., lerp_end: 0., warning_blocks: 5, warning_time: 15 }
+    }
+}
+
+impl WorldBorder {
+    /// `WorldBorder.getSize` at wall-clock seconds `now` (`System.currentTimeMillis()/1000`).
+    #[allow(dead_code)] // The border renderer and outside damage land with S9/S10.
+    pub fn size_at(&self, now: f64) -> f64 {
+        if now >= self.lerp_end {
+            self.size
+        } else {
+            self.size + (self.target_size - self.size) * ((now - self.lerp_start) / (self.lerp_end - self.lerp_start)).clamp(0., 1.)
+        }
+    }
+
+    /// `WorldBorder.contains(BlockPos)`.
+    #[allow(dead_code)]
+    pub fn contains(&self, x: i32, z: i32) -> bool {
+        let h = self.size_at(now_seconds()) / 2.;
+        (x as f64 + 1.) > self.center.0 - h && (x as f64) < self.center.0 + h && (z as f64 + 1.) > self.center.1 - h && (z as f64) < self.center.1 + h
+    }
+}
+
+/// `System.currentTimeMillis() / 1000.0`, the clock `WorldBorder` lerps on.
+pub fn now_seconds() -> f64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0., |d| d.as_secs_f64())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn border_lerps_and_contains_like_world_border() {
+        let mut b = WorldBorder::default();
+        assert_eq!(b.size_at(0.), 6.0e7);
+        b.center = (100., -50.);
+        b.size = 10.;
+        b.target_size = 20.;
+        b.lerp_start = 100.;
+        b.lerp_end = 110.;
+        assert_eq!(b.size_at(100.), 10.);
+        assert_eq!(b.size_at(105.), 15.);
+        assert_eq!(b.size_at(120.), 10.); // after the lerp, `size` is authoritative
+        b.size = 20.;
+        assert!(b.contains(100, -50));
+        assert!(b.contains(90, -60));
+        assert!(!b.contains(89, -50));
+        assert!(!b.contains(110, -50));
+    }
+
+    #[test]
+    fn map_data_is_128_squared() {
+        let m = MapData { scale: 2, colors: vec![0; 128 * 128], icons: Vec::new() };
+        assert_eq!(m.colors.len(), 16384);
+        assert_eq!(m.scale, 2);
+    }
+}
+
+/// `MapData`: `S34PacketMaps` colour bytes plus the scale and decorations.
+#[derive(Clone, Debug)]
+pub struct MapData {
+    pub scale: i8,
+    /// 128×128 colour indices, row-major (`byte[] colors`).
+    pub colors: Vec<u8>,
+    pub icons: Vec<(u8, u8, u8, u8)>, // type, x, y, rotation
+}

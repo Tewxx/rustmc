@@ -168,6 +168,76 @@ fn java_string_hash(s: &str) -> i32 {
     s.encode_utf16().fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(c as i32))
 }
 
+/// `PacketBuffer.readStringFromBuffer`: VarInt byte length, then UTF-8.
+fn packet_string(data: &[u8]) -> String {
+    let mut i = 0;
+    let mut len = 0u32;
+    let mut shift = 0;
+    while i < data.len() && shift < 35 {
+        let b = data[i];
+        i += 1;
+        len |= ((b & 0x7f) as u32) << shift;
+        shift += 7;
+        if b & 0x80 == 0 {
+            break;
+        }
+    }
+    let n = (len as usize).min(data.len().saturating_sub(i));
+    String::from_utf8_lossy(&data[i..i + n]).into_owned()
+}
+
+/// Emits a baked block model with `base` applied, shading each quad by its vanilla face
+/// brightness and the entity's lightmap colour.
+fn push_model_quads(out: &mut Vec<mc_render::avatar::WorldQuad>, base: glam::Mat4, model: &mc_assets::model::BakedModel, light: [f32; 3]) {
+    for q in &model.quads {
+        out.push(mc_render::avatar::WorldQuad {
+            pos: q.pos.map(|p| base.transform_point3(Vec3::from(p))),
+            uv: q.uv,
+            color: [q.shade * light[0], q.shade * light[1], q.shade * light[2]],
+        });
+    }
+}
+
+/// `EntityList` name → `entity.<Name>.name`, for the default name tag of a mob that has
+/// `customNameVisible` set but no custom name.
+fn mob_lang_key(kind: u8) -> &'static str {
+    match kind {
+        50 => "entity.Creeper.name",
+        51 => "entity.Skeleton.name",
+        52 => "entity.Spider.name",
+        53 => "entity.Giant.name",
+        54 => "entity.Zombie.name",
+        55 => "entity.Slime.name",
+        56 => "entity.Ghast.name",
+        57 => "entity.PigZombie.name",
+        58 => "entity.Enderman.name",
+        59 => "entity.CaveSpider.name",
+        60 => "entity.Silverfish.name",
+        61 => "entity.Blaze.name",
+        62 => "entity.LavaSlime.name",
+        63 => "entity.EnderDragon.name",
+        64 => "entity.WitherBoss.name",
+        65 => "entity.Bat.name",
+        66 => "entity.Witch.name",
+        67 => "entity.Endermite.name",
+        68 => "entity.Guardian.name",
+        90 => "entity.Pig.name",
+        91 => "entity.Sheep.name",
+        92 => "entity.Cow.name",
+        93 => "entity.Chicken.name",
+        94 => "entity.Squid.name",
+        95 => "entity.Wolf.name",
+        96 => "entity.MushroomCow.name",
+        97 => "entity.SnowMan.name",
+        98 => "entity.Ozelot.name",
+        99 => "entity.VillagerGolem.name",
+        100 => "entity.EntityHorse.name",
+        101 => "entity.Rabbit.name",
+        120 => "entity.Villager.name",
+        _ => "entity.Mob.name",
+    }
+}
+
 fn load_world(args: &Args) -> (World, (i32, i32), i64) {
     let mut world = World::default();
     let seed = args.seed.unwrap_or_else(|| {
@@ -395,6 +465,33 @@ struct App {
     item_in_use_count: i32,
     /// Item entities announced by `SpawnObject`, waiting for their stack: (pos, velocity).
     pending_items: std::collections::HashMap<i32, (mc_core::Vec3, mc_core::Vec3)>,
+    /// `EntityXPOrb`s in the client world.
+    /// `EntityPainting`s in the client world.
+    paintings: Vec<entities::Painting>,
+    /// `EntityLightningBolt`s in the client world.
+    lightning: Vec<entities::Lightning>,
+    /// `Entity.ridingEntity` by rider id (`AttachEntity`).
+    attached: std::collections::HashMap<i32, i32>,
+    /// `WorldClient.mapBlockBreakProgress`: block -> (breaker, stage 0..9).
+    break_anims: std::collections::HashMap<BlockPos, (i32, u8)>,
+    /// `EntityPlayerSP.sleeping`/`bedLocation`.
+    bed: Option<BlockPos>,
+    /// `WorldClient.getWorldBorder`.
+    border: level::WorldBorder,
+    /// `NetHandlerPlayClient.clientBrand` (server brand from `MC|Brand`).
+    brand: String,
+    /// `Statistics`
+    stats: std::collections::HashMap<String, i32>,
+    /// `WorldClient.mapStorage` map data (`S34`).
+    maps: std::collections::HashMap<i32, level::MapData>,
+    /// `WorldClient.tileEntityMap` NBT (`S35`): skulls, banners, beacons, spawners…
+    tile_entities: std::collections::HashMap<BlockPos, mc_core::nbt::Compound>,
+    /// Sign text (`S33PacketUpdateSign`).
+    signs: std::collections::HashMap<BlockPos, [String; 4]>,
+    /// `Minecraft.setRenderViewEntity` (`S43PacketCamera`).
+    camera_entity: Option<i32>,
+    /// `GuiChat`'s pending tab completion: the text it was requested for and the matches.
+    tab_complete: Option<(String, Vec<String>)>,
 }
 
 impl App {
@@ -480,6 +577,19 @@ impl App {
             item_in_use: None,
             item_in_use_count: 0,
             pending_items: Default::default(),
+            paintings: Vec::new(),
+            lightning: Vec::new(),
+            attached: Default::default(),
+            break_anims: Default::default(),
+            bed: None,
+            border: level::WorldBorder::default(),
+            brand: String::new(),
+            stats: Default::default(),
+            maps: Default::default(),
+            tile_entities: Default::default(),
+            signs: Default::default(),
+            camera_entity: None,
+            tab_complete: None,
         }
     }
     /// `KeyBinding.isKeyDown`: keyboard codes against held keys, negative codes against mouse buttons.
@@ -1087,7 +1197,8 @@ impl App {
                     self.remote.map.insert(m.entity_id, r);
                 }
                 C::SpawnObject(o) => {
-                    let r = entities::Remote::new(o.entity_id, entities::Kind::Object(o.kind), o.x, o.y, o.z, o.yaw, o.pitch);
+                    let mut r = entities::Remote::new(o.entity_id, entities::Kind::Object(o.kind), o.x, o.y, o.z, o.yaw, o.pitch);
+                    r.data = o.data;
                     if o.kind == 2 {
                         let v = mc_core::Vec3::new(o.velocity.0 as f64 / 8000., o.velocity.1 as f64 / 8000., o.velocity.2 as f64 / 8000.);
                         self.pending_items.insert(o.entity_id, (r.pos, v));
@@ -1171,6 +1282,11 @@ impl App {
                         self.remote.map.remove(&id);
                         self.pending_items.remove(&id);
                         self.items.retain(|i| i.id != id as u32);
+                        self.paintings.retain(|p| p.id != id);
+                        self.lightning.retain(|l| l.id != id);
+                        self.attached.remove(&id);
+                        self.attached.retain(|_, vehicle| *vehicle != id);
+                        self.break_anims.retain(|_, (breaker, _)| *breaker != id);
                     }
                 }
                 C::CollectItem(c) => {
@@ -1336,6 +1452,137 @@ impl App {
                         }
                     }
                 }
+                C::SpawnExperienceOrb(o) => {
+                    // EntityXPOrb.setSize(0.5, 0.5); `xpValue` is the packet's count.
+                    let mut r = entities::Remote::new(o.entity_id, entities::Kind::XpOrb, o.x, o.y, o.z, 0, 0);
+                    r.data = o.count as i32;
+                    self.remote.map.insert(o.entity_id, r);
+                }
+                C::SpawnPainting(p) => {
+                    // EntityPainting.EnumArt by title; unknown titles keep the first art.
+                    let art = mc_render::objects::art_by_title(&p.title).unwrap_or(0);
+                    let (wpx, hpx) = mc_render::objects::ARTS[art].size;
+                    // EntityHanging.updateBoundingBox: the hanging block centre, pulled back
+                    // along the facing by 0.46875, centred on the art, then pushed half a block
+                    // along the counter-clockwise direction for even 32-pixel sizes.
+                    let (fx, fz) = match p.direction {
+                        0 => (0., 1.),  // SOUTH
+                        1 => (-1., 0.), // WEST
+                        2 => (0., -1.), // NORTH
+                        _ => (1., 0.),  // EAST
+                    };
+                    let (cx, cz) = match p.direction {
+                        0 => (1., 0.),  // rotateYCCW(SOUTH) = EAST
+                        1 => (0., 1.),  // rotateYCCW(WEST)  = SOUTH
+                        2 => (-1., 0.), // rotateYCCW(NORTH) = WEST
+                        _ => (0., -1.), // rotateYCCW(EAST)  = NORTH
+                    };
+                    let d4 = if wpx % 32 == 0 { 0.5 } else { 0. };
+                    let d5 = if hpx % 32 == 0 { 0.5 } else { 0. };
+                    let pos = mc_core::Vec3::new(
+                        p.pos.x as f64 + 0.5 - fx * 0.46875 + d4 * cx,
+                        p.pos.y as f64 + 0.5 + d5,
+                        p.pos.z as f64 + 0.5 - fz * 0.46875 + d4 * cz,
+                    );
+                    self.paintings.push(entities::Painting { id: p.entity_id, pos, yaw: p.direction as f32 * 90., art });
+                }
+                C::SpawnGlobalEntity(g) => {
+                    // Only EntityLightningBolt (type 1) exists.
+                    if g.kind == 1 {
+                        let p = mc_core::Vec3::new(g.x as f64 / 32., g.y as f64 / 32., g.z as f64 / 32.);
+                        self.lightning.push(entities::Lightning { id: g.entity_id, pos: p, ticks: 0 });
+                        self.play_sound("ambient.weather.thunder", Some(p), 10000.0, 0.8 + rand_f64() as f32 * 0.2);
+                        self.play_sound("ambient.weather.lightning.impact", Some(p), 2.0, 0.5 + rand_f64() as f32 * 0.2);
+                    }
+                }
+                C::UseBed(b) => {
+                    if b.entity_id == n.entity_id {
+                        self.bed = Some(b.pos);
+                    }
+                }
+                C::AttachEntity(a) => {
+                    if a.leash != 0 {
+                        // Leash to `vehicle_id`; the leash renderer is not ported yet.
+                    } else if a.vehicle_id == 0 {
+                        self.attached.remove(&a.entity_id);
+                    } else {
+                        self.attached.insert(a.entity_id, a.vehicle_id);
+                    }
+                }
+                C::EntityIdle(_) => {}
+                C::BlockAction(b) => {
+                    self.block_action(b.pos, b.block_id, b.byte1, b.byte2);
+                }
+                C::BlockBreakAnim(b) => {
+                    if b.stage < 0 {
+                        self.break_anims.remove(&b.pos);
+                    } else {
+                        self.break_anims.insert(b.pos, (b.breaker_id, b.stage as u8));
+                    }
+                }
+                C::ServerDifficulty(d) => self.info.difficulty = d.difficulty,
+                C::CombatEvent(_) => {
+                    // Vanilla only feeds Twitch metadata here; nothing is drawn.
+                }
+                C::Camera(c) => {
+                    self.camera_entity = if c.entity_id == n.entity_id { None } else { Some(c.entity_id) };
+                }
+                C::WorldBorder(w) => self.world_border(w),
+                C::PluginMessageS(p) => {
+                    if p.channel == "MC|Brand" {
+                        // The payload is a VarInt-prefixed UTF-8 string.
+                        self.brand = packet_string(&p.data);
+                    }
+                    // MC|TrList (villager trades) and MC|BOpen (book) need their GUIs, which are
+                    // not ported yet; the packet is accepted so the connection stays in sync.
+                }
+                C::Statistics(s) => {
+                    for (k, v) in s.entries {
+                        self.stats.insert(k, v);
+                    }
+                }
+                C::TabCompleteS(t) => {
+                    if let Some((text, _)) = &self.tab_complete {
+                        self.tab_complete = Some((text.clone(), t.matches));
+                    }
+                }
+                C::UpdateSignS(s) => {
+                    self.signs.insert(s.pos, s.lines);
+                }
+                C::SignEditorOpen(_) => {
+                    // GuiEditSign is not ported yet; the server closes the window itself.
+                }
+                C::UpdateTileEntity(t) => {
+                    if let Some(nbt) = t.nbt {
+                        self.tile_entities.insert(t.pos, nbt);
+                    } else {
+                        self.tile_entities.remove(&t.pos);
+                    }
+                }
+                C::Maps(m) => {
+                    let e = self.maps.entry(m.map_id).or_insert_with(|| level::MapData { scale: m.scale, colors: vec![0; 128 * 128], icons: Vec::new() });
+                    e.scale = m.scale;
+                    e.icons = m.icons.iter().map(|i| (i.kind, i.x as u8, i.z as u8, i.direction)).collect();
+                    if m.columns > 0 && m.rows > 0 {
+                        for i in 0..m.columns as usize {
+                            for j in 0..m.rows as usize {
+                                let (x, z) = (m.x as usize + i, m.z as usize + j);
+                                if x < 128 && z < 128 {
+                                    if let Some(b) = m.data.get(i + j * m.columns as usize) {
+                                        e.colors[x + z * 128] = *b;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                C::UpdateEntityNbt(_) => {
+                    // Entity.clientUpdateEntityNBT is a no-op for every 1.8.9 entity.
+                }
+                C::SetCompression(_) => {
+                    // A login-state packet; a play-state copy is ignored like vanilla's local
+                    // channel check.
+                }
                 C::Disconnect(d) => {
                     let text = chat::format(&d.reason, &self.ui.lang);
                     self.hud.add_chat(format!("{}: {text}", self.ui.lang.get("disconnect.lost")));
@@ -1345,9 +1592,73 @@ impl App {
                 _ => {}
             }
         }
+        // `EntityLightningBolt.onUpdate`: remove after 4 client ticks (the client does not draw
+        // the bolt for long).
+        for l in &mut self.lightning {
+            l.ticks += 1;
+        }
+        self.lightning.retain(|l| l.ticks < 4);
         self.refresh_edits(&edits);
         // Sections of newly arrived or unloaded chunks.
         self.refresh_edits(&[]);
+    }
+
+    /// `S24PacketBlockAction` → `World.addBlockEvent` → `Block.onBlockEventReceived`.
+    fn block_action(&mut self, pos: BlockPos, block_id: i32, _byte1: u8, byte2: u8) {
+        let state = self.world.state_at(pos.x, pos.y, pos.z);
+        if state.block().id as i32 != block_id {
+            return;
+        }
+        match block_id {
+            // BlockNote: the note block's instrument comes from its state; `byte2` is the
+            // pitch step (BlockNote ignores the event id).
+            25 => {
+                let name = match state.value("instrument") {
+                    Some("bass") => "note.bass",
+                    Some("snare") => "note.snare",
+                    Some("hat") => "note.hat",
+                    Some("basedrum") => "note.basedrum",
+                    _ => "note.harp",
+                };
+                let pitch = 2f32.powf((byte2 as f32 - 12.) / 12.);
+                let c = mc_core::Vec3::new(pos.x as f64 + 0.5, pos.y as f64 + 0.5, pos.z as f64 + 0.5);
+                self.play_sound(name, Some(c), 3.0, pitch);
+            }
+            // BlockChest/BlockEnderChest use event 1 to set the open count for the lid
+            // animation; the tile-entity renderer that reads it is not ported yet.
+            _ => {}
+        }
+    }
+
+    /// `S44PacketWorldBorder.func_179788_a` for each action.
+    fn world_border(&mut self, w: mc_protocol::packets::WorldBorder) {
+        use mc_protocol::packets::WorldBorder as W;
+        match w {
+            W::SetSize { diameter } => {
+                self.border.size = diameter;
+                self.border.target_size = diameter;
+                self.border.lerp_end = 0.;
+            }
+            W::LerpSize { old_diameter, new_diameter, speed } => {
+                // WorldBorder.setTransition(oldSize, newSize, timeInMs)
+                self.border.size = old_diameter;
+                self.border.target_size = new_diameter;
+                self.border.lerp_start = level::now_seconds();
+                self.border.lerp_end = self.border.lerp_start + speed as f64 / 1000.;
+            }
+            W::SetCenter { x, z } => self.border.center = (x, z),
+            W::Initialize { x, z, old_diameter, new_diameter, speed, warning_distance, warning_time, .. } => {
+                self.border.center = (x, z);
+                self.border.size = old_diameter;
+                self.border.target_size = new_diameter;
+                self.border.lerp_start = level::now_seconds();
+                self.border.lerp_end = self.border.lerp_start + speed as f64 / 1000.;
+                self.border.warning_blocks = warning_distance;
+                self.border.warning_time = warning_time;
+            }
+            W::SetWarningTime { time } => self.border.warning_time = time,
+            W::SetWarningBlocks { blocks } => self.border.warning_blocks = blocks,
+        }
     }
 
     /// `handleEntityMovement` / `handleEntityTeleport`: relative (×32 fixed point) or absolute.
@@ -2253,6 +2564,11 @@ impl App {
             })
             .collect();
         let e = &self.entity;
+        let (frame_quads, fixed_items) = self.item_frames(pt);
+        let mut world_quads = self.entity_blocks(pt);
+        world_quads.extend(frame_quads);
+        let mut damage = self.damage_quads();
+        damage.extend(self.break_anim_quads(pt));
         let frame = mc_render::avatar::AvatarFrame {
             pos,
             body_yaw: e.prev_render_yaw_offset + (e.render_yaw_offset - e.prev_render_yaw_offset) * pt,
@@ -2278,9 +2594,13 @@ impl App {
             slim: self.net.as_ref().is_some_and(|n| self.skins.loaded.get(&n.uuid).map_or(skins::default_slim(n.uuid), |s| s.1)),
             skin: self.net.as_ref().and_then(|n| self.skins.loaded.get(&n.uuid)).map(|s| s.0),
             dropped,
-            damage: self.damage_quads(),
+            damage,
             others: self.other_players(pt),
             mobs: self.mob_frames(pt),
+            objects: self.object_frames(pt),
+            billboards: self.billboards(pt),
+            fixed_items,
+            world_quads,
             armor: std::array::from_fn(|i| self.ui.armor[3 - i].and_then(|s| tooltip::armor_piece(&self.catalogue, &s))),
             use_anim: self.item_in_use.filter(|_| self.item_in_use_count > 0).map(|s| {
                 let (a, max) = item_use::action(self.catalogue.items[s.item].id);
@@ -2309,6 +2629,9 @@ impl App {
             .values()
             .filter_map(|r| {
                 let entities::Kind::Mob(kind) = r.kind else { return None };
+                if r.invisible() {
+                    return None;
+                }
                 let p = r.interpolated(pt);
                 let range = (r.width * 2. + r.height) / 3. * 64.;
                 let d2 = (p.x - cam.x as f64).powi(2) + (p.y - cam.y as f64).powi(2) + (p.z - cam.z as f64).powi(2);
@@ -2402,12 +2725,212 @@ impl App {
             .collect()
     }
 
+    /// Non-living entity frames: `RenderArrow`, `RenderXPOrb`, `ArmorStandRenderer`,
+    /// `RenderPainting`. `RenderManager.shouldRender` range for each.
+    fn object_frames(&self, pt: f32) -> Vec<mc_render::objects::ObjectFrame> {
+        use mc_render::objects::ObjectFrame;
+        let cam = self.camera.pos;
+        let mut out = Vec::new();
+        let range_ok = |p: mc_core::Vec3, w: f64, h: f64| {
+            let range = (w * 2. + h) / 3. * 64.;
+            (p.x - cam.x as f64).powi(2) + (p.y - cam.y as f64).powi(2) + (p.z - cam.z as f64).powi(2) < range * range
+        };
+        for r in self.remote.map.values() {
+            let p = r.interpolated(pt);
+            if !range_ok(p, r.width, r.height) {
+                continue;
+            }
+            let (sky, block) = self.world.light(p.x.floor() as i32, (p.y + r.height * 0.5).floor() as i32, p.z.floor() as i32);
+            let light = self.lightmap_color(sky, block);
+            let pos = Vec3::new(p.x as f32, p.y as f32, p.z as f32);
+            match r.kind {
+                // RenderArrow (the client does not simulate the arrow's own collision, so the
+                // shake timer is not reproduced).
+                entities::Kind::Object(60) if !r.invisible() => {
+                    out.push(ObjectFrame::Arrow { pos, yaw: r.yaw, pitch: r.pitch, shake: 0., light });
+                }
+                // ArmorStandRenderer: the wooden stand. Armour/held layers are not drawn yet.
+                entities::Kind::Object(78) if !r.invisible() => {
+                    let flags = r.meta_byte(10) as u8;
+                    let body_rot = r.meta_rot(12).unwrap_or((0., 0., 0.));
+                    out.push(ObjectFrame::ArmorStand { pos, yaw: r.yaw, head_yaw: r.head_yaw, pitch: r.pitch, flags, light, body_rot });
+                }
+                // EntityXPOrb.getTextureByXP: `xpValue` rode in the spawn packet.
+                entities::Kind::XpOrb => {
+                    out.push(ObjectFrame::XpOrb {
+                        pos,
+                        icon: mc_render::objects::xp_texture(r.data),
+                        color: mc_render::objects::xp_color(r.ticks_existed as f32 + pt),
+                        light,
+                    });
+                }
+                _ => {}
+            }
+        }
+        for p in &self.paintings {
+            if !range_ok(p.pos, 1., 1.) {
+                continue;
+            }
+            let (sky, block) = self.world.light(p.pos.x.floor() as i32, p.pos.y.floor() as i32, p.pos.z.floor() as i32);
+            out.push(ObjectFrame::Painting { pos: Vec3::new(p.pos.x as f32, p.pos.y as f32, p.pos.z as f32), yaw: p.yaw, art: p.art, light: self.lightmap_color(sky, block) });
+        }
+        out
+    }
+
+    /// `RenderSnowball`/`RenderPotion` billboards: snowballs, eggs, ender pearls, eyes of
+    /// ender, experience bottles, fireworks and splash potions.
+    fn billboards(&self, pt: f32) -> Vec<mc_render::avatar::Billboard> {
+        let mut out = Vec::new();
+        for r in self.remote.map.values() {
+            let entities::Kind::Object(kind) = r.kind else { continue };
+            let item_id = match kind {
+                61 => 332,  // snowball
+                62 => 344,  // egg
+                65 => 368,  // ender pearl
+                72 => 381,  // eye of ender
+                75 => 384,  // experience bottle
+                76 => 401,  // fireworks
+                73 => 373,  // splash potion
+                _ => continue,
+            };
+            if r.invisible() {
+                continue;
+            }
+            let p = r.interpolated(pt);
+            let (sky, block) = self.world.light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let damage = if kind == 73 { r.data as i16 } else { 0 };
+            let Some(stack) = self.catalogue.index_of(item_id, damage.max(0) as u16).map(|i| mc_gui::ItemStack::new(i, 1, damage)) else { continue };
+            let Some(item) = self.held_item(&stack) else { continue };
+            out.push(mc_render::avatar::Billboard { pos: Vec3::new(p.x as f32, p.y as f32, p.z as f32), item, light: self.lightmap_color(sky, block) });
+        }
+        out
+    }
+
+    /// `RenderItemFrame`: the frame model and the displayed stack with the FIXED transform.
+    fn item_frames(&self, pt: f32) -> (Vec<mc_render::avatar::WorldQuad>, Vec<mc_render::avatar::FixedItem>) {
+        use mc_render::avatar::FixedItem;
+        let mut quads = Vec::new();
+        let mut items = Vec::new();
+        let Some(frame_model) = &self.models.item_frame else { return (quads, items) };
+        for r in self.remote.map.values() {
+            if r.kind != entities::Kind::Object(71) {
+                continue;
+            }
+            let p = r.interpolated(pt);
+            // EntityHanging placed the entity so that floor(pos) is the hanging block.
+            let block = BlockPos::new(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let (sky, block_light) = self.world.light(block.x, block.y, block.z);
+            let light = self.lightmap_color(sky, block_light);
+            let base = glam::Mat4::from_translation(Vec3::new(block.x as f32 + 0.5, block.y as f32 + 0.5, block.z as f32 + 0.5))
+                * glam::Mat4::from_rotation_y((180. - r.yaw).to_radians())
+                * glam::Mat4::from_translation(Vec3::new(-0.5, -0.5, -0.5));
+            push_model_quads(&mut quads, base, frame_model, light);
+            let stack = match r.meta.get(&8) {
+                Some(mc_protocol::MetaValue::Item(item)) => net::slot_stack(&self.catalogue, item),
+                _ => None,
+            };
+            if let Some(stack) = stack {
+                if let Some(item) = self.held_item(&stack) {
+                    let rot = r.meta_byte(9) as f32 * 45.;
+                    let m = base
+                        * glam::Mat4::from_translation(Vec3::new(0., 0., 0.4375))
+                        * glam::Mat4::from_rotation_z(rot.to_radians())
+                        * glam::Mat4::from_scale(Vec3::splat(0.5));
+                    items.push(FixedItem { m, item, light });
+                }
+            }
+        }
+        (quads, items)
+    }
+
+    /// `RenderTNTPrimed` and `RenderFallingBlock`: block models in entity space.
+    fn entity_blocks(&self, pt: f32) -> Vec<mc_render::avatar::WorldQuad> {
+        use mc_render::avatar::WorldQuad;
+        let mut out = Vec::new();
+        let mut emit = |state: mc_data::StateId, m: glam::Mat4, light: [f32; 3]| {
+            let Some(entry) = self.models.get_state(state) else { return };
+            let model = &entry.models[mc_assets::model::pick_weighted(&entry.weights, 0, 0, 0)].1;
+            for q in &model.quads {
+                let pos = q.pos.map(|p| m.transform_point3(Vec3::new(p[0], p[1], p[2])));
+                out.push(WorldQuad {
+                    pos,
+                    uv: q.uv,
+                    color: [q.shade * light[0], q.shade * light[1], q.shade * light[2]],
+                });
+            }
+        };
+        for r in self.remote.map.values() {
+            let p = r.interpolated(pt);
+            let (sky, block_light) = self.world.light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let light = self.lightmap_color(sky, block_light);
+            match r.kind {
+                // RenderTNTPrimed: translate to the block centre, swell near the end, then
+                // R_y(90°) . T(-0.5, -0.5, 0.5) (renderModelBrightness's item orientation).
+                entities::Kind::Object(50) => {
+                    let fuse = r.fuse as f32 - pt + 1.;
+                    let swell = if fuse < 10. { 1. + ((1. - fuse / 10.).clamp(0., 1.).powi(2)).powi(2) * 0.3 } else { 1. };
+                    let Some(tnt) = mc_data::Block::by_id(46).and_then(|b| b.state_from_meta(0)) else { continue };
+                    let base = glam::Mat4::from_translation(Vec3::new(p.x as f32, p.y as f32 + 0.5, p.z as f32))
+                        * glam::Mat4::from_scale(Vec3::splat(swell))
+                        * glam::Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.5))
+                        * glam::Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2);
+                    emit(tnt, base, light);
+                }
+                // RenderFallingBlock: the model at the fractional position inside its block.
+                entities::Kind::Object(70) => {
+                    let state = mc_data::StateId::try_from_network(r.data & 0xFFFF).unwrap_or(mc_data::StateId::AIR);
+                    if state == mc_data::StateId::AIR {
+                        continue;
+                    }
+                    let fx = p.x - p.x.floor();
+                    let fy = p.y - p.y.floor();
+                    let fz = p.z - p.z.floor();
+                    let m = glam::Mat4::from_translation(Vec3::new((fx - 0.5) as f32, fy as f32, (fz - 0.5) as f32));
+                    emit(state, m, light);
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// `WorldClient.destroyBlockInWorldPartially`: the destroy-stage overlay for other
+    /// players' blocks, on top of the local one.
+    fn break_anim_quads(&self, pt: f32) -> Vec<mc_render::avatar::DamageQuad> {
+        let mut out = Vec::new();
+        let _ = pt;
+        for (pos, (_, stage)) in &self.break_anims {
+            let atlas = &self.models.atlas;
+            let crack = atlas.sprite(&format!("blocks/destroy_stage_{}", (*stage).min(9)));
+            let stored = self.world.state_at(pos.x, pos.y, pos.z);
+            let actual = stored.actual_state(&self.world, *pos);
+            let Some(entry) = self.models.get_state(actual) else { continue };
+            if entry.models.is_empty() {
+                continue;
+            }
+            let model = &entry.models[mc_assets::model::pick_weighted(&entry.weights, pos.x, pos.y, pos.z)].1;
+            let origin = Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32);
+            out.extend(model.quads.iter().filter_map(|q| {
+                let c = [0.25f32, 0.75].map(|t| q.uv[0][0] * t + q.uv[2][0] * (1. - t));
+                let own = atlas.sprite_at((c[0] + c[1]) / 2., (q.uv[0][1] + q.uv[2][1]) / 2.)?;
+                let uv = q.uv.map(|[u, v]| {
+                    let fu = (u - own.min_u) / (own.max_u - own.min_u);
+                    let fv = (v - own.min_v) / (own.max_v - own.min_v);
+                    [crack.min_u + fu * (crack.max_u - crack.min_u), crack.min_v + fv * (crack.max_v - crack.min_v)]
+                });
+                Some(mc_render::avatar::DamageQuad { pos: q.pos.map(|p| origin + Vec3::from(p)), uv })
+            }));
+        }
+        out
+    }
+
     fn other_players(&self, pt: f32) -> Vec<mc_render::avatar::AvatarFrame> {
         let cam = self.entity.interpolated(pt);
         self.remote
             .map
             .values()
             .filter(|r| r.kind == entities::Kind::Player)
+            .filter(|r| !r.invisible())
             .filter_map(|r| {
                 let p = r.interpolated(pt);
                 let d2 = (p.x - cam.x as f64).powi(2) + (p.z - cam.z as f64).powi(2);
@@ -2960,20 +3483,53 @@ impl App {
         let mut tags: Vec<(f32, f32, f32, String, bool)> = Vec::new();
         let me = self.my_name();
         for r in self.remote.map.values() {
-            if r.kind != entities::Kind::Player || r.name.is_empty() {
+            // `canRenderName`: a ridden entity has no tag; the local player has none.
+            if self.attached.values().any(|v| *v == r.id) {
                 continue;
             }
-            // canRenderName: a team's name tag visibility decides first.
-            if self.scoreboard.name_tag_visible(&r.name, &me) == Some(false) {
-                continue;
-            }
+            let (text, height, sneaking, faint) = match r.kind {
+                entities::Kind::Player => {
+                    if r.name.is_empty() || r.invisible() {
+                        continue;
+                    }
+                    // A team's name tag visibility decides first.
+                    if self.scoreboard.name_tag_visible(&r.name, &me) == Some(false) {
+                        continue;
+                    }
+                    (self.scoreboard.format_name(&r.name), 1.8, r.sneaking, r.sneaking)
+                }
+                // ArmorStandRenderer.canRenderName: `getAlwaysRenderNameTag()` (byte 3), even
+                // when the stand itself is invisible. Hypixel's holograms rely on this.
+                entities::Kind::Object(78) => {
+                    if !r.name_visible() {
+                        continue;
+                    }
+                    let name = r.custom_name().map(str::to_string).unwrap_or_else(|| self.ui.lang.get("entity.ArmorStand.name"));
+                    (name, r.height as f32, false, false)
+                }
+                entities::Kind::Mob(kind) => {
+                    // RenderLiving.canRenderName: the always-render flag, or a custom name on
+                    // the entity the crosshair points at.
+                    let pointed = self.pointed_entity == Some(r.id);
+                    if r.invisible() || !(r.name_visible() || (r.custom_name().is_some() && pointed)) {
+                        continue;
+                    }
+                    let name = r.custom_name().map(str::to_string).unwrap_or_else(|| self.ui.lang.get(mob_lang_key(kind)));
+                    (name, r.height as f32, false, false)
+                }
+                _ => continue,
+            };
             let p = r.interpolated(pt);
-            let base = Vec3::new(p.x as f32, p.y as f32 + 1.8 + 0.5, p.z as f32) - self.camera.pos;
-            let max = if r.sneaking { 32. } else { 64. };
+            // `RendererLivingEntity.renderName`: y + height + 0.5, lowered by height/2 for a
+            // child; 64 blocks (32 when sneaking).
+            let child = r.is_child();
+            let y = p.y as f32 + height + 0.5 - if child { height / 2. } else { 0. };
+            let base = Vec3::new(p.x as f32, y, p.z as f32) - self.camera.pos;
+            let max = if sneaking { 32. } else { 64. };
             if base.length() >= max {
                 continue;
             }
-            let mut project = |rel: Vec3, text: String, faint: bool| {
+            let project = |rel: Vec3, text: String, faint: bool, tags: &mut Vec<(f32, f32, f32, String, bool)>| {
                 let clip = vp * rel.extend(1.);
                 if clip.w <= 0.05 {
                     return;
@@ -2983,16 +3539,18 @@ impl App {
                 let y = (0.5 - ny * 0.5) * sr.height_f as f32;
                 tags.push((clip.w, x, y, text, faint));
             };
-            let mut rel = base;
-            // RenderPlayer.renderOffsetLivingLabel: the below-name objective within 10 blocks,
-            // the name raised by FONT_HEIGHT * 1.15 * 0.026666668 above it.
-            if !r.sneaking && base.length_squared() < 100. {
+            if r.kind == entities::Kind::Player && !r.sneaking && base.length_squared() < 100. {
+                // RenderPlayer.renderOffsetLivingLabel: the below-name objective within 10
+                // blocks, the name raised by FONT_HEIGHT * 1.15 * 0.026666668 above it.
+                let mut rel = base;
                 if let Some(s) = self.scoreboard.below_name(&r.name) {
-                    project(rel, s, false);
+                    project(rel, s, false, &mut tags);
                     rel.y += 9. * 1.15 * 0.026666668;
                 }
+                project(rel, text, faint, &mut tags);
+                continue;
             }
-            project(rel, self.scoreboard.format_name(&r.name), r.sneaking);
+            project(base, text, faint, &mut tags);
         }
         // Far tags first so near ones draw on top.
         tags.sort_by(|a, b| b.0.total_cmp(&a.0));

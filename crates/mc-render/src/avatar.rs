@@ -50,6 +50,31 @@ pub struct ArmorPiece {
     pub glint: bool,
 }
 
+/// A block-model quad in world space (TNT, falling blocks, item frames). UVs are already in
+/// block-atlas space and the colour includes the per-face light and entity brightness.
+#[derive(Clone, Copy, Debug)]
+pub struct WorldQuad {
+    pub pos: [Vec3; 4],
+    pub uv: [[f32; 2]; 4],
+    pub color: [f32; 3],
+}
+
+/// `RenderSnowball` / `RenderPotion`: the item model as a GROUND-transform billboard.
+#[derive(Clone)]
+pub struct Billboard {
+    pub pos: Vec3,
+    pub item: HeldItem,
+    pub light: [f32; 3],
+}
+
+/// An item with its own model matrix in camera-relative space (item-frame contents).
+#[derive(Clone)]
+pub struct FixedItem {
+    pub m: Mat4,
+    pub item: HeldItem,
+    pub light: [f32; 3],
+}
+
 /// An item being used (`getItemInUseCount() > 0`).
 #[derive(Clone, Copy, Debug)]
 pub struct UseAnim {
@@ -106,6 +131,14 @@ pub struct AvatarFrame {
     pub armor: [Option<ArmorPiece>; 4],
     /// Living mobs in view.
     pub mobs: Vec<MobFrame>,
+    /// Non-living entities drawn from the entity atlas (arrows, XP orbs, paintings, stands).
+    pub objects: Vec<crate::objects::ObjectFrame>,
+    /// Item-model billboards (`RenderSnowball`).
+    pub billboards: Vec<Billboard>,
+    /// Item-frame contents.
+    pub fixed_items: Vec<FixedItem>,
+    /// Block-model quads in world space (TNT, falling blocks, item frames).
+    pub world_quads: Vec<WorldQuad>,
 }
 
 /// Physical-pixel placement of an inventory player preview.
@@ -143,6 +176,8 @@ pub struct AvatarRenderer {
     skins: wgpu::Texture,
     glint_pipeline: wgpu::RenderPipeline,
     mobs: MobModels,
+    /// Armour-stand parts, posed per frame.
+    stands: crate::objects::ArmorStandModel,
     /// Mob texture rectangles in the mob atlas: (u, v, width, height), normalized.
     mob_atlas: std::collections::HashMap<&'static str, [f32; 4]>,
     /// `blendFunc(ONE, ONE)` eye layers, drawn after the opaque geometry.
@@ -212,6 +247,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(v.kind==6u){{c*=textureSampleLevel(armor,samp,v.uv,0.0);}}
  if(v.kind==7u){{c*=textureSampleLevel(glint,samp,fract(v.uv),0.0);}}
  if(v.kind==8u){{c*=textureSampleLevel(mobs,samp,v.uv,0.0);}}
+ if(v.kind==9u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);}}
  c=vec4<f32>(mix(c.rgb,v.overlay.rgb,v.overlay.a),c.a);
  if(v.kind==4u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);c=vec4<f32>(min(c.rgb*2.0,vec3<f32>(1.0)),c.a);}}
  if(v.kind!=3u && c.a<=0.1){{discard;}}
@@ -466,6 +502,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             glint_pipeline,
             glint: Vec::new(),
             mobs: MobModels::new(),
+            stands: crate::objects::ArmorStandModel::new(),
             mob_atlas,
             additive_pipeline,
             additive: Vec::new(),
@@ -517,6 +554,27 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             }
             for m in &frame.mobs {
                 self.mob(&mut verts, m, world_vp, cam.pos);
+            }
+            for o in &frame.objects {
+                self.object(&mut verts, o, world_vp, cam);
+            }
+            for b in &frame.billboards {
+                // RenderSnowball: translate, scale 0.5, rotate(-playerViewY, Y),
+                // rotate(playerViewX, X), then the item's GROUND transform.
+                let m = Mat4::from_translation(b.pos - cam.pos)
+                    * Mat4::from_scale(Vec3::splat(0.5))
+                    * Mat4::from_rotation_y((-cam.yaw).to_radians())
+                    * Mat4::from_rotation_x(cam.pitch.to_radians());
+                render_item(&mut verts, &mut self.glint, world_vp, m, &b.item, TransformType::Ground, lights_in(Mat3::IDENTITY), b.light);
+            }
+            for f in &frame.fixed_items {
+                render_item(&mut verts, &mut self.glint, world_vp, f.m, &f.item, TransformType::Fixed, lights_in(Mat3::IDENTITY), f.light);
+            }
+            for q in &frame.world_quads {
+                let clip = q.pos.map(|p| world_vp * (p - cam.pos).extend(1.));
+                for i in [0, 1, 2, 0, 2, 3] {
+                    verts.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: [q.color[0], q.color[1], q.color[2], 1.], kind: 9., overlay: [0.; 4] });
+                }
             }
             for d in &frame.dropped {
                 dropped_item(&mut verts, &mut self.glint, world_vp, cam.pos, d);
@@ -892,6 +950,33 @@ impl AvatarRenderer {
             render_item(out, &mut self.glint, vp, m, item, TransformType::ThirdPerson, lights, f.light);
         }
     }
+
+    /// Non-living entities: `RenderArrow`, `RenderXPOrb`, `RenderPainting`, `ArmorStandRenderer`.
+    fn object(&mut self, out: &mut Vec<Vertex>, f: &crate::objects::ObjectFrame, vp: Mat4, cam: &Camera) {
+        let lights = lights_in(Mat3::IDENTITY);
+        let light = f.light();
+        let (atlas, glint, additive) = (&self.mob_atlas, &mut self.glint, &mut self.additive);
+        crate::objects::render(f, &mut self.stands, cam.yaw, cam.pitch, &mut |l, pm, q| {
+            if l.glint {
+                armor_glint(glint, vp * pm, q, 0., light);
+                return;
+            }
+            let (kind, r) = match l.tex {
+                Tex::Mob(t) => (MOB, atlas.get(t).copied().unwrap_or([0., 0., 0., 0.])),
+                Tex::Armor(cell) => (ARMOR, [0., cell as f32 / ARMOR_CELLS as f32, 1., 1. / ARMOR_CELLS as f32]),
+            };
+            let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+            let shade = standard_lighting(n, lights);
+            let alpha = crate::objects::layer_alpha(l);
+            let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], alpha];
+            let target = if l.additive { &mut *additive } else { &mut *out };
+            let clip = q.pos.map(|p| vp * ((pm * p.extend(1.)).truncate() - cam.pos).extend(1.));
+            for i in [0, 1, 2, 0, 2, 3] {
+                let [u, v] = q.uv[i];
+                target.push(Vertex { clip: clip[i].to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay: [0.; 4] });
+            }
+        });
+    }
 }
 
 /// `LayerArmorBase.renderGlint` for one quad: two passes, lighting off, color
@@ -914,7 +999,13 @@ fn armor_glint(glint: &mut Vec<Vertex>, mvp: Mat4, q: &ModelQuad, age: f32, ligh
 /// Shelf-packs every mob texture into one atlas.
 #[allow(clippy::type_complexity)]
 fn mob_atlas(load: &dyn Fn(&str) -> image::RgbaImage) -> (image::RgbaImage, std::collections::HashMap<&'static str, [f32; 4]>) {
-    let mut imgs: Vec<(&'static str, image::RgbaImage)> = crate::mobs::TEXTURES.iter().map(|t| (*t, load(&format!("textures/entity/{t}.png")))).collect();
+    let mut imgs: Vec<(&'static str, image::RgbaImage)> = crate::mobs::TEXTURES
+        .iter()
+        .chain(crate::objects::TEXTURES.iter())
+        .map(|t| (*t, load(&format!("textures/entity/{t}.png"))))
+        .collect();
+    // Object-atlas images outside `textures/entity/` (the painting sheet).
+    imgs.extend(crate::objects::EXTRA_TEXTURES.iter().map(|(k, p)| (*k, load(p))));
     imgs.sort_by_key(|(_, i)| std::cmp::Reverse((i.height(), i.width())));
     let width = 1024u32.max(imgs.iter().map(|(_, i)| i.width()).max().unwrap_or(0));
     let (mut x, mut y, mut row) = (0u32, 0u32, 0u32);

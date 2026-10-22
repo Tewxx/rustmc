@@ -27,6 +27,10 @@ pub struct BlockModels {
     missing: Vec<ModelLocation>,
     pub colors: BlockColors,
     pub items: crate::items::ItemModels,
+    /// `item_frame#normal` / `item_frame#map`: the entity model `RenderItemFrame` bakes
+    /// outside the blockstate table.
+    pub item_frame: Option<BakedModel>,
+    pub item_frame_map: Option<BakedModel>,
 }
 
 /// `ModelBakery.LOCATIONS_BUILTIN_TEXTURES`
@@ -109,10 +113,20 @@ impl BlockModels {
             entries[state.0 as usize] = Some(index);
         }
         textures.extend(crate::items::ItemModels::textures(&mut loader));
+        // `RenderItemFrame`'s two models are not blockstates; their textures still belong in
+        // the block atlas.
+        for name in ["block/item_frame", "block/item_frame_map"] {
+            if let Some(m) = loader.get(name) {
+                textures.extend(m.texture_names());
+            }
+        }
         textures.extend(BUILTIN_TEXTURES.iter().map(|t| t.to_string()));
         // Block particle textures (breaking particles, `getParticleTexture`).
         let atlas = Atlas::build(assets, textures);
         let items = crate::items::ItemModels::load(&mut loader, &atlas);
+        let identity = Variant { model: String::new(), x: 0, y: 0, uvlock: false, weight: 1 };
+        let item_frame = loader.get("block/item_frame").map(|m| model::bake(m, &identity, &atlas));
+        let item_frame_map = loader.get("block/item_frame_map").map(|m| model::bake(m, &identity, &atlas));
         let baked = pending
             .into_iter()
             .map(|variants| {
@@ -131,7 +145,7 @@ impl BlockModels {
                 BlockEntry { models, weights }
             })
             .collect();
-        Self { atlas, entries, baked, missing, colors: BlockColors::load(assets), items }
+        Self { atlas, entries, baked, missing, colors: BlockColors::load(assets), items, item_frame, item_frame_map }
     }
 
     pub fn get_state(&self, state: StateId) -> Option<&BlockEntry> {

@@ -235,6 +235,59 @@ fn handle(stream: TcpStream) {
                             play(PlayClientbound::UpdateScore(UpdateScore { name: who.into(), action: ScoreAction::Change, objective: obj.into(), value: v }));
                         }
                     }
+                    if std::env::var_os("MOCK_OBJECTS").is_some() {
+                        // Non-living entities: arrows, TNT, fireballs, an item frame, a
+                        // painting, an invisible armour-stand hologram and an XP orb.
+                        use mc_protocol::MetaValue::{Byte, Item, Rotations, String as MString};
+                        play(PlayClientbound::PlayerAbilitiesS(PlayerAbilitiesS { flags: 6, fly_speed: 0.05, walk_speed: 0.1 }));
+                        play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 5.0, z: 10.5, yaw: 0.0, pitch: 8.0, flags: 0 }));
+                        let obj = |id: i32, kind: i8, x: f64, y: f64, z: f64, yaw: i8, pitch: i8, data: i32| PlayClientbound::SpawnObject(SpawnObject {
+                            entity_id: id,
+                            kind,
+                            x: (x * 32.) as i32,
+                            y: (y * 32.) as i32,
+                            z: (z * 32.) as i32,
+                            yaw,
+                            pitch,
+                            data,
+                            velocity: (0, 0, 0),
+                        });
+                        for (i, x) in [6.5f64, 7.5, 8.5].iter().enumerate() {
+                            play(obj(200 + i as i32, 60, *x, 5.2, 14.5, (i as i8) * 32, 24, 0));
+                        }
+                        play(obj(210, 50, 8.5, 4.0, 13.5, 0, 0, 0));
+                        play(obj(211, 63, 10.5, 5.5, 14.5, 0, 0, 0));
+                        play(obj(212, 64, 10.5, 4.6, 14.5, 0, 0, 0));
+                        // Item frame on the west face of the block at (8,5,12): facing east
+                        // (horizontal index 3), so its yaw is 270.
+                        play(obj(220, 71, 11.0, 5.0, 13.0, (90. * 256. / 360.) as i8, 0, 1));
+                        play(PlayClientbound::EntityMetadata(EntityMetadata {
+                            entity_id: 220,
+                            metadata: vec![
+                                (8, Item(Some(mc_protocol::Slot { id: 276, count: 1, damage: 0, nbt: None }))),
+                                (9, Byte(2)),
+                            ],
+                        }));
+                        play(PlayClientbound::SpawnPainting(SpawnPainting { entity_id: 230, title: "Aztec".into(), pos: BlockPos::new(5, 5, 13), direction: 2 }));
+                        // Invisible armour stand with a two-part hologram would be two stands;
+                        // one line is enough to check the name-tag path.
+                        play(obj(240, 78, 8.5, 4.0, 16.5, 0, 0, 0));
+                        play(PlayClientbound::EntityMetadata(EntityMetadata {
+                            entity_id: 240,
+                            metadata: vec![
+                                (0, Byte(0x20)),
+                                (2, MString("\u{a7}b\u{a7}lMOCK HOLOGRAM".into())),
+                                (3, Byte(1)),
+                                (10, Byte(4)),
+                                (11, Rotations(0., 0., 0.)),
+                            ],
+                        }));
+                        play(PlayClientbound::SpawnExperienceOrb(SpawnExperienceOrb { entity_id: 250, x: (6.5 * 32.) as i32, y: (4.5 * 32.) as i32, z: (13.5 * 32.) as i32, count: 7 }));
+                    }
+                    if std::env::var_os("MOCK_BREAK").is_some() {
+                        // Another player's destroy-stage overlay on the grass block ahead.
+                        play(PlayClientbound::BlockBreakAnim(BlockBreakAnim { breaker_id: 7, pos: BlockPos::new(8, 3, 12), stage: 6 }));
+                    }
                     if std::env::var_os("MOCK_CHEST").is_some() {
                         play(PlayClientbound::OpenWindow(OpenWindow { window_id: 3, kind: "minecraft:chest".into(), title: r#"{"text":"Kit Selector","color":"dark_red"}"#.into(), slots: 27, entity_id: 0 }));
                         let mut items: Vec<Option<mc_protocol::Slot>> = vec![None; 63];

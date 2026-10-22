@@ -10,11 +10,18 @@ pub enum Kind {
     Mob(u8),
     /// `SpawnObject` type id (2 = item, waiting for its stack in metadata).
     Object(i8),
+    /// `S11PacketSpawnExperienceOrb` (its own spawn packet, not `SpawnObject`).
+    XpOrb,
 }
 
 pub struct Remote {
     pub id: i32,
     pub kind: Kind,
+    /// `SpawnObject`'s data int: item frame facing, falling-block state id, potion damage,
+    /// fishing-rod owner.
+    pub data: i32,
+    /// `EntityTNTPrimed.fuse` (`SpawnObject` carries no fuse; the client starts at 80).
+    pub fuse: i32,
     /// `serverPosX/Y/Z`: fixed point ×32.
     pub server: (i32, i32, i32),
     pub pos: Vec3,
@@ -191,18 +198,50 @@ pub fn angle(b: i8) -> f32 {
     b as f32 * 360.0 / 256.0
 }
 
+/// `SpawnObject` types: `(width, height)` from each entity's `setSize`.
+pub fn object_size(kind: i8) -> (f64, f64) {
+    match kind {
+        1 => (1.375, 0.6),          // EntityBoat
+        2 => (0.25, 0.25),          // EntityItem
+        10 => (0.98, 0.7),          // EntityMinecart
+        50 => (0.98, 0.98),         // EntityTNTPrimed
+        51 => (2.0, 2.0),           // EntityEnderCrystal
+        60 => (0.5, 0.5),           // EntityArrow
+        61 => (0.25, 0.25),         // EntitySnowball
+        62 => (0.25, 0.25),         // EntityEgg
+        63 => (1.0, 1.0),           // EntityLargeFireball
+        64 => (0.3125, 0.3125),     // EntitySmallFireball
+        65 => (0.25, 0.25),         // EntityEnderPearl
+        66 => (0.3125, 0.3125),     // EntityWitherSkull
+        70 => (0.98, 0.98),         // EntityFallingBlock
+        71 => (0.5, 0.5),           // EntityItemFrame
+        72 => (0.25, 0.25),         // EntityEnderEye
+        73 => (0.25, 0.25),         // EntityPotion
+        75 => (0.25, 0.25),         // EntityExpBottle
+        76 => (0.25, 0.25),         // EntityFireworkRocket
+        77 => (0.5, 0.5),           // EntityLeashKnot
+        78 => (0.5, 1.975),         // EntityArmorStand
+        90 => (0.25, 0.25),         // EntityFishHook
+        _ => (0.6, 0.6),
+    }
+}
+
 impl Remote {
     pub fn new(id: i32, kind: Kind, x: i32, y: i32, z: i32, yaw: i8, pitch: i8) -> Self {
         let pos = Vec3::new(x as f64 / 32.0, y as f64 / 32.0, z as f64 / 32.0);
         let (w, h) = match &kind {
             Kind::Player => (0.6, 1.8),
-            Kind::Object(2) => (0.25, 0.25),
-            _ => (0.6, 1.8),
+            Kind::Mob(k) => mob_size(*k),
+            Kind::Object(k) => object_size(*k),
+            Kind::XpOrb => (0.5, 0.5),
         };
         let (yw, pt) = (angle(yaw), angle(pitch));
+        let fuse = if matches!(&kind, Kind::Object(50)) { 80 } else { 0 };
         Self {
             id,
             kind,
+            data: 0,
+            fuse,
             server: (x, y, z),
             pos,
             prev_pos: pos,
@@ -274,6 +313,36 @@ impl Remote {
         }
     }
 
+    pub fn meta_rot(&self, i: u8) -> Option<(f32, f32, f32)> {
+        match self.meta.get(&i) {
+            Some(mc_protocol::MetaValue::Rotations(x, y, z)) => Some((*x, *y, *z)),
+            _ => None,
+        }
+    }
+
+    pub fn meta_string(&self, i: u8) -> Option<&str> {
+        match self.meta.get(&i) {
+            Some(mc_protocol::MetaValue::String(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// `Entity.isInvisible()` (flags byte bit 0x20).
+    pub fn invisible(&self) -> bool {
+        self.meta_byte(0) & 0x20 != 0
+    }
+
+    /// `Entity.getAlwaysRenderNameTagForRender()`: byte 3 for living entities,
+    /// `customNameVisible` for the rest.
+    pub fn name_visible(&self) -> bool {
+        self.meta_byte(3) != 0
+    }
+
+    /// `Entity.getCustomNameTag()`.
+    pub fn custom_name(&self) -> Option<&str> {
+        self.meta_string(2).filter(|s| !s.is_empty())
+    }
+
     /// `getHealth() > 0` (an unsynced health counts as alive).
     pub fn alive(&self) -> bool {
         self.meta_float(6).is_none_or(|h| h > 0.)
@@ -328,6 +397,11 @@ impl Remote {
             Kind::Mob(m) => Some(m),
             _ => None,
         };
+        // EntityTNTPrimed.onUpdate counts the fuse down on the client too (the spawn packet
+        // carries no fuse, so it starts at 80).
+        if matches!(self.kind, Kind::Object(50)) && self.fuse > 0 {
+            self.fuse -= 1;
+        }
         // EntityCreeper.onUpdate runs before the living update.
         if mob == Some(50) && self.alive() {
             let state = if self.meta_byte(18) != 0 { 1 } else { self.meta_byte(16) as i32 };
@@ -379,7 +453,7 @@ impl Remote {
             self.swing_ticks = 0;
         }
         self.swing = self.swing_ticks as f32 / 6.0;
-        if matches!(self.kind, Kind::Object(_)) {
+        if matches!(self.kind, Kind::Object(_) | Kind::XpOrb) {
             self.body_yaw = self.yaw;
             return;
         }
@@ -516,6 +590,26 @@ impl Remote {
     }
 }
 
+#[derive(Clone, Debug)]
+/// `EntityPainting`: the hanging block position, facing yaw and `EnumArt` ordinal.
+pub struct Painting {
+    pub id: i32,
+    pub pos: Vec3,
+    pub yaw: f32,
+    pub art: usize,
+}
+
+/// `EntityLightningBolt` (`S2CPacketSpawnGlobalEntity`, type 1).
+#[derive(Clone, Debug)]
+pub struct Lightning {
+    pub id: i32,
+    /// `RenderLightningBolt` needs the strike position; the bolt itself is not ported yet.
+    #[allow(dead_code)]
+    pub pos: Vec3,
+    /// `EntityLightningBolt.ticksExisted`; the bolt is removed after 4 client ticks.
+    pub ticks: i32,
+}
+
 #[derive(Default)]
 pub struct Entities {
     pub map: HashMap<i32, Remote>,
@@ -556,6 +650,40 @@ impl Entities {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn object_sizes_follow_set_size() {
+        assert_eq!(object_size(2), (0.25, 0.25));
+        assert_eq!(object_size(78), (0.5, 1.975));
+        assert_eq!(object_size(60), (0.5, 0.5));
+        assert_eq!(object_size(50), (0.98, 0.98));
+        assert_eq!(object_size(71), (0.5, 0.5));
+        assert_eq!(object_size(90), (0.25, 0.25));
+    }
+
+    #[test]
+    fn tnt_starts_with_the_vanilla_fuse() {
+        let mut tnt = Remote::new(1, Kind::Object(50), 0, 0, 0, 0, 0);
+        assert_eq!(tnt.fuse, 80);
+        tnt.tick();
+        assert_eq!(tnt.fuse, 79);
+        let arrow = Remote::new(2, Kind::Object(60), 0, 0, 0, 0, 0);
+        assert_eq!(arrow.fuse, 0);
+    }
+
+    #[test]
+    fn metadata_accessors() {
+        let mut r = Remote::new(3, Kind::Object(78), 0, 0, 0, 0, 0);
+        r.meta.insert(0, mc_protocol::MetaValue::Byte(0x20));
+        r.meta.insert(2, mc_protocol::MetaValue::String("hello".into()));
+        r.meta.insert(3, mc_protocol::MetaValue::Byte(1));
+        assert!(r.invisible());
+        assert_eq!(r.custom_name(), Some("hello"));
+        assert!(r.name_visible());
+        r.meta.insert(12, mc_protocol::MetaValue::Rotations(1., 2., 3.));
+        assert_eq!(r.meta_rot(12), Some((1., 2., 3.)));
+        assert_eq!(r.meta_rot(11), None);
+    }
 
     #[test]
     fn interpolates_over_three_ticks() {
