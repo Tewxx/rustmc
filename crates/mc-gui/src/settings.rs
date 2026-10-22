@@ -151,6 +151,10 @@ pub struct Settings {
     pub key_codes: std::collections::BTreeMap<String, i32>,
     pub show_debug: bool,
     pub hide_gui: bool,
+    /// F3+H: item ids, damage and durability in tooltips.
+    pub advanced_item_tooltips: bool,
+    /// The selected item's name above the hotbar.
+    pub held_item_tooltips: bool,
     /// `soundCategory_<name>` volumes (missing = 1.0).
     pub sound_volumes: std::collections::BTreeMap<String, f32>,
     path: Option<PathBuf>,
@@ -192,6 +196,8 @@ impl Default for Settings {
             key_codes: Default::default(),
             show_debug: false,
             hide_gui: false,
+            advanced_item_tooltips: false,
+            held_item_tooltips: true,
             sound_volumes: Default::default(),
             path: None,
         }
@@ -243,6 +249,8 @@ impl Settings {
                 "invertYMouse" => s.invert_mouse = b,
                 "chatVisibility" => s.chat_visibility = i.unwrap_or(s.chat_visibility),
                 "chatColors" => s.chat_colors = b,
+                "advancedItemTooltips" => s.advanced_item_tooltips = b,
+                "heldItemTooltips" => s.held_item_tooltips = b,
                 "chatLinks" => s.chat_links = b,
                 "chatLinksPrompt" => s.chat_links_prompt = b,
                 "chatOpacity" => s.chat_opacity = f.unwrap_or(s.chat_opacity),
@@ -300,6 +308,8 @@ impl Settings {
             ("invertYMouse", self.invert_mouse.to_string()),
             ("chatVisibility", self.chat_visibility.to_string()),
             ("chatColors", self.chat_colors.to_string()),
+            ("advancedItemTooltips", self.advanced_item_tooltips.to_string()),
+            ("heldItemTooltips", self.held_item_tooltips.to_string()),
             ("chatLinks", self.chat_links.to_string()),
             ("chatLinksPrompt", self.chat_links_prompt.to_string()),
             ("chatOpacity", self.chat_opacity.to_string()),

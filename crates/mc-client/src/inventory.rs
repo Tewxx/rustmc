@@ -58,7 +58,21 @@ impl Catalogue {
         let mut items: Vec<ItemDef> = Vec::new();
         let mut known: HashMap<(u16, u16, String), usize> = HashMap::new();
         let mut loader = ModelLoader::new(assets);
-        for line in include_str!("creative.tsv").lines() {
+        // Registry items no creative tab lists (filled maps, written books, spawners...) still
+        // arrive from servers; give them entries outside every tab (bit 15).
+        let listed: std::collections::HashSet<u16> = include_str!("creative.tsv").lines().filter_map(|l| l.split('\t').nth(1)?.parse().ok()).collect();
+        let lang = mc_gui::lang::Lang::load(assets, "en_US");
+        let extra: Vec<String> = mc_data::item::Item::all()
+            .iter()
+            .filter(|i| !listed.contains(&i.id))
+            .map(|i| {
+                let short = i.name.trim_start_matches("minecraft:");
+                let title = lang.get(&format!("{}.name", i.unlocalized));
+                let block = i.block.and_then(mc_data::Block::by_name).map_or(0, |b| b.id);
+                format!("15\t{}\t0\t{}\t{}\t{title}\t{short}\t{block}", i.id, i.max_stack, i.name)
+            })
+            .collect();
+        for line in include_str!("creative.tsv").lines().chain(extra.iter().map(String::as_str)) {
             let f: Vec<_> = line.split('\t').collect();
             if f.len() != 8 {
                 continue;
@@ -153,6 +167,11 @@ impl Catalogue {
         }
         Self { items }
     }
+    /// A fresh stack of a catalogue entry (its own metadata, no NBT).
+    pub fn stack(&self, item: usize, count: u8) -> ItemStack {
+        ItemStack::new(item, count, self.items[item].meta as i16)
+    }
+
     /// Catalogue entry for an item id and damage value.
     pub fn index_of(&self, id: u16, meta: u16) -> Option<usize> {
         self.items.iter().position(|i| i.id == id && i.meta == meta).or_else(|| self.items.iter().position(|i| i.id == id))
@@ -174,10 +193,22 @@ impl Catalogue {
                 q.color,
             );
         }
+        // RenderItem.renderItemOverlayIntoGUI
         if stack.count > 1 {
             let s = stack.count.to_string();
             let w = ui.font.width(&s);
             ui.font.draw_shadow(b, &s, (x + 17 - w) as f32, (y + 9) as f32, 0xffffffff);
+        }
+        if crate::tooltip::is_damaged(self, &stack) {
+            let max = mc_data::item::Item::by_id(item.id).map_or(1, |i| i.max_damage) as f64;
+            let d = stack.damage as f64;
+            let j = (13.0 - d * 13.0 / max + 0.5).floor() as i32;
+            let i = (255.0 - d * 255.0 / max + 0.5).floor() as i32;
+            let (x, y) = (x + 2, y + 13);
+            let argb = |r: i32, g: i32, b: i32| 0xff00_0000 | ((r as u32 & 255) << 16) | ((g as u32 & 255) << 8) | (b as u32 & 255);
+            b.rect(x, y, x + 13, y + 2, argb(0, 0, 0));
+            b.rect(x, y, x + 12, y + 1, argb((255 - i) / 4, 64, 0));
+            b.rect(x, y, x + j, y + 1, argb(255 - i, i, 0));
         }
     }
 }
@@ -366,7 +397,7 @@ impl Screen for Creative {
                 .find(names[tab], 0)
                 .or_else(|| self.catalogue.items.iter().position(|i| i.tabs & (1 << tab) != 0));
             if let Some(item) = icon {
-                self.catalogue.draw(ui, b, ItemStack { item, count: 1 }, tx + 6, ty + 7);
+                self.catalogue.draw(ui, b, self.catalogue.stack(item, 1), tx + 6, ty + 7);
             }
         }
         let bg = if self.tab == 5 {
@@ -388,7 +419,7 @@ impl Screen for Creative {
             for (slot, &item) in self.filtered().iter().skip(self.row * 9).take(45).enumerate() {
                 let sx = x + 9 + (slot % 9) as i32 * 18;
                 let sy = y + 18 + (slot / 9) as i32 * 18;
-                self.catalogue.draw(ui, b, ItemStack { item, count: 1 }, sx, sy);
+                self.catalogue.draw(ui, b, self.catalogue.stack(item, 1), sx, sy);
                 if (sx..sx + 16).contains(&mx) && (sy..sy + 16).contains(&my) {
                     self.hover = Some(item);
                     b.rect(sx, sy, sx + 16, sy + 16, 0x80ffffff);
@@ -439,13 +470,9 @@ impl Screen for Creative {
         }
         if let Some(s) = self.cursor {
             self.catalogue.draw(ui, b, s, mx - 8, my - 8);
-        } else if let Some(item) = self.hover.or_else(|| self.hot.and_then(|slot| ui.inventory[slot].map(|s| s.item))) {
-            let text = &self.catalogue.items[item].title;
-            let width = ui.font.width(text);
-            let tx = (mx + 12).min(_w - width - 6);
-            let ty = my - 12;
-            b.rect(tx - 3, ty - 4, tx + width + 3, ty + 12, 0xf0100010);
-            ui.font.draw_shadow(b, text, tx as f32, ty as f32, 0xffffffff);
+        } else if let Some(s) = self.hover.map(|i| self.catalogue.stack(i, 1)).or_else(|| self.hot.and_then(|slot| ui.inventory[slot])) {
+            let lines = crate::tooltip::render_lines(&self.catalogue, &ui.lang, &s, ui.settings.advanced_item_tooltips);
+            ui.draw_hovering_text(b, &lines, mx, my, _w, _h);
         }
         ui.draw_effects(b, x, y);
     }
@@ -468,15 +495,15 @@ impl Screen for Creative {
             let count = if ui.shift_down { self.catalogue.items[item].max } else { 1 };
             if ui.shift_down {
                 let slot = ui.inventory[..9].iter().position(Option::is_none).unwrap_or(ui.selected_slot);
-                ui.inventory[slot] = Some(ItemStack { item, count });
+                ui.inventory[slot] = Some(self.catalogue.stack(item, count));
             } else {
-                self.cursor = Some(ItemStack { item, count });
+                self.cursor = Some(self.catalogue.stack(item, count));
             }
         } else if let Some(slot) = hot {
             if ui.shift_down {
                 ui.inventory[slot] = None;
             } else if let (Some(held), Some(existing)) = (self.cursor, ui.inventory[slot]) {
-                if held.item == existing.item {
+                if held.stacks_with(&existing) {
                     let n = held.count.min(self.catalogue.items[held.item].max - existing.count);
                     ui.inventory[slot] = Some(ItemStack {
                         count: existing.count + n,
@@ -504,10 +531,7 @@ impl Screen for Creative {
     fn right_click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         let (hover, hot) = self.hit(mx, my);
         if let Some(item) = hover {
-            self.cursor = Some(ItemStack {
-                item,
-                count: self.catalogue.items[item].max,
-            });
+            self.cursor = Some(self.catalogue.stack(item, self.catalogue.items[item].max));
         } else if let Some(slot) = hot {
             if let Some(held) = self.cursor {
                 match ui.inventory[slot] {
@@ -522,7 +546,7 @@ impl Screen for Creative {
                             None
                         };
                     }
-                    Some(s) if s.item == held.item && s.count < self.catalogue.items[s.item].max => {
+                    Some(s) if s.stacks_with(&held) && s.count < self.catalogue.items[s.item].max => {
                         ui.inventory[slot] = Some(ItemStack { count: s.count + 1, ..s });
                         self.cursor = if held.count > 1 {
                             Some(ItemStack {
@@ -555,10 +579,7 @@ impl Screen for Creative {
             Key::Escape | Key::Inventory => Action::Close,
             Key::Number(slot) => {
                 if let Some(item) = self.hover {
-                    ui.inventory[slot] = Some(ItemStack {
-                        item,
-                        count: self.catalogue.items[item].max,
-                    });
+                    ui.inventory[slot] = Some(self.catalogue.stack(item, self.catalogue.items[item].max));
                 }
                 Action::None
             }

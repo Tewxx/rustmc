@@ -12,8 +12,26 @@ pub mod screens;
 pub mod settings;
 pub mod widgets;
 
+/// A client `ItemStack`. `item` is the catalogue entry that draws it; `damage` is the stack's own
+/// metadata (`itemDamage`) and `tag` its NBT, both sent on the wire as they are.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ItemStack { pub item: usize, pub count: u8 }
+pub struct ItemStack {
+    pub item: usize,
+    pub count: u8,
+    pub damage: i16,
+    pub tag: Option<mc_core::nbt::Interned>,
+}
+
+impl ItemStack {
+    pub fn new(item: usize, count: u8, damage: i16) -> Self {
+        Self { item, count, damage, tag: None }
+    }
+
+    /// `areItemsEqual && areItemStackTagsEqual`: may share a slot.
+    pub fn stacks_with(&self, o: &ItemStack) -> bool {
+        self.item == o.item && self.damage == o.damage && self.tag == o.tag
+    }
+}
 
 /// One active potion effect as `InventoryEffectRenderer` shows it.
 #[derive(Clone, Debug, PartialEq)]
@@ -106,6 +124,45 @@ impl Ui {
             (w - x_size) / 2
         } else {
             160 + (w - x_size - 200) / 2
+        }
+    }
+
+    /// `GuiScreen.drawHoveringText`: the purple-bordered tooltip box (screen size `w`×`h`).
+    pub fn draw_hovering_text(&mut self, b: &mut batch::GuiBatch, lines: &[String], x: i32, y: i32, w: i32, h: i32) {
+        if lines.is_empty() {
+            return;
+        }
+        let i = lines.iter().map(|l| self.font.width(l)).max().unwrap_or(0);
+        let mut l1 = x + 12;
+        let mut i2 = y - 12;
+        let mut k = 8;
+        if lines.len() > 1 {
+            k += 2 + (lines.len() as i32 - 1) * 10;
+        }
+        if l1 + i > w {
+            l1 -= 28 + i;
+        }
+        if i2 + k + 6 > h {
+            i2 = h - k - 6;
+        }
+        let l = 0xf0100010u32;
+        b.gradient(l1 - 3, i2 - 4, l1 + i + 3, i2 - 3, l, l);
+        b.gradient(l1 - 3, i2 + k + 3, l1 + i + 3, i2 + k + 4, l, l);
+        b.gradient(l1 - 3, i2 - 3, l1 + i + 3, i2 + k + 3, l, l);
+        b.gradient(l1 - 4, i2 - 3, l1 - 3, i2 + k + 3, l, l);
+        b.gradient(l1 + i + 3, i2 - 3, l1 + i + 4, i2 + k + 3, l, l);
+        let i1 = 0x505000ffu32;
+        let j1 = (i1 & 0xfefefe) >> 1 | i1 & 0xff000000;
+        b.gradient(l1 - 3, i2 - 3 + 1, l1 - 3 + 1, i2 + k + 3 - 1, i1, j1);
+        b.gradient(l1 + i + 2, i2 - 3 + 1, l1 + i + 3, i2 + k + 3 - 1, i1, j1);
+        b.gradient(l1 - 3, i2 - 3, l1 + i + 3, i2 - 3 + 1, i1, i1);
+        b.gradient(l1 - 3, i2 + k + 2, l1 + i + 3, i2 + k + 3, j1, j1);
+        for (k1, s1) in lines.iter().enumerate() {
+            self.font.draw_shadow(b, s1, l1 as f32, i2 as f32, 0xffffffff);
+            if k1 == 0 {
+                i2 += 2;
+            }
+            i2 += 10;
         }
     }
 

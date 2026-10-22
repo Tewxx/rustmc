@@ -748,12 +748,13 @@ fn give(r: &mut Run, args: &[&str]) -> Res {
     };
     let def = &r.c.items.items[item];
     let (title, color) = (def.title.clone(), rarity_color(def.id, def.meta));
-    let left = add_to_inventory(r.c.ui, r.c.items, item, i as u8, r.c.player.game_type == GameType::Creative);
+    let template = ItemStack::new(item, 1, j as i16);
+    let left = add_to_inventory(r.c.ui, r.c.items, template, i as u8, r.c.player.game_type == GameType::Creative);
     if left == 0 {
         // Fully added: a one-tick "fake" item for the pickup animation.
-        r.out.drops.push((ItemStack { item, count: 1 }, true));
+        r.out.drops.push((template, true));
     } else {
-        r.out.drops.push((ItemStack { item, count: left }, false));
+        r.out.drops.push((ItemStack { count: left, ..template }, false));
     }
     let component = match color {
         Some(c) => format!("\u{a7}{c}[{title}]\u{a7}r"),
@@ -765,15 +766,15 @@ fn give(r: &mut Run, args: &[&str]) -> Res {
 }
 
 /// `InventoryPlayer.addItemStackToInventory`; returns the count that didn't fit.
-pub fn add_to_inventory(ui: &mut Ui, items: &Catalogue, item: usize, mut count: u8, creative: bool) -> u8 {
+pub fn add_to_inventory(ui: &mut Ui, items: &Catalogue, template: ItemStack, mut count: u8, creative: bool) -> u8 {
     let start = count;
-    let max = items.items[item].max.max(1);
+    let max = items.items[template.item].max.max(1);
     loop {
-        let slot = ui.inventory.iter().position(|s| s.is_some_and(|s| s.item == item && s.count < max)).or_else(|| ui.inventory.iter().position(Option::is_none));
+        let slot = ui.inventory.iter().position(|s| s.is_some_and(|s| s.stacks_with(&template) && s.count < max)).or_else(|| ui.inventory.iter().position(Option::is_none));
         let Some(slot) = slot else { break };
         let have = ui.inventory[slot].map_or(0, |s| s.count);
         let n = count.min(max - have);
-        ui.inventory[slot] = Some(ItemStack { item, count: have + n });
+        ui.inventory[slot] = Some(ItemStack { count: have + n, ..template });
         count -= n;
         if count == 0 {
             break;

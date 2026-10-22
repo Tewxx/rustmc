@@ -229,14 +229,14 @@ pub fn slot_stack(cat: &crate::inventory::Catalogue, s: &Option<mc_protocol::Slo
         return None;
     }
     let item = cat.index_of(s.id as u16, s.damage.max(0) as u16).or_else(|| cat.index_of(s.id as u16, 0))?;
-    Some(mc_gui::ItemStack { item, count: s.count as u8 })
+    Some(mc_gui::ItemStack { item, count: s.count as u8, damage: s.damage, tag: s.nbt.clone().map(mc_core::nbt::Interned::new) })
 }
 
 /// The client's stack as a wire `Slot`.
 pub fn stack_slot(cat: &crate::inventory::Catalogue, s: Option<mc_gui::ItemStack>) -> Option<mc_protocol::Slot> {
     let s = s?;
     let d = &cat.items[s.item];
-    Some(mc_protocol::Slot { id: d.id as i16, count: s.count as i8, damage: d.meta as i16, nbt: None })
+    Some(mc_protocol::Slot { id: d.id as i16, count: s.count as i8, damage: s.damage, nbt: s.tag.map(|t| (*t.get()).clone()) })
 }
 
 #[cfg(test)]

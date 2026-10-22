@@ -21,6 +21,9 @@ pub struct ItemEntity {
     pub dead: bool,
     /// Catalogue index and count of the stack.
     pub stack: (usize, u8),
+    /// The stack's metadata and NBT (set by the owner; `stack.0` alone only picks the icon).
+    pub damage: i16,
+    pub tag: Option<mc_core::nbt::Interned>,
     in_water: bool,
 }
 
@@ -53,6 +56,8 @@ impl ItemEntity {
             ticks_existed: 0,
             dead: false,
             stack,
+            damage: 0,
+            tag: None,
             in_water: false,
         }
     }

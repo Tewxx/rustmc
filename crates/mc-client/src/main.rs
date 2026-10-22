@@ -23,6 +23,7 @@ mod skins;
 mod level;
 mod survival;
 mod tools;
+mod tooltip;
 
 use bench::Bench;
 use glam::Vec3;
@@ -977,6 +978,7 @@ impl App {
                         });
                         if let Some(s) = stack {
                             let mut it = mc_entity::item::ItemEntity::new(m.entity_id as u32, pos, (s.item, s.count), &mut self.rand);
+                            (it.damage, it.tag) = (s.damage, s.tag);
                             it.motion = v;
                             it.pickup_delay = 32767;
                             self.items.push(it);
@@ -1368,6 +1370,24 @@ impl App {
         }
     }
 
+    /// `Entity.isInsideOfMaterial`: the eye below the liquid surface.
+    fn is_inside_of_material(&self, m: mc_data::Material) -> bool {
+        let e = &self.entity;
+        let d0 = e.pos.y + e.eye_height() as f64;
+        let pos = BlockPos::new(e.pos.x.floor() as i32, d0.floor() as i32, e.pos.z.floor() as i32);
+        let st = self.world.state_at(pos.x, pos.y, pos.z);
+        if st.block().material != m {
+            return false;
+        }
+        let mut meta = st.meta() as i32;
+        if meta >= 8 {
+            meta = 0;
+        }
+        let f = (meta + 1) as f32 / 9.0 - 0.11111111;
+        let f1 = (pos.y + 1) as f32 - f;
+        d0 < f1 as f64
+    }
+
     /// `Block.getPlayerRelativeBlockHardness`
     fn relative_hardness(&self, pos: BlockPos) -> f32 {
         let block = self.world.state_at(pos.x, pos.y, pos.z).block();
@@ -1375,9 +1395,19 @@ impl App {
             return 0.;
         }
         let held = self.held_registry_item();
+        // EntityPlayer.getToolDigEfficiency
         let mut speed = tools::dig_speed(held, block);
+        let stack = self.ui.inventory[self.player.selected_slot];
+        if speed > 1. {
+            let i = tooltip::enchantment_level(stack.as_ref(), 32);
+            if i > 0 && stack.is_some() {
+                speed += (i * i + 1) as f32;
+            }
+        }
         speed = self.entity.effects.dig_multiplier(speed);
-        if self.entity.in_water {
+        // getAquaAffinityModifier: the best level over the held item and armor.
+        let aqua = std::iter::once(stack).chain(self.ui.armor.iter().copied()).map(|s| tooltip::enchantment_level(s.as_ref(), 6)).max().unwrap_or(0) > 0;
+        if self.is_inside_of_material(mc_data::Material::Water) && !aqua {
             speed /= 5.;
         }
         if !self.entity.on_ground {
@@ -1403,7 +1433,8 @@ impl App {
                 if self.rand.next_float() <= chance {
                     if let Some(i) = self.catalogue.index_of(id, meta) {
                         let id = self.alloc_entity_id();
-                        let e = mc_entity::item::ItemEntity::from_block(id, pos, (i, count), &mut self.rand);
+                        let mut e = mc_entity::item::ItemEntity::from_block(id, pos, (i, count), &mut self.rand);
+                        e.damage = self.catalogue.items[i].meta as i16;
                         self.items.push(e);
                     }
                 }
@@ -1429,7 +1460,8 @@ impl App {
                 for (id, meta, count) in tools::drops(state, &mut self.rand) {
                     if let Some(i) = self.catalogue.index_of(id, meta) {
                         let id = self.alloc_entity_id();
-                        let e = mc_entity::item::ItemEntity::from_block(id, pos, (i, count), &mut self.rand);
+                        let mut e = mc_entity::item::ItemEntity::from_block(id, pos, (i, count), &mut self.rand);
+                        e.damage = self.catalogue.items[i].meta as i16;
                         self.items.push(e);
                     }
                 }
@@ -1527,16 +1559,17 @@ impl App {
         }
         let id = self.alloc_entity_id();
         let e = &self.entity;
-        let item = mc_entity::item::ItemEntity::thrown(id, e.pos, e.eye_height(), e.yaw, e.pitch, (stack.item, stack.count), &mut self.rand);
+        let mut item = mc_entity::item::ItemEntity::thrown(id, e.pos, e.eye_height(), e.yaw, e.pitch, (stack.item, stack.count), &mut self.rand);
+        (item.damage, item.tag) = (stack.damage, stack.tag);
         self.items.push(item);
     }
 
     /// `InventoryPlayer.addItemStackToInventory`; returns what didn't fit.
-    fn add_to_inventory(&mut self, item: usize, mut count: u8) -> u8 {
-        let max = self.catalogue.items[item].max.max(1);
+    fn add_to_inventory(&mut self, template: mc_gui::ItemStack, mut count: u8) -> u8 {
+        let max = self.catalogue.items[template.item].max.max(1);
         for slot in 0..36 {
             if let Some(s) = &mut self.ui.inventory[slot] {
-                if s.item == item && s.count < max {
+                if s.stacks_with(&template) && s.count < max {
                     let n = count.min(max - s.count);
                     s.count += n;
                     count -= n;
@@ -1549,7 +1582,7 @@ impl App {
         while count > 0 {
             let Some(slot) = self.ui.inventory.iter().position(Option::is_none) else { break };
             let n = count.min(max);
-            self.ui.inventory[slot] = Some(mc_gui::ItemStack { item, count: n });
+            self.ui.inventory[slot] = Some(mc_gui::ItemStack { count: n, ..template });
             count -= n;
         }
         count
@@ -1569,7 +1602,8 @@ impl App {
                 if let Some(s) = &mut self.sound {
                     s.play("random.pop", Some([p.x, p.y, p.z]), 0.2, pitch);
                 }
-                let left = self.add_to_inventory(it.stack.0, it.stack.1);
+                let template = mc_gui::ItemStack { item: it.stack.0, count: 1, damage: it.damage, tag: it.tag };
+                let left = self.add_to_inventory(template, it.stack.1);
                 if left == 0 {
                     it.dead = true;
                 } else {
@@ -1723,6 +1757,7 @@ impl App {
             let id = self.alloc_entity_id();
             let e = &self.entity;
             let mut it = mc_entity::item::ItemEntity::thrown(id, e.pos, e.eye_height(), e.yaw, e.pitch, (stack.item, stack.count), &mut self.rand);
+            (it.damage, it.tag) = (stack.damage, stack.tag);
             if fake {
                 it.pickup_delay = 32767;
                 it.age = 5999;
@@ -1909,7 +1944,7 @@ impl App {
         self.player.poison = fx.has(19);
         self.player.wither = fx.has(20);
         self.player.hunger = fx.has(17);
-        self.player.eye_in_water = in_water;
+        self.player.eye_in_water = self.is_inside_of_material(mc_data::Material::Water);
         self.ui.selected_slot = self.player.selected_slot;
         let held = self.ui.inventory[self.player.selected_slot].and_then(|s| self.held_item(s.item));
         let hand_item = self.entity.item_to_render.and_then(|(i, _)| self.held_item(i));
@@ -2078,7 +2113,7 @@ impl App {
                 if let Some(slot) = self.ui.inventory[..9].iter().position(|s| s.is_some_and(|s| s.item == item)) {
                     self.player.selected_slot = slot;
                 } else if self.entity.creative {
-                    self.ui.inventory[self.player.selected_slot] = Some(mc_gui::ItemStack { item, count: 1 });
+                    self.ui.inventory[self.player.selected_slot] = Some(self.catalogue.stack(item, 1));
                 }
             }
             return;
@@ -2454,7 +2489,7 @@ impl App {
             w if w == "held" || w.starts_with("held-") => {
                 let name = w.strip_prefix("held-").unwrap_or("planks");
                 if let Some(item) = self.catalogue.find(name, 0) {
-                    self.ui.inventory[0] = Some(mc_gui::ItemStack { item, count: 1 });
+                    self.ui.inventory[0] = Some(self.catalogue.stack(item, 1));
                 }
                 for _ in 0..5 {
                     self.entity.update_equipped(self.ui.inventory[0].map(|s| (s.item, s.count)));
@@ -2487,7 +2522,7 @@ impl App {
                 self.screen = None;
             }
             "net" => {}
-            "net-inv" => {
+            "net-inv" | "net-inv-tip" => {
                 let title = self.ui.lang.get("container.crafting");
                 let w = Arc::new(std::sync::Mutex::new(container::Window::new(0, "player", title, 5)));
                 self.open_window = Some(w.clone());
@@ -2501,6 +2536,11 @@ impl App {
             (sr.width / 2) as f64 * sr.factor as f64,
             (sr.height / 4 + 48 + 5) as f64 * sr.factor as f64,
         );
+        if which == "net-inv-tip" {
+            // Hover the first hotbar slot of GuiInventory.
+            let (left, top) = (self.ui.effect_gui_left(sr.width, 176), (sr.height - 166) / 2);
+            self.mouse_px = (((left + 16) * sr.factor) as f64, ((top + 150) * sr.factor) as f64);
+        }
         self.player.level = 7;
         self.player.experience = 0.4;
         self.player.selected_slot = 0;

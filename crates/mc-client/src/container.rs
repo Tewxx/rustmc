@@ -224,13 +224,13 @@ impl ContainerScreen {
             (Some(_), None) => return,
             (Some(c), Some(s)) if output => {
                 // Taking from an output slot adds onto a matching cursor.
-                if c.item == s.item && c.count as u16 + s.count as u16 <= max_of(c) as u16 {
+                if c.stacks_with(&s) && c.count as u16 + s.count as u16 <= max_of(c) as u16 {
                     (None, Some(ItemStack { count: c.count + s.count, ..c }))
                 } else {
                     return;
                 }
             }
-            (Some(c), Some(s)) if c.item == s.item => {
+            (Some(c), Some(s)) if c.stacks_with(&s) => {
                 let room = max_of(s).saturating_sub(s.count);
                 let n = if right { 1.min(room) } else { c.count.min(room) };
                 (Some(ItemStack { count: s.count + n, ..s }), (c.count > n).then_some(ItemStack { count: c.count - n, ..c }))
@@ -248,7 +248,7 @@ impl ContainerScreen {
         let max = self.max(s);
         for &i in &range {
             if let Some(Some(t)) = w.get(ui, i).map(|x| *x) {
-                if t.item == s.item && t.count < max {
+                if t.stacks_with(&s) && t.count < max {
                     let n = s.count.min(max - t.count);
                     w.set(ui, i, Some(ItemStack { count: t.count + n, ..t }));
                     s.count -= n;
@@ -402,12 +402,8 @@ impl Screen for ContainerScreen {
         if let Some(s) = cursor {
             self.catalogue.draw(ui, b, s, mx - 8, my - 8);
         } else if let Some(s) = self.hover.and_then(|h| self.window.lock().unwrap().get(ui, h).and_then(|s| *s)) {
-            let text = self.catalogue.items[s.item].title.clone();
-            let width = ui.font.width(&text);
-            let tx = (mx + 12).min(w - width - 6);
-            let ty = my - 12;
-            b.rect(tx - 3, ty - 4, tx + width + 3, ty + 12, 0xf0100010);
-            ui.font.draw_shadow(b, &text, tx as f32, ty as f32, 0xffffffff);
+            let lines = crate::tooltip::render_lines(&self.catalogue, &ui.lang, &s, ui.settings.advanced_item_tooltips);
+            ui.draw_hovering_text(b, &lines, mx, my, w, h);
         }
         if self.is_player {
             ui.draw_effects(b, x, y);
@@ -452,7 +448,7 @@ mod tests {
         let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
         let stone = cat.index_of(1, 0).unwrap();
         let w = Arc::new(Mutex::new(Window::new(2, "minecraft:chest", "Chest".into(), 27)));
-        w.lock().unwrap().slots[0] = Some(ItemStack { item: stone, count: 40 });
+        w.lock().unwrap().slots[0] = Some(ItemStack::new(stone, 40, 0));
         let mut s = ContainerScreen::new(w.clone(), cat.clone());
         // Right click picks up half; the packet carries the pre-click stack.
         s.click_slot(&mut ui, 0, 1, 0);
@@ -460,7 +456,7 @@ mod tests {
             let w = w.lock().unwrap();
             assert_eq!(w.cursor.unwrap().count, 20);
             assert_eq!(w.slots[0].unwrap().count, 20);
-            assert_eq!(w.clicks[0], Click { slot: 0, button: 1, mode: 0, item: Some(ItemStack { item: stone, count: 40 }) });
+            assert_eq!(w.clicks[0], Click { slot: 0, button: 1, mode: 0, item: Some(ItemStack::new(stone, 40, 0)) });
         }
         // Drop it into the first hotbar slot (window slot 27 + 27 = 54).
         s.click_slot(&mut ui, 54, 0, 0);
@@ -481,7 +477,7 @@ mod tests {
         let cat = Arc::new(Catalogue::load(&assets, &models));
         let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
         let helmet = cat.find("minecraft:iron_helmet", 0).unwrap();
-        ui.inventory[0] = Some(ItemStack { item: helmet, count: 1 });
+        ui.inventory[0] = Some(ItemStack::new(helmet, 1, 0));
         let w = Arc::new(Mutex::new(Window::new(0, "player", "Crafting".into(), 5)));
         let mut s = ContainerScreen::new(w.clone(), cat);
         // Hotbar 0 is window slot 36; shift-click equips the helmet into slot 5.

@@ -107,6 +107,17 @@ fn handle(stream: TcpStream) {
                         }
                         play(PlayClientbound::UpdateHealth(UpdateHealth { health: 20.0, food: 17, saturation: 0.0 }));
                         play(PlayClientbound::SetSlot(SetSlot { window_id: 0, slot: 6, item: Some(mc_protocol::Slot { id: 311, count: 1, damage: 0, nbt: None }) }));
+                        {
+                            use mc_core::nbt::{Compound, Tag};
+                            let ench = |id: i16, lvl: i16| Tag::Compound(Compound::from([("id".to_string(), Tag::Short(id)), ("lvl".to_string(), Tag::Short(lvl))]));
+                            let mut display = Compound::new();
+                            display.insert("Name".into(), Tag::String("\u{a7}6Excalibur".into()));
+                            display.insert("Lore".into(), Tag::List(8, vec![Tag::String("Legendary blade".into())]));
+                            let mut nbt = Compound::new();
+                            nbt.insert("ench".into(), Tag::List(10, vec![ench(16, 5), ench(20, 2)]));
+                            nbt.insert("display".into(), Tag::Compound(display));
+                            play(PlayClientbound::SetSlot(SetSlot { window_id: 0, slot: 36, item: Some(mc_protocol::Slot { id: 276, count: 1, damage: 900, nbt: Some(nbt) }) }));
+                        }
                         play(PlayClientbound::EntityMetadata(EntityMetadata { entity_id: 42, metadata: vec![(17, mc_protocol::MetaValue::Float(4.0))] }));
                         play(PlayClientbound::UpdateHealth(UpdateHealth { health: 13.0, food: 17, saturation: 0.0 }));
                     }

@@ -88,7 +88,7 @@ impl SurvivalInventory {
     }
 
     fn same(a: ItemStack, b: ItemStack) -> bool {
-        a.item == b.item
+        a.stacks_with(&b)
     }
 
     /// `Container.slotClick` mode 0 (`PICKUP`).
@@ -201,12 +201,8 @@ impl Screen for SurvivalInventory {
         if let Some(s) = self.cursor {
             self.catalogue.draw(ui, b, s, mx - 8, my - 8);
         } else if let Some(s) = self.hover.and_then(|h| *Self::get(ui, h)) {
-            let text = self.catalogue.items[s.item].title.clone();
-            let width = ui.font.width(&text);
-            let tx = (mx + 12).min(w - width - 6);
-            let ty = my - 12;
-            b.rect(tx - 3, ty - 4, tx + width + 3, ty + 12, 0xf0100010);
-            ui.font.draw_shadow(b, &text, tx as f32, ty as f32, 0xffffffff);
+            let lines = crate::tooltip::render_lines(&self.catalogue, &ui.lang, &s, ui.settings.advanced_item_tooltips);
+            ui.draw_hovering_text(b, &lines, mx, my, w, h);
         }
         ui.draw_effects(b, x, y);
     }
@@ -282,7 +278,7 @@ mod tests {
         let helmet = c.find("iron_helmet", 0).unwrap();
         let mut s = SurvivalInventory::new(c);
         s.init(&ui, 640, 360);
-        ui.inventory[9] = Some(ItemStack { item: stone, count: 64 });
+        ui.inventory[9] = Some(ItemStack::new(stone, 64, 0));
         s.pickup(&mut ui, Slot::Inv(9), true);
         assert_eq!((s.cursor.unwrap().count, ui.inventory[9].unwrap().count), (32, 32));
         s.pickup(&mut ui, Slot::Inv(10), true);
@@ -292,11 +288,11 @@ mod tests {
         s.cursor = None;
         s.transfer(&mut ui, Slot::Inv(9));
         assert_eq!(ui.inventory[0].unwrap().count, 63);
-        ui.inventory[11] = Some(ItemStack { item: helmet, count: 1 });
+        ui.inventory[11] = Some(ItemStack::new(helmet, 1, 0));
         s.transfer(&mut ui, Slot::Inv(11));
         assert!(ui.armor[0].is_some() && ui.inventory[11].is_none());
         s.pickup(&mut ui, Slot::Armor(1), false);
-        ui.inventory[12] = Some(ItemStack { item: stone, count: 1 });
+        ui.inventory[12] = Some(ItemStack::new(stone, 1, 0));
         s.pickup(&mut ui, Slot::Inv(12), false);
         s.pickup(&mut ui, Slot::Armor(1), false);
         assert!(ui.armor[1].is_none(), "stone is not a chestplate");

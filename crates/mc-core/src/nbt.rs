@@ -342,3 +342,31 @@ mod tests {
         assert!(read(&bytes[..bytes.len() - 3]).is_err());
     }
 }
+
+/// A deduplicated, immutable compound shared by value (`Copy`), for item stacks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Interned(u32);
+
+fn interner() -> &'static std::sync::Mutex<(Vec<std::sync::Arc<Compound>>, std::collections::HashMap<Vec<u8>, u32>)> {
+    static T: std::sync::OnceLock<std::sync::Mutex<(Vec<std::sync::Arc<Compound>>, std::collections::HashMap<Vec<u8>, u32>)>> = std::sync::OnceLock::new();
+    T.get_or_init(Default::default)
+}
+
+impl Interned {
+    /// Equal compounds intern to the same handle, so handle equality is NBT equality.
+    pub fn new(c: Compound) -> Self {
+        let key = write("", &Tag::Compound(c.clone()));
+        let mut t = interner().lock().unwrap();
+        if let Some(&i) = t.1.get(&key) {
+            return Interned(i);
+        }
+        let i = t.0.len() as u32;
+        t.0.push(std::sync::Arc::new(c));
+        t.1.insert(key, i);
+        Interned(i)
+    }
+
+    pub fn get(self) -> std::sync::Arc<Compound> {
+        interner().lock().unwrap().0[self.0 as usize].clone()
+    }
+}
