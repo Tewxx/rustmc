@@ -29,7 +29,7 @@ pub struct ChunkMesh {
 }
 
 impl ChunkMesh {
-    fn push_quad(&mut self, v: [Vertex; 4]) {
+    pub(crate) fn push_quad(&mut self, v: [Vertex; 4]) {
         let base = self.vertices.len() as u32;
         self.vertices.extend_from_slice(&v);
         self.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
@@ -73,6 +73,11 @@ fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: 
                     let stored = StateId::from_raw(id << 4 | meta as u16);
                     let block = stored.block();
                     let layer = block.render_layer(fancy_graphics);
+                    if block.render_type == 1 {
+                        // `BlockRendererDispatcher` case 1: `BlockFluidRenderer`.
+                        crate::fluid::build(world, models, stored, pos, [lx as f32, y as f32, lz as f32], &mut mesh, fancy_graphics, layer);
+                        continue;
+                    }
                     if block.render_type != 3 {
                         continue;
                     }

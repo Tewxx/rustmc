@@ -37,8 +37,8 @@ remembered per-server choice. Pack sound overrides are not loaded yet (sounds co
 This is not full 1.8.9 parity. World edits and inventory are session-only in singleplayer.
 The integrated server has scheduled/random block ticks and fluids but no mobs or full
 survival. Special block renderers, tile entities and several placement rules remain
-incomplete. Visual parity is incomplete: demo generation, fluid rendering, mipmaps, texture
-animation and complete player/item lighting are still missing. Item model transforms and
+incomplete. Visual parity is incomplete: demo generation, mipmaps, texture animation and complete
+player/item lighting are still missing. Water and lava now render through the fluid path. Item model transforms and
 overworld sky values have Java golden checks; rendered scenes have not passed a Java pixel
 comparison.
 

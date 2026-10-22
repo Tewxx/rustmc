@@ -260,7 +260,7 @@ Original scope:
   < 2 ms; no frame hitch while chunks stream in.
 
 ### S9 — Rendering completeness  *(split by feature)*
-- Fluids (`BlockFluidRenderer`) + translucent layer with sorting; all special block renderers.
+- Fluids (`BlockFluidRenderer`) + translucent layer with sorting — **done** (water/lava, see HANDOFF); all special block renderers.
 - Sky, sun/moon/stars, clouds (fast/fancy), fog (`setupFog`, `updateFogColor`), weather (rain/snow),
   day/night lightmap, mipmaps (`TextureUtil`), animated textures, render distance & view bobbing.
 - Entity models + `RenderManager` renderers, tile-entity renderers (chests, signs, skulls, banners,

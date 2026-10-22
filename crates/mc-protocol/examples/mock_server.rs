@@ -70,6 +70,27 @@ fn handle(stream: TcpStream) {
                     play(PlayClientbound::MapChunkBulk(MapChunkBulk { sky_light: true, chunks }));
                     play(PlayClientbound::TimeUpdate(TimeUpdate { world_age: 100, time_of_day: 6000 }));
                     play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 4.0, z: 8.5, yaw: 0.0, pitch: 0.0, flags: 0 }));
+                    if std::env::var_os("MOCK_WATER").is_some() {
+                        // Sunken stone basin: water replaces the grass layer (top at 3.889,
+                        // just below the grass rim at 4.0), a lava pool to one side, and a
+                        // waterfall column at the far edge (double-sided sides).
+                        for x in 4..12 {
+                            for z in 7..15 {
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 2, z), state: 1 }));
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 3, z), state: 9 }));
+                            }
+                        }
+                        for y in 4..7 {
+                            play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(8, y, 14), state: 9 }));
+                        }
+                        for x in 1..4 {
+                            for z in 8..12 {
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 2, z), state: 1 }));
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 3, z), state: 11 }));
+                            }
+                        }
+                        play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 5.0, z: 5.0, yaw: 0.0, pitch: 25.0, flags: 0 }));
+                    }
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"Welcome to the ","color":"yellow","extra":[{"text":"mock server","bold":true}]}"#.into(), position: 0 }));
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"action bar"}"#.into(), position: 2 }));
                     play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(10, 4, 8), state: 57 }));
@@ -349,7 +370,7 @@ fn handle(stream: TcpStream) {
                             send(&w3, threshold, &p.to_bytes());
                             // S28 2001: the server's block-break effect must produce the 4x4x4
                             // `blockcrack` burst around this floating stone block.
-                            let e = PlayClientbound::Effect(Effect { effect_id: 2001, pos: BlockPos::new(7, 5, 14), data: 1 << 4, global: false });
+                            let e = PlayClientbound::Effect(Effect { effect_id: 2001, pos: BlockPos::new(7, 5, 14), data: 1, global: false });
                             send(&w3, threshold, &e.to_bytes());
                             std::thread::sleep(Duration::from_millis(250));
                         });

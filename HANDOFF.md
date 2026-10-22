@@ -84,7 +84,7 @@ Commits cbf3425 … 5bc480a. New since the table above:
 5. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
    `PlayerControllerMP` (rotation, onGround, sprint/sneak, flying) with loopback tests.
 
-Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_SCORE=1`, `MOCK_PARTICLES=1`, `MOCK_RPACK=<url>` + `MOCK_RPACK_HASH=<sha1>`)
+Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_SCORE=1`, `MOCK_PARTICLES=1`, `MOCK_WATER=1`, `MOCK_RPACK=<url>` + `MOCK_RPACK_HASH=<sha1>`)
 then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
 
 ## Session log — particles (Oct 2026)
@@ -122,6 +122,28 @@ then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --scre
   taken (`shots/particles2.png`, `shots/particles3.png`, `shots/blockfx.png` for the S28
   break burst); unit tests cover the camera basis, UV order, smoke animation/death,
   large-explosion frames, huge-explosion children and the 64-particle destroy grid.
+
+## Session log — water and lava (Oct 2026)
+
+Liquids have no blockstate model in 1.8 (`render_type == 1`), which is why water was invisible.
+`mc-render/src/fluid.rs` ports `BlockFluidRenderer` and the mesher routes those states to it:
+
+- **Heights:** `getLiquidHeightPercent` and the four-corner `getFluidHeight` average, including
+  the "fluid above a corner ⇒ 1.0" rule, so pools slope down at open edges and rise around
+  waterfalls exactly like vanilla.
+- **Flow:** `getFlowVector`/`getEffectiveFlowDecay` (level >= 8 counts as 0) and
+  `getFlowDirection`; flowing surfaces use `water_flow`/`lava_flow` with vanilla's rotated UVs,
+  still surfaces use `water_still`/`lava_still`.
+- **Faces:** top (+ double-sided back face when `shouldRenderSides`), bottom at shade 0.5, and
+  four sides with the corner heights and shade 0.8/0.6; same-material neighbours are culled and
+  a provably invisible face against a full opaque cube is skipped.
+- **Colour/light:** `BlockLiquid.colorMultiplier` (exact biome water colour, lava white),
+  `getMixedBrightnessForBlock` per face, translucent layer for water, solid for lava.
+- **Verified:** `MOCK_WATER=1` builds a sunken stone basin with a water pool, lava pool and
+  waterfall column; `shots/water3.png` / `shots/water4.png` show flat water and lava surfaces
+  and the animated sprites. Unit tests pin the 1/9–8/9 height table, centre/edge pool heights,
+  still-water flow direction and same-material face culling. This also fixes singleplayer water,
+  which uses the same mesher.
 
 ## Session log — server resource packs (Oct 2026)
 
@@ -305,7 +327,8 @@ input latency. 10× is not realistic: above ~2000 FPS, present/compositor overhe
 - **Fog**: port `EntityRenderer.updateFogColor` + `setupFog` (fog color blended toward sky by render
   distance, linear fog start/end from the far plane). Today's fog is an approximation.
 - **Mipmaps**: vanilla default 4 levels with its alpha-preserving downsample (`TextureUtil`).
-- **Water/lava + translucent layer** (`BlockFluidRenderer`, back-to-front section sorting).
+- **Fluids**: `BlockFluidRenderer` water/lava + the translucent pass — done, see the water/lava
+  session log above.
 - Full block table (stairs, slabs, fences, panes, doors… with state from metadata + neighbours).
 - Day/night: `lightmap::build` already takes sun brightness; drive it from world time.
 

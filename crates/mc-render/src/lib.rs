@@ -3,6 +3,7 @@
 pub mod ao;
 pub mod avatar;
 pub mod entity_model;
+pub mod fluid;
 pub mod gpu;
 pub mod gui_gpu;
 pub mod items;

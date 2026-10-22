@@ -4610,7 +4610,7 @@ mod tests {
         let mut assets = AssetSource::new();
         assets.push(&jar).unwrap();
         let models = BlockModels::load(&assets);
-        let state = mc_data::StateId::try_from_network(1 << 4).unwrap();
+        let state = mc_data::StateId::try_from_network(1).unwrap();
         assert!(models.particle_uv(state).is_some(), "stone has a particle texture");
         let mut particles = crate::particles::Particles::default();
         let mut rand = mc_core::random::JavaRandom::new(1);
