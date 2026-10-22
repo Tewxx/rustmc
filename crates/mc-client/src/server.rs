@@ -51,7 +51,7 @@ pub struct Lv<'a> {
     pub server: &'a mut Server,
     pub fx: &'a mut Effects,
     pub total_time: i64,
-    pub rules_daylight: bool,
+    pub rules: Option<&'a crate::level::GameRules>,
 }
 
 impl Level for Lv<'_> {
@@ -134,7 +134,7 @@ impl Level for Lv<'_> {
     }
 
     fn game_rule(&self, name: &str) -> bool {
-        name != "doDaylightCycle" || self.rules_daylight
+        self.rules.is_none_or(|r| r.get_bool(name))
     }
 
     fn grow_tree(&mut self, pos: BlockPos, sapling: StateId) -> bool {
@@ -218,7 +218,7 @@ mod tests {
     fn placed_water_flows_through_scheduled_ticks() {
         let (mut w, mut s) = (world(), Server::default());
         let mut fx = Effects::default();
-        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules_daylight: true };
+        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules: None };
         let src = BlockPos::new(0, 11, 0);
         lv.set_state(src, mc_logic::st(ids::FLOWING_WATER, 0), flags::DEFAULT);
         for t in 0..40 {
@@ -245,7 +245,7 @@ mod tests {
         }
         s.update_lcg = 12345;
         let mut fx = Effects::default();
-        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules_daylight: true };
+        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules: None };
         for _ in 0..3000 {
             lv.random_ticks(&[(0, 0), (-1, 0), (0, -1), (-1, -1)], 3);
         }
@@ -264,7 +264,7 @@ mod tests {
         let sap = mc_logic::st(ids::SAPLING, 0).set("stage", "1");
         w.set_block_state(BlockPos::new(0, 11, 0), sap);
         let mut fx = Effects::default();
-        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules_daylight: true };
+        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules: None };
         for _ in 0..500 {
             let st = lv.state(BlockPos::new(0, 11, 0));
             if st.block().id != ids::SAPLING {
@@ -276,12 +276,29 @@ mod tests {
     }
 
     #[test]
+    fn fire_spreads_and_burns_planks() {
+        let (mut w, mut s) = (world(), Server::default());
+        for x in -3..=3 {
+            w.set_block(BlockPos::new(x, 11, 0), 5, 0);
+        }
+        let mut fx = Effects::default();
+        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules: None };
+        lv.set_state(BlockPos::new(0, 12, 0), mc_logic::st(ids::FIRE, 0), flags::DEFAULT);
+        for t in 0..20000 {
+            lv.total_time = t;
+            lv.tick_updates();
+        }
+        let planks = (-3..=3).filter(|&x| lv.state(BlockPos::new(x, 11, 0)).block().id == 5).count();
+        assert!(planks < 7, "{planks}");
+    }
+
+    #[test]
     fn orphaned_leaves_decay() {
         let (mut w, mut s) = (world(), Server::default());
         let leaf = mc_logic::st(ids::LEAVES, 0).set_bool("check_decay", true);
         w.set_block_state(BlockPos::new(0, 12, 0), leaf);
         let mut fx = Effects::default();
-        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules_daylight: true };
+        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules: None };
         mc_logic::blocks::random_tick(&mut lv, BlockPos::new(0, 12, 0), leaf);
         assert!(lv.state(BlockPos::new(0, 12, 0)).is_air());
         assert_eq!(fx.drops.len(), 1);

@@ -224,6 +224,15 @@ pub fn on_block_added(l: &mut dyn Level, pos: BlockPos, state: StateId) {
         _ if is_liquid_block(id) => liquid::on_block_added(l, pos, state),
         _ if is_falling(id) => l.schedule_update(pos, id, 2),
         ids::DRAGON_EGG => l.schedule_update(pos, id, 5),
+        // BlockFire.onBlockAdded (no nether portal yet)
+        ids::FIRE => {
+            if !has_solid_top_surface(l, pos.down()) && !fire_neighbor_can_catch(l, pos) {
+                l.set_air(pos);
+            } else {
+                let d = 30 + l.rng(Rng::World).next_int_bounded(10);
+                l.schedule_update(pos, id, d);
+            }
+        }
         ids::CHEST | ids::TRAPPED_CHEST => {
             check_for_surrounding_chests(l, pos, state);
             for f in Facing::PLANE_HORIZONTAL {
@@ -345,6 +354,7 @@ pub fn update_tick(l: &mut dyn Level, pos: BlockPos, state: StateId, rng: Rng) {
     match id {
         ids::FLOWING_WATER | ids::FLOWING_LAVA => liquid::update_tick_dynamic(l, pos, state, rng),
         ids::WATER | ids::LAVA => liquid::update_tick_static(l, pos, state, rng),
+        ids::FIRE => fire_tick(l, pos, state),
         _ => {}
     }
 }
@@ -749,6 +759,95 @@ fn vine_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
             }
             if st != s2 {
                 l.set_state(p2, st, flags::UPDATE);
+            }
+        }
+    }
+}
+
+fn flammability(l: &mut dyn Level, pos: BlockPos) -> i32 {
+    l.state(pos).block().fire_flammability as i32
+}
+
+/// `BlockFire.canNeighborCatchFire`
+fn fire_neighbor_can_catch(l: &mut dyn Level, pos: BlockPos) -> bool {
+    Facing::ALL.iter().any(|&f| l.state(pos.offset_facing(f)).block().fire_encouragement > 0)
+}
+
+/// `BlockFire.getNeighborEncouragement`
+fn fire_neighbor_encouragement(l: &mut dyn Level, pos: BlockPos) -> i32 {
+    if !l.is_air(pos) {
+        return 0;
+    }
+    Facing::ALL.iter().map(|&f| l.state(pos.offset_facing(f)).block().fire_encouragement as i32).max().unwrap_or(0)
+}
+
+/// `BlockFire.catchOnFire` (rain and TNT priming are not modelled here).
+fn fire_catch(l: &mut dyn Level, pos: BlockPos, chance: i32, age: i32) {
+    let i = flammability(l, pos);
+    if l.rng(Rng::World).next_int_bounded(chance) < i {
+        if l.rng(Rng::World).next_int_bounded(age + 10) < 5 {
+            let j = (age + l.rng(Rng::World).next_int_bounded(5) / 4).min(15);
+            l.set_state(pos, st(ids::FIRE, 0).set("age", &j.to_string()), flags::DEFAULT);
+        } else {
+            l.set_air(pos);
+        }
+    }
+}
+
+/// `BlockFire.updateTick` in the overworld, not raining, difficulty normal.
+fn fire_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
+    if !l.game_rule("doFireTick") {
+        return;
+    }
+    if !has_solid_top_surface(l, pos.down()) && !fire_neighbor_can_catch(l, pos) {
+        l.set_air(pos);
+    }
+    let infinite = l.state(pos.down()).block().id == ids::NETHERRACK;
+    let age = state.get_int("age");
+    if age < 15 {
+        let na = age + l.rng(Rng::World).next_int_bounded(3) / 2;
+        l.set_state(pos, state.set("age", &na.to_string()), flags::NO_RERENDER);
+    }
+    let d = 30 + l.rng(Rng::World).next_int_bounded(10);
+    l.schedule_update(pos, ids::FIRE, d);
+    if !infinite {
+        if !fire_neighbor_can_catch(l, pos) {
+            if !has_solid_top_surface(l, pos.down()) || age > 3 {
+                l.set_air(pos);
+            }
+            return;
+        }
+        if l.state(pos.down()).block().fire_encouragement == 0 && age == 15 && l.rng(Rng::World).next_int_bounded(4) == 0 {
+            l.set_air(pos);
+            return;
+        }
+    }
+    fire_catch(l, pos.offset(1, 0, 0), 300, age);
+    fire_catch(l, pos.offset(-1, 0, 0), 300, age);
+    fire_catch(l, pos.down(), 250, age);
+    fire_catch(l, pos.up(), 250, age);
+    fire_catch(l, pos.offset(0, 0, -1), 300, age);
+    fire_catch(l, pos.offset(0, 0, 1), 300, age);
+    const DIFFICULTY: i32 = 2;
+    for x in -1..=1 {
+        for z in -1..=1 {
+            for y in -1..=4 {
+                if x == 0 && y == 0 && z == 0 {
+                    continue;
+                }
+                let mut l1 = 100;
+                if y > 1 {
+                    l1 += (y - 1) * 100;
+                }
+                let bp = pos.offset(x, y, z);
+                let enc = fire_neighbor_encouragement(l, bp);
+                if enc > 0 {
+                    let j2 = (enc + 40 + DIFFICULTY * 7) / (age + 30);
+                    if j2 > 0 && l.rng(Rng::World).next_int_bounded(l1) <= j2 {
+                        let k2 = (age + l.rng(Rng::World).next_int_bounded(5) / 4).min(15);
+                        l.set_state(bp, state.set("age", &k2.to_string()), flags::DEFAULT);
+                    }
+                }
             }
         }
     }

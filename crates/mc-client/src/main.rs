@@ -1213,7 +1213,7 @@ impl App {
             server: &mut self.server,
             fx: &mut fx,
             total_time: self.info.total_time,
-            rules_daylight: self.info.rules.get_bool("doDaylightCycle"),
+            rules: Some(&self.info.rules),
         });
         for (pos, state, chance, _fortune) in fx.drops {
             // Block.dropBlockAsItemWithChance
