@@ -20,6 +20,10 @@ pub struct Part {
     pub rot: Vec3,
     pub show: bool,
     pub children: Vec<Part>,
+    /// `offsetX/Y/Z`, in blocks, applied before the pivot.
+    pub offset: Vec3,
+    /// `renderWithRotation`: Y, X, Z order and no children.
+    pub yxz: bool,
 }
 
 impl Part {
@@ -91,6 +95,16 @@ impl Part {
         self
     }
 
+    pub fn rot(mut self, x: f32, y: f32, z: f32) -> Self {
+        self.rot = Vec3::new(x, y, z);
+        self
+    }
+
+    pub fn child(mut self, c: Part) -> Self {
+        self.children.push(c);
+        self
+    }
+
     /// `ModelRenderer.render(scale)` with `scale` = 1/16; emits quads in the caller's space.
     pub fn render(&self, m: Mat4, out: &mut impl FnMut(Mat4, &ModelQuad)) {
         if !self.show {
@@ -100,6 +114,9 @@ impl Part {
         for q in &self.quads {
             out(m, q);
         }
+        if self.yxz {
+            return;
+        }
         for c in &self.children {
             c.render(m, out);
         }
@@ -107,7 +124,10 @@ impl Part {
 
     /// Pivot translation and Z, Y, X rotation in 1/16 units; geometry is then scaled by 1/16.
     pub fn local(&self) -> Mat4 {
-        let mut m = Mat4::from_translation(self.pivot / 16.);
+        let mut m = Mat4::from_translation(self.offset + self.pivot / 16.);
+        if self.yxz {
+            return m * Mat4::from_rotation_y(self.rot.y) * Mat4::from_rotation_x(self.rot.x) * Mat4::from_rotation_z(self.rot.z) * Mat4::from_scale(Vec3::splat(1. / 16.));
+        }
         if self.rot.z != 0. {
             m *= Mat4::from_rotation_z(self.rot.z);
         }
@@ -122,7 +142,7 @@ impl Part {
 
     /// `ModelRenderer.postRender`: the part's transform for attached objects (held items).
     pub fn post_render(&self) -> Mat4 {
-        let mut m = Mat4::from_translation(self.pivot / 16.);
+        let mut m = Mat4::from_translation(self.offset + self.pivot / 16.);
         if self.rot.z != 0. {
             m *= Mat4::from_rotation_z(self.rot.z);
         }
@@ -232,15 +252,19 @@ impl PlayerModel {
     /// `ModelBiped(delta, 0, 64, 32)`: `LayerBipedArmor`'s models (1.0, leggings 0.5). The
     /// overlay parts stay empty.
     pub fn biped(delta: f32) -> Self {
-        let t = [64., 32.];
+        Self::biped_with(delta, 0., [64., 32.])
+    }
+
+    /// `ModelBiped(delta, yOffset, textureWidth, textureHeight)`
+    pub fn biped_with(delta: f32, y: f32, t: [f32; 2]) -> Self {
         Self {
-            head: Part::new().add_box(t, [0., 0.], [-4., -8., -4.], [8, 8, 8], delta, false),
-            headwear: Part::new().add_box(t, [32., 0.], [-4., -8., -4.], [8, 8, 8], delta + 0.5, false),
-            body: Part::new().add_box(t, [16., 16.], [-4., 0., -2.], [8, 12, 4], delta, false),
-            right_arm: Part::new().add_box(t, [40., 16.], [-3., -2., -2.], [4, 12, 4], delta, false).at(-5., 2., 0.),
-            left_arm: Part::new().add_box(t, [40., 16.], [-1., -2., -2.], [4, 12, 4], delta, true).at(5., 2., 0.),
-            right_leg: Part::new().add_box(t, [0., 16.], [-2., 0., -2.], [4, 12, 4], delta, false).at(-1.9, 12., 0.),
-            left_leg: Part::new().add_box(t, [0., 16.], [-2., 0., -2.], [4, 12, 4], delta, true).at(1.9, 12., 0.),
+            head: Part::new().add_box(t, [0., 0.], [-4., -8., -4.], [8, 8, 8], delta, false).at(0., y, 0.),
+            headwear: Part::new().add_box(t, [32., 0.], [-4., -8., -4.], [8, 8, 8], delta + 0.5, false).at(0., y, 0.),
+            body: Part::new().add_box(t, [16., 16.], [-4., 0., -2.], [8, 12, 4], delta, false).at(0., y, 0.),
+            right_arm: Part::new().add_box(t, [40., 16.], [-3., -2., -2.], [4, 12, 4], delta, false).at(-5., 2. + y, 0.),
+            left_arm: Part::new().add_box(t, [40., 16.], [-1., -2., -2.], [4, 12, 4], delta, true).at(5., 2. + y, 0.),
+            right_leg: Part::new().add_box(t, [0., 16.], [-2., 0., -2.], [4, 12, 4], delta, false).at(-1.9, 12. + y, 0.),
+            left_leg: Part::new().add_box(t, [0., 16.], [-2., 0., -2.], [4, 12, 4], delta, true).at(1.9, 12. + y, 0.),
             left_leg_wear: Part::new(),
             right_leg_wear: Part::new(),
             left_arm_wear: Part::new(),

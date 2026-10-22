@@ -121,6 +121,88 @@ fn handle(stream: TcpStream) {
                         play(PlayClientbound::EntityMetadata(EntityMetadata { entity_id: 42, metadata: vec![(17, mc_protocol::MetaValue::Float(4.0))] }));
                         play(PlayClientbound::UpdateHealth(UpdateHealth { health: 13.0, food: 17, saturation: 0.0 }));
                     }
+                    if std::env::var_os("MOCK_MOBS").is_some() {
+                        // Three rows of mobs facing the player, with variant metadata.
+                        use mc_protocol::MetaValue::{Byte, Float, Int, Short};
+                        let rows: [&[(u8, Vec<(u8, mc_protocol::MetaValue)>)]; 3] = [
+                            &[
+                                (54, vec![]),
+                                (54, vec![(13, Byte(1))]),
+                                (54, vec![(12, Byte(1))]),
+                                (57, vec![]),
+                                (51, vec![]),
+                                (51, vec![(13, Byte(1))]),
+                                (50, vec![(16, Byte(1)), (18, Byte(1))]),
+                                (58, vec![(16, Short(2)), (18, Byte(1))]),
+                                (66, vec![]),
+                                (120, vec![(16, Int(2))]),
+                                (97, vec![]),
+                            ],
+                            &[
+                                (52, vec![]),
+                                (59, vec![]),
+                                (90, vec![(16, Byte(1))]),
+                                (90, vec![(12, Byte(-1))]),
+                                (92, vec![]),
+                                (96, vec![]),
+                                (91, vec![(16, Byte(14))]),
+                                (93, vec![]),
+                                (95, vec![(16, Byte(5)), (18, Float(20.)), (20, Byte(4))]),
+                                (98, vec![(18, Byte(1))]),
+                                (101, vec![(18, Byte(3))]),
+                            ],
+                            &[
+                                (55, vec![(16, Byte(2))]),
+                                (62, vec![(16, Byte(2))]),
+                                (99, vec![]),
+                                (94, vec![]),
+                                (65, vec![]),
+                                (60, vec![]),
+                                (67, vec![]),
+                                (61, vec![]),
+                                (56, vec![]),
+                            ],
+                        ];
+                        // Hover above and behind the lineup, looking down at it.
+                        play(PlayClientbound::PlayerAbilitiesS(PlayerAbilitiesS { flags: 6, fly_speed: 0.05, walk_speed: 0.1 }));
+                        play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 7.0, z: 10.0, yaw: 0.0, pitch: 28.0, flags: 0 }));
+                        let mut id = 100;
+                        for (row, mobs) in rows.iter().enumerate() {
+                            let z = [14.5, 18.5, 24.][row];
+                            let gap = [1.2, 1.4, 2.0][row];
+                            for (i, (kind, metadata)) in mobs.iter().enumerate() {
+                                let x = 8.5 + (i as f64 - (mobs.len() - 1) as f64 / 2.) * gap;
+                                let y = if *kind == 56 { 8. } else if *kind == 65 { 6. } else { 4. };
+                                play(PlayClientbound::SpawnMob(SpawnMob {
+                                    entity_id: id,
+                                    kind: *kind,
+                                    x: (x * 32.) as i32,
+                                    y: (y * 32.) as i32,
+                                    z: (z * 32.) as i32,
+                                    yaw: -128,
+                                    pitch: 0,
+                                    head_pitch: -128,
+                                    vx: 0,
+                                    vy: 0,
+                                    vz: 0,
+                                    metadata: metadata.clone(),
+                                }));
+                                if *kind == 54 && metadata.is_empty() {
+                                    // Iron sword, enchanted diamond helmet, gold leggings.
+                                    play(PlayClientbound::EntityEquipment(EntityEquipment { entity_id: id, slot: 0, item: Some(mc_protocol::Slot { id: 267, count: 1, damage: 0, nbt: None }) }));
+                                    play(PlayClientbound::EntityEquipment(EntityEquipment { entity_id: id, slot: 2, item: Some(mc_protocol::Slot { id: 316, count: 1, damage: 0, nbt: None }) }));
+                                    play(PlayClientbound::EntityEquipment(EntityEquipment { entity_id: id, slot: 4, item: Some(mc_protocol::Slot { id: 310, count: 1, damage: 0, nbt: None }) }));
+                                }
+                                if *kind == 51 && metadata.is_empty() {
+                                    play(PlayClientbound::EntityEquipment(EntityEquipment { entity_id: id, slot: 0, item: Some(mc_protocol::Slot { id: 261, count: 1, damage: 0, nbt: None }) }));
+                                }
+                                if *kind == 92 {
+                                    play(PlayClientbound::EntityStatus(EntityStatus { entity_id: id, status: 2 }));
+                                }
+                                id += 1;
+                            }
+                        }
+                    }
                     if std::env::var_os("MOCK_SCORE").is_some() {
                         // Title, tab header/footer, a team, sidebar / list / below-name objectives.
                         play(PlayClientbound::PlayerListItem(PlayerListItem {

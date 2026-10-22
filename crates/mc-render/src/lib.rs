@@ -8,6 +8,7 @@ pub mod gui_gpu;
 pub mod items;
 pub mod lightmap;
 pub mod mesh;
+pub mod mobs;
 pub mod models;
 pub mod sky;
 mod sky_gpu;

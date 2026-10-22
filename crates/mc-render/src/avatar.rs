@@ -2,6 +2,7 @@
 //! (`ItemRenderer.renderItemInFirstPerson`) and the block selection box.
 use crate::entity_model::{lights_in, standard_lighting, ModelQuad, PlayerModel, Pose};
 use crate::items::{ItemModel, TransformType};
+use crate::mobs::{MobFrame, MobModels, Tex};
 use crate::Camera;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec3, Vec4};
@@ -103,6 +104,8 @@ pub struct AvatarFrame {
     pub use_anim: Option<UseAnim>,
     /// `armorInventory` (0 boots .. 3 helmet).
     pub armor: [Option<ArmorPiece>; 4],
+    /// Living mobs in view.
+    pub mobs: Vec<MobFrame>,
 }
 
 /// Physical-pixel placement of an inventory player preview.
@@ -124,6 +127,8 @@ struct Vertex {
     uv: [f32; 2],
     color: [f32; 4],
     kind: f32,
+    /// `setBrightness` combiner color (already lightmapped) and its weight.
+    overlay: [f32; 4],
 }
 
 pub struct AvatarRenderer {
@@ -137,6 +142,12 @@ pub struct AvatarRenderer {
     leggings_model: PlayerModel,
     skins: wgpu::Texture,
     glint_pipeline: wgpu::RenderPipeline,
+    mobs: MobModels,
+    /// Mob texture rectangles in the mob atlas: (u, v, width, height), normalized.
+    mob_atlas: std::collections::HashMap<&'static str, [f32; 4]>,
+    /// `blendFunc(ONE, ONE)` eye layers, drawn after the opaque geometry.
+    additive_pipeline: wgpu::RenderPipeline,
+    additive: Vec<Vertex>,
     /// Glint passes collected while building a frame; drawn last with `GL_EQUAL` depth.
     glint: Vec<Vertex>,
 }
@@ -150,6 +161,9 @@ const ARMOR: f32 = 6.;
 const GLINT: f32 = 7.;
 /// Armor sheets stacked vertically: `{material}_layer_{1,2}`, then the leather overlays.
 const ARMOR_CELLS: u32 = 12;
+const MOB: f32 = 8.;
+/// Vertices per buffer (a frame's world pass, hand pass and inventory preview).
+const MAX_VERTS: usize = 131072;
 
 impl AvatarRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, assets: &AssetSource, atlas: wgpu::TextureView) -> Self {
@@ -168,6 +182,7 @@ impl AvatarRenderer {
                 texture_entry(4),
                 texture_entry(5),
                 texture_entry(6),
+                texture_entry(7),
             ],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -183,9 +198,10 @@ const SRGB:bool={};
 @group(0) @binding(4) var skins:texture_2d<f32>;
 @group(0) @binding(5) var armor:texture_2d<f32>;
 @group(0) @binding(6) var glint:texture_2d<f32>;
-struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) color:vec4<f32>, @location(2) @interpolate(flat) kind:u32 }};
-@vertex fn vs(@location(0) p:vec4<f32>,@location(1) uv:vec2<f32>,@location(2) color:vec4<f32>,@location(3) kind:f32)->V {{
- var o:V;o.pos=p;o.uv=uv;o.color=color;o.kind=u32(kind);return o;
+@group(0) @binding(7) var mobs:texture_2d<f32>;
+struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) color:vec4<f32>, @location(2) @interpolate(flat) kind:u32, @location(3) overlay:vec4<f32> }};
+@vertex fn vs(@location(0) p:vec4<f32>,@location(1) uv:vec2<f32>,@location(2) color:vec4<f32>,@location(3) kind:f32,@location(4) overlay:vec4<f32>)->V {{
+ var o:V;o.pos=p;o.uv=uv;o.color=color;o.kind=u32(kind);o.overlay=overlay;return o;
 }}
 @fragment fn fs(v:V)->@location(0) vec4<f32> {{
  var c=v.color;
@@ -195,6 +211,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(v.kind==5u){{c*=textureSampleLevel(skins,samp,v.uv,0.0);}}
  if(v.kind==6u){{c*=textureSampleLevel(armor,samp,v.uv,0.0);}}
  if(v.kind==7u){{c*=textureSampleLevel(glint,samp,fract(v.uv),0.0);}}
+ if(v.kind==8u){{c*=textureSampleLevel(mobs,samp,v.uv,0.0);}}
+ c=vec4<f32>(mix(c.rgb,v.overlay.rgb,v.overlay.a),c.a);
  if(v.kind==4u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);c=vec4<f32>(min(c.rgb*2.0,vec3<f32>(1.0)),c.a);}}
  if(v.kind!=3u && c.a<=0.1){{discard;}}
  if(SRGB){{c=vec4<f32>(select(c.rgb/12.92,pow((c.rgb+vec3<f32>(0.055))/1.055,vec3<f32>(2.4)),c.rgb>vec3<f32>(0.04045)),c.a);}}
@@ -221,7 +239,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32],
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4],
                 }],
             },
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
@@ -257,7 +275,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32],
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4],
                 }],
             },
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
@@ -300,7 +318,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32],
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4],
                 }],
             },
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
@@ -324,6 +342,45 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                             dst_factor: wgpu::BlendFactor::One,
                             operation: wgpu::BlendOperation::Add,
                         },
+                        alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+                    }),
+                    write_mask: wgpu::ColorWrites::COLOR,
+                })],
+            }),
+            multiview: None,
+            cache: None,
+        });
+        // LayerSpiderEyes / LayerEndermanEyes: blendFunc(ONE, ONE), alpha test off.
+        let additive_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("mob eyes"),
+            layout: Some(&pl),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4],
+                }],
+            },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
                         alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
                     }),
                     write_mask: wgpu::ColorWrites::COLOR,
@@ -367,6 +424,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         }
         let armor_view = texture(device, queue, &armor).create_view(&Default::default());
         let glint_view = texture(device, queue, &load("textures/misc/enchanted_item_glint.png")).create_view(&Default::default());
+        let (mob_img, mob_atlas) = mob_atlas(&load);
+        let mobs_view = texture(device, queue, &mob_img).create_view(&Default::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
@@ -383,12 +442,13 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&skins_view) },
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&armor_view) },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&glint_view) },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(&mobs_view) },
             ],
         });
         let vertices = std::array::from_fn(|_| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("avatar vertices"),
-                size: 65536 * std::mem::size_of::<Vertex>() as u64,
+                size: MAX_VERTS as u64 * std::mem::size_of::<Vertex>() as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             })
@@ -405,6 +465,10 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             skins,
             glint_pipeline,
             glint: Vec::new(),
+            mobs: MobModels::new(),
+            mob_atlas,
+            additive_pipeline,
+            additive: Vec::new(),
         }
     }
 
@@ -451,13 +515,16 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             for o in &frame.others {
                 self.body(&mut verts, o, world_vp, cam.pos);
             }
+            for m in &frame.mobs {
+                self.mob(&mut verts, m, world_vp, cam.pos);
+            }
             for d in &frame.dropped {
                 dropped_item(&mut verts, &mut self.glint, world_vp, cam.pos, d);
             }
             for q in &frame.damage {
                 for i in [0, 1, 2, 0, 2, 3] {
                     let clip = world_vp * (q.pos[i] - cam.pos).extend(1.);
-                    damage.push(Vertex { clip: clip.to_array(), uv: q.uv[i], color: [1., 1., 1., 0.5], kind: 4. });
+                    damage.push(Vertex { clip: clip.to_array(), uv: q.uv[i], color: [1., 1., 1., 0.5], kind: 4., overlay: [0.; 4] });
                 }
             }
             if let Some(bb) = frame.outline {
@@ -469,6 +536,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         // The crack overlay draws right after the terrain, before entities.
         let split = damage.len() as u32;
         damage.extend(verts);
+        let additive_start = damage.len() as u32;
+        damage.append(&mut self.additive);
         let glint_start = damage.len() as u32;
         damage.append(&mut self.glint);
         let verts = damage;
@@ -476,7 +545,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             return;
         }
         let buf = &self.vertices[hand_stage as usize];
-        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(65536)]));
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)]));
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(if hand_stage { "first person" } else { "player" }),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -497,13 +566,17 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, buf.slice(..));
-        let end = verts.len().min(65536) as u32;
+        let end = verts.len().min(MAX_VERTS) as u32;
         if split > 0 {
             pass.set_pipeline(&self.damage_pipeline);
             pass.draw(0..split.min(end), 0..1);
         }
         pass.set_pipeline(&self.pipeline);
-        pass.draw(split.min(end)..glint_start.min(end), 0..1);
+        pass.draw(split.min(end)..additive_start.min(end), 0..1);
+        if additive_start < glint_start.min(end) {
+            pass.set_pipeline(&self.additive_pipeline);
+            pass.draw(additive_start..glint_start.min(end), 0..1);
+        }
         if glint_start < end {
             pass.set_pipeline(&self.glint_pipeline);
             pass.draw(glint_start..end, 0..1);
@@ -555,7 +628,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let glint_start = verts.len() as u32;
         verts.append(&mut self.glint);
         let buf = &self.vertices[2];
-        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(65536)]));
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)]));
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("gui player"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -573,7 +646,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, buf.slice(..));
-        let end = verts.len().min(65536) as u32;
+        let end = verts.len().min(MAX_VERTS) as u32;
         pass.set_pipeline(&self.pipeline);
         pass.draw(0..glint_start.min(end), 0..1);
         if glint_start < end {
@@ -652,22 +725,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 pass(a.material as u32 * 2 + layer, [1.; 3]);
             }
             if a.glint {
-                // renderGlint: two passes, lighting off, color (0.5, 0.25, 0.8) * 0.76, texture
-                // matrix scale(1/3) . rotate(30 - 60i) . translate(0, age * (0.001 + 0.003i) * 20).
                 let glint = &mut self.glint;
-                for i in 0..2 {
-                    let (s, c) = (30. - i as f32 * 60.).to_radians().sin_cos();
-                    let d = f.age * (0.001 + i as f32 * 0.003) * 20.;
-                    let color = [0.5 * 0.76 * light[0], 0.25 * 0.76 * light[1], 0.8 * 0.76 * light[2], 1.];
-                    am.render(m, &mut |pm, q| {
-                        for k in [0, 1, 2, 0, 2, 3] {
-                            let [u, v] = q.uv[k];
-                            let v = v + d;
-                            let uv = [(u * c - v * s) / 3., (u * s + v * c) / 3.];
-                            glint.push(Vertex { clip: (vp * pm * q.pos[k].extend(1.)).to_array(), uv, color, kind: GLINT });
-                        }
-                    });
-                }
+                am.render(m, &mut |pm, q| armor_glint(glint, vp * pm, q, f.age, light));
             }
         }
         if let Some(item) = &f.held {
@@ -803,6 +862,83 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
 }
 
 /// Points skin-textured vertices at a downloaded skin's cell in the skin atlas.
+impl AvatarRenderer {
+    /// `RendererLivingEntity.doRender` for a mob, then `LayerHeldItem`.
+    fn mob(&mut self, out: &mut Vec<Vertex>, f: &MobFrame, vp: Mat4, cam: Vec3) {
+        let base = Mat4::from_translation(f.pos - cam);
+        let lights = lights_in(Mat3::IDENTITY);
+        let (atlas, glint, additive) = (&self.mob_atlas, &mut self.glint, &mut self.additive);
+        let held = self.mobs.render(f, base, &mut |l, pm, q| {
+            let light = if l.additive { f.bright } else { f.light };
+            if l.glint {
+                armor_glint(glint, vp * pm, q, f.age, light);
+                return;
+            }
+            let (kind, r) = match l.tex {
+                Tex::Mob(t) => (MOB, atlas.get(t).copied().unwrap_or([0., 0., 0., 0.])),
+                Tex::Armor(cell) => (ARMOR, [0., cell as f32 / ARMOR_CELLS as f32, 1., 1. / ARMOR_CELLS as f32]),
+            };
+            let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+            let shade = standard_lighting(n, lights);
+            let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
+            let overlay = l.overlay.map_or([0.; 4], |o| [o[0] * light[0], o[1] * light[1], o[2] * light[2], o[3]]);
+            let target = if l.additive { &mut *additive } else { &mut *out };
+            for i in [0, 1, 2, 0, 2, 3] {
+                let [u, v] = q.uv[i];
+                target.push(Vertex { clip: (vp * pm * q.pos[i].extend(1.)).to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay });
+            }
+        });
+        if let (Some(item), Some(m)) = (&f.held, held) {
+            render_item(out, &mut self.glint, vp, m, item, TransformType::ThirdPerson, lights, f.light);
+        }
+    }
+}
+
+/// `LayerArmorBase.renderGlint` for one quad: two passes, lighting off, color
+/// (0.5, 0.25, 0.8) * 0.76, texture matrix scale(1/3) . rotate(30 - 60i) .
+/// translate(0, age * (0.001 + 0.003i) * 20).
+fn armor_glint(glint: &mut Vec<Vertex>, mvp: Mat4, q: &ModelQuad, age: f32, light: [f32; 3]) {
+    let color = [0.5 * 0.76 * light[0], 0.25 * 0.76 * light[1], 0.8 * 0.76 * light[2], 1.];
+    for i in 0..2 {
+        let (s, c) = (30. - i as f32 * 60.).to_radians().sin_cos();
+        let d = age * (0.001 + i as f32 * 0.003) * 20.;
+        for k in [0, 1, 2, 0, 2, 3] {
+            let [u, v] = q.uv[k];
+            let v = v + d;
+            let uv = [(u * c - v * s) / 3., (u * s + v * c) / 3.];
+            glint.push(Vertex { clip: (mvp * q.pos[k].extend(1.)).to_array(), uv, color, kind: GLINT, overlay: [0.; 4] });
+        }
+    }
+}
+
+/// Shelf-packs every mob texture into one atlas.
+#[allow(clippy::type_complexity)]
+fn mob_atlas(load: &dyn Fn(&str) -> image::RgbaImage) -> (image::RgbaImage, std::collections::HashMap<&'static str, [f32; 4]>) {
+    let mut imgs: Vec<(&'static str, image::RgbaImage)> = crate::mobs::TEXTURES.iter().map(|t| (*t, load(&format!("textures/entity/{t}.png")))).collect();
+    imgs.sort_by_key(|(_, i)| std::cmp::Reverse((i.height(), i.width())));
+    let width = 1024u32.max(imgs.iter().map(|(_, i)| i.width()).max().unwrap_or(0));
+    let (mut x, mut y, mut row) = (0u32, 0u32, 0u32);
+    let mut placed = Vec::new();
+    for (name, img) in &imgs {
+        if x + img.width() > width {
+            x = 0;
+            y += row + 2;
+            row = 0;
+        }
+        placed.push((*name, x, y));
+        x += img.width() + 2;
+        row = row.max(img.height());
+    }
+    let height = (y + row).max(1);
+    let mut atlas = image::RgbaImage::new(width, height);
+    let mut rects = std::collections::HashMap::new();
+    for ((name, px, py), (_, img)) in placed.into_iter().zip(&imgs) {
+        image::imageops::replace(&mut atlas, img, px as i64, py as i64);
+        rects.insert(name, [px as f32 / width as f32, py as f32 / height as f32, img.width() as f32 / width as f32, img.height() as f32 / height as f32]);
+    }
+    (atlas, rects)
+}
+
 fn retarget_skin(verts: &mut [Vertex], skin: Option<u32>) {
     let Some(cell) = skin else { return };
     let per = (SKIN_ATLAS / 64) as f32;
@@ -825,7 +961,7 @@ fn item_glint(glint: &mut Vec<Vertex>, clip: &[Vec4; 4], uv: &[[f32; 2]; 4], lig
         let (s, c) = deg.to_radians().sin_cos();
         for i in [0, 1, 2, 0, 2, 3] {
             let [u, v] = uv[i];
-            glint.push(Vertex { clip: clip[i].to_array(), uv: [8. * (c * u - s * v + off), 8. * (s * u + c * v)], color, kind: GLINT });
+            glint.push(Vertex { clip: clip[i].to_array(), uv: [8. * (c * u - s * v + off), 8. * (s * u + c * v)], color, kind: GLINT, overlay: [0.; 4] });
         }
     }
 }
@@ -855,7 +991,7 @@ fn render_item(out: &mut Vec<Vertex>, glint: &mut Vec<Vertex>, proj: Mat4, m: Ma
             continue;
         }
         for i in [0, 1, 2, 0, 2, 3] {
-            out.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: c, kind: ATLAS });
+            out.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: c, kind: ATLAS, overlay: [0.; 4] });
         }
         if item.glint {
             item_glint(glint, &clip, &q.uv, light);
@@ -919,7 +1055,7 @@ fn entity_item(out: &mut Vec<Vertex>, glint: &mut Vec<Vertex>, vp: Mat4, m: Mat4
             continue;
         }
         for i in [0, 1, 2, 0, 2, 3] {
-            out.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: c, kind: ATLAS });
+            out.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: c, kind: ATLAS, overlay: [0.; 4] });
         }
         if item.glint {
             item_glint(glint, &clip, &q.uv, light);
@@ -947,7 +1083,7 @@ fn model_quad(out: &mut Vec<Vertex>, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f
     let shade = standard_lighting(n, lights);
     let c = [tint[0] * shade * light[0], tint[1] * shade * light[1], tint[2] * shade * light[2], 1.];
     for i in [0, 1, 2, 0, 2, 3] {
-        out.push(Vertex { clip: (proj * m * q.pos[i].extend(1.)).to_array(), uv: q.uv[i], color: c, kind });
+        out.push(Vertex { clip: (proj * m * q.pos[i].extend(1.)).to_array(), uv: q.uv[i], color: c, kind, overlay: [0.; 4] });
     }
 }
 
@@ -979,7 +1115,7 @@ fn outline(out: &mut Vec<Vertex>, vp: Mat4, cam: Vec3, bb: Aabb, w: f32, h: f32)
         let ox = |p: Vec4, s: f32| Vec4::new(p.x + off.x * s * 2. / w * p.w, p.y + off.y * s * 2. / h * p.w, p.z, p.w);
         let quad = [ox(pa, -1.), ox(pb, -1.), ox(pb, 1.), ox(pa, 1.)];
         for i in [0, 1, 2, 0, 2, 3] {
-            out.push(Vertex { clip: quad[i].to_array(), uv: [0.; 2], color: [0., 0., 0., 0.4], kind: LINE });
+            out.push(Vertex { clip: quad[i].to_array(), uv: [0.; 2], color: [0., 0., 0., 0.4], kind: LINE, overlay: [0.; 4] });
         }
     }
 }

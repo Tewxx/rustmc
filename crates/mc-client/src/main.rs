@@ -143,12 +143,25 @@ fn read_spawn(world: &Path) -> Option<(i32, i32)> {
 /// Entity flags (index 0): sneaking 0x02, sprinting 0x08.
 fn apply_meta(r: &mut entities::Remote, meta: &mc_protocol::Metadata) {
     for (i, v) in meta {
+        r.meta.insert(*i, v.clone());
         if let (0, mc_protocol::MetaValue::Byte(b)) = (i, v) {
             r.sneaking = b & 2 != 0;
             r.sprinting = b & 8 != 0;
             r.eating = b & 16 != 0;
         }
     }
+}
+
+/// `RendererLivingEntity.interpolateRotation`: the short way around.
+fn lerp_angle(a: f32, b: f32, pt: f32) -> f32 {
+    let mut f = b - a;
+    while f < -180. {
+        f += 360.;
+    }
+    while f >= 180. {
+        f -= 360.;
+    }
+    a + pt * f
 }
 
 fn java_string_hash(s: &str) -> i32 {
@@ -784,6 +797,10 @@ impl App {
             })
             .collect();
         self.tick_items();
+        for r in self.remote.map.values_mut().filter(|r| r.kind == entities::Kind::Mob(94)) {
+            let (x, y, z) = (r.pos.x.floor() as i32, (r.pos.y + r.height * 0.5).floor() as i32, r.pos.z.floor() as i32);
+            r.in_water = self.world.state_at(x, y, z).block().material == mc_data::Material::Water;
+        }
         self.remote.tick();
         // EntityOtherPlayerMP.onUpdate: EntityPlayer counts the use down, then the eating flag
         // starts or clears it.
@@ -1064,6 +1081,9 @@ impl App {
                 C::SpawnMob(m) => {
                     let mut r = entities::Remote::new(m.entity_id, entities::Kind::Mob(m.kind), m.x, m.y, m.z, m.yaw, m.pitch);
                     r.head_yaw = entities::angle(m.head_pitch);
+                    r.prev_head_yaw = r.head_yaw;
+                    (r.width, r.height) = entities::mob_size(m.kind);
+                    apply_meta(&mut r, &m.metadata);
                     self.remote.map.insert(m.entity_id, r);
                 }
                 C::SpawnObject(o) => {
@@ -1200,10 +1220,8 @@ impl App {
                     _ => {}
                 },
                 C::EntityStatus(s) => {
-                    if s.status == 2 {
-                        if let Some(r) = self.remote.map.get_mut(&s.entity_id) {
-                            r.hurt_time = 10;
-                        }
+                    if let Some(r) = self.remote.map.get_mut(&s.entity_id) {
+                        r.status(s.status);
                     }
                 }
                 C::EntityEffect(e) if e.entity_id == n.entity_id => {
@@ -2262,6 +2280,7 @@ impl App {
             dropped,
             damage: self.damage_quads(),
             others: self.other_players(pt),
+            mobs: self.mob_frames(pt),
             armor: std::array::from_fn(|i| self.ui.armor[3 - i].and_then(|s| tooltip::armor_piece(&self.catalogue, &s))),
             use_anim: self.item_in_use.filter(|_| self.item_in_use_count > 0).map(|s| {
                 let (a, max) = item_use::action(self.catalogue.items[s.item].id);
@@ -2278,6 +2297,111 @@ impl App {
             r.avatar_frame = Some(frame);
         }
     }
+    /// Every living mob in render range (`RenderManager.shouldRender`: within 64 blocks times
+    /// the box's average edge), with what its renderer reads.
+    fn mob_frames(&self, pt: f32) -> Vec<mc_render::mobs::MobFrame> {
+        use mc_render::mobs::Mob;
+        use std::f32::consts::PI;
+        let cam = self.camera.pos;
+        let bright = self.lightmap_color(15, 15);
+        self.remote
+            .map
+            .values()
+            .filter_map(|r| {
+                let entities::Kind::Mob(kind) = r.kind else { return None };
+                let p = r.interpolated(pt);
+                let range = (r.width * 2. + r.height) / 3. * 64.;
+                let d2 = (p.x - cam.x as f64).powi(2) + (p.y - cam.y as f64).powi(2) + (p.z - cam.z as f64).powi(2);
+                if d2 >= range * range {
+                    return None;
+                }
+                let lerp = |a: f32, b: f32| a + (b - a) * pt;
+                let a = &r.anim;
+                let flags = r.meta_byte(16);
+                let mob = match kind {
+                    50 => Mob::Creeper { flash: (a.last_active as f32 + (a.since_ignited - a.last_active) as f32 * pt) / 28. },
+                    51 => Mob::Skeleton { wither: r.meta_byte(13) == 1 },
+                    52 | 59 => Mob::Spider { cave: kind == 59 },
+                    53 => Mob::Giant,
+                    54 => Mob::Zombie { villager: r.meta_byte(13) == 1 },
+                    55 => Mob::Slime { size: flags as f32, squish: lerp(a.prev_squish, a.squish) },
+                    56 => Mob::Ghast { shooting: flags != 0 },
+                    57 => Mob::PigZombie,
+                    58 => Mob::Enderman { carrying: r.meta_short(16) != 0, screaming: r.meta_byte(18) > 0 },
+                    60 => Mob::Silverfish,
+                    61 => Mob::Blaze,
+                    62 => Mob::MagmaCube { size: flags as f32, squish: lerp(a.prev_squish, a.squish) },
+                    65 => Mob::Bat { hanging: flags & 1 != 0 },
+                    66 => Mob::Witch { holding: r.held_stack.is_some() },
+                    67 => Mob::Endermite,
+                    90 => Mob::Pig { saddle: flags & 1 != 0 },
+                    91 => Mob::Sheep { color: (flags & 15) as u8, sheared: flags & 16 != 0 },
+                    92 | 96 => Mob::Cow { mooshroom: kind == 96 },
+                    93 => Mob::Chicken { wing: (mc_core::math::sin(lerp(a.prev_wing, a.wing)) + 1.) * lerp(a.prev_dest_pos, a.dest_pos) },
+                    94 => Mob::Squid { pitch: lerp(a.prev_squid_pitch, a.squid_pitch), yaw: lerp(a.prev_squid_yaw, a.squid_yaw), tentacle: lerp(a.last_tentacle, a.tentacle) },
+                    95 => {
+                        let (angry, tamed) = (flags & 2 != 0, flags & 4 != 0);
+                        // getTailRotation; the collar byte is a dye damage value.
+                        let tail = if angry {
+                            1.5393804
+                        } else if tamed {
+                            (0.55 - (20. - r.meta_float(18).unwrap_or(20.)) * 0.02) * PI
+                        } else {
+                            PI / 5.
+                        };
+                        Mob::Wolf { tail, sitting: flags & 1 != 0, angry, tamed, collar: 15 - (r.meta_byte(20) & 15) as u8 }
+                    }
+                    97 => Mob::SnowMan,
+                    98 => {
+                        let state = if r.sneaking {
+                            0
+                        } else if r.sprinting {
+                            2
+                        } else if flags & 1 != 0 {
+                            3
+                        } else {
+                            1
+                        };
+                        Mob::Ocelot { skin: r.meta_byte(18) as u8, state, tamed: flags & 4 != 0 }
+                    }
+                    99 => Mob::IronGolem { attack: if a.attack_timer > 0 { a.attack_timer as f32 - pt } else { 0. }, rose: a.hold_rose },
+                    101 => Mob::Rabbit { kind: r.meta_byte(18) as u8 },
+                    120 => Mob::Villager { profession: r.meta_int(16) },
+                    _ => return None,
+                };
+                let biped = matches!(kind, 51 | 53 | 54 | 57);
+                let (sky, block) = self.world.light(p.x.floor() as i32, (p.y + r.height * 0.85).floor() as i32, p.z.floor() as i32);
+                let swing = {
+                    let mut f = r.swing - r.prev_swing;
+                    if f < 0. {
+                        f += 1.;
+                    }
+                    r.prev_swing + f * pt
+                };
+                Some(mc_render::mobs::MobFrame {
+                    mob,
+                    id: r.id,
+                    pos: Vec3::new(p.x as f32, p.y as f32, p.z as f32),
+                    body_yaw: lerp_angle(r.prev_body_yaw, r.body_yaw, pt),
+                    head_yaw: lerp_angle(r.prev_head_yaw, r.head_yaw, pt),
+                    pitch: lerp(r.prev_pitch, r.pitch),
+                    limb_swing: r.limb_swing - r.limb_amount * (1. - pt),
+                    limb_amount: lerp(r.prev_limb_amount, r.limb_amount),
+                    age: r.ticks_existed as f32 + pt,
+                    ticks: r.ticks_existed,
+                    swing,
+                    child: r.is_child(),
+                    hurt: r.hurt_time > 0,
+                    death: if a.death_time > 0 { a.death_time as f32 + pt } else { 0. },
+                    light: self.lightmap_color(sky, block),
+                    bright,
+                    held: if biped { r.held_stack.and_then(|s| self.held_item_using(&s, 0)) } else { None },
+                    armor: if biped { r.armor.map(|s| s.and_then(|s| tooltip::armor_piece(&self.catalogue, &s))) } else { [None; 4] },
+                })
+            })
+            .collect()
+    }
+
     fn other_players(&self, pt: f32) -> Vec<mc_render::avatar::AvatarFrame> {
         let cam = self.entity.interpolated(pt);
         self.remote
