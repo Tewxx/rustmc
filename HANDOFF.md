@@ -28,6 +28,49 @@ never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`
 | Creative catalogue, tabs, search, stack/cursor operations, hotbar icons; local commands, break/place/pick | Working; special item behavior/NBT and complete placement rules remain | `mc-client/src/{inventory,commands,main}.rs` |
 | Client: state machine, input, settings (`options.txt`) | Local playable creative world, death/respawn screen | `crates/mc-client/src/main.rs` |
 
+## Session log — chests (Oct 2026)
+
+`TileEntityChestRenderer` / `TileEntityEnderChestRenderer` with `ModelChest` / `ModelLargeChest`
+are ported in `mc-render/src/tile.rs`; the per-tile state and animation live in
+`mc-client/src/tiles.rs`.
+
+- **Model:** the three `ModelBox`es of `ModelChest` (lid 14×5×14 at (0,-5,-14), knob 2×4×1,
+  base 14×10×14 from texture `(0,19)`) and their `ModelLargeChest` 30-wide variants, built with
+  the existing `Part::add_box` port, which is bit-exact with `ModelBox`'s corner order, texture
+  rectangles and cross-product normals. `renderAll` order is lid, knob, base, with the knob
+  sharing the lid's `rotateAngleX`.
+- **Transform:** `translate(x, y+1, z+1) · scale(1,-1,-1) · translate(.5,.5,.5) ·
+  [double-chest shift] · rotateY(j) · translate(-.5,-.5,-.5)`, `j` from the chest metadata
+  (`getMetaFromState` is `EnumFacing.getIndex`, so north=2 / south=3 / west=4 / east=5), the
+  shift being `i == 2 && adjacentChestXPos != null` and `i == 5 && adjacentChestZPos != null`.
+  Tests pin the closed lid at world y 0.875 and the open lid's top edge at 1.4375.
+- **Double chests:** only the half whose `adjacentChestXNeg`/`adjacentChestZNeg` is empty draws,
+  using the `_double` sheet, and it takes the maximum interpolated lid angle of the two halves.
+  `isChestAt` requires the same `BlockChest.chestType`, so trapped and normal chests never pair;
+  an ender chest is not a `BlockChest` and never pairs.
+- **Animation:** `TileEntityChest.update` (`prevLidAngle = lidAngle`, ±0.1 per tick, clamped,
+  `random.chestopen` at 0 and `random.chestclosed` when crossing 0.5, pitch
+  `rand.nextFloat()*0.1+0.9`) ticks after the entities, in `addTileEntity` order. The open
+  count comes from block event 1 (`BlockContainer.onBlockEventReceived` →
+  `receiveClientEvent` → `numPlayersUsing`), so a chest opening on a server animates here.
+  `TileEntityEnderChest` shares the model and animation without adjacency.
+- **Lighting:** `TileEntityRendererDispatcher` sets the lightmap from
+  `getCombinedLight(pos, 0)` and leaves `RenderHelper.enableStandardItemLighting()` on, so faces
+  are `standard_lighting(normal)` × that position's lightmap. Tiles are drawn from the shared
+  entity atlas (the seven chest sheets are added to it) and skip at squared distance 4096 like
+  `getMaxRenderDistanceSquared`.
+- **Textures:** normal / trapped / ender / christmas and their `_double` sheets, with vanilla's
+  calendar rule (December 24th-26th switches `BlockChest` to the christmas sheet).
+- **Tiles that the server never sends `S35` for** do not render, matching the client's
+  `RenderChunk` tile scan; locally loaded `Chunk.tileEntities` are seeded at startup and a
+  locally placed container block gets a tile, so singleplayer chests work too.
+- **Verified:** `MOCK_TILES=1` builds a single chest, a double chest, an open trapped chest and
+  an ender chest; `shots/tiles2.png` shows the wide chest with its centred knob, the trapped
+  chest's red latch and its lid standing open. `shots/tiles.png` is the same scene from behind.
+  Unit tests cover the metadata mapping, the three boxes, the lid angles, every sheet, the
+  double-chest pairing/shift, the 64-block cut-off and the 0.1-per-tick animation with its two
+  sounds.
+
 ## Session log — multiplayer, sound, integrated server (Oct 2026)
 
 Commits cbf3425 … 5bc480a. New since the table above:
@@ -76,8 +119,8 @@ Commits cbf3425 … 5bc480a. New since the table above:
    (address, username, offline/Microsoft join). It relaunches the client with `--connect`
    (and `--online`); the vanilla saved-server list and in-process world switching are pending.
    See `shots/mp2.png`.
-1. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
-   the sign editor (`S36`/C12).
+1. Tile-entity rendering: **chests are done** (see the session log below); still missing are
+   signs (`S33`), skulls/banners/beacons (`S35`) and the sign editor (`S36`/C12).
 2. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
    bolts; minecart/boat models; wither skull; armour layers on stands; TNT flash (`f2` alpha
    pass); leash rendering.

@@ -91,6 +91,23 @@ fn handle(stream: TcpStream) {
                         }
                         play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 5.0, z: 5.0, yaw: 0.0, pitch: 25.0, flags: 0 }));
                     }
+                    if std::env::var_os("MOCK_TILES").is_some() {
+                        // Chests on the grass at y = 4, facing south at a camera standing south
+                        // of them: a single chest, a double chest along +X, a trapped chest whose
+                        // lid is opened with block event 1, and an ender chest.
+                        let mut tile = |pos: BlockPos, id: i32, meta: i32| {
+                            play(PlayClientbound::BlockChange(BlockChange { pos, state: id + (meta << 12) }));
+                            play(PlayClientbound::UpdateTileEntity(UpdateTileEntity { pos, action: 0, nbt: Some(mc_core::nbt::Compound::new()) }));
+                        };
+                        tile(BlockPos::new(4, 4, 8), 54, 3);
+                        tile(BlockPos::new(6, 4, 8), 54, 3);
+                        tile(BlockPos::new(7, 4, 8), 54, 3);
+                        tile(BlockPos::new(9, 4, 8), 146, 3);
+                        tile(BlockPos::new(11, 4, 8), 130, 3);
+                        // `TileEntityChest.receiveClientEvent(1, 1)`: one player has it open.
+                        play(PlayClientbound::BlockAction(BlockAction { pos: BlockPos::new(9, 4, 8), byte1: 1, byte2: 1, block_id: 146 }));
+                        play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 5.2, z: 12.5, yaw: 180.0, pitch: 12.0, flags: 0 }));
+                    }
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"Welcome to the ","color":"yellow","extra":[{"text":"mock server","bold":true}]}"#.into(), position: 0 }));
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"action bar"}"#.into(), position: 2 }));
                     play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(10, 4, 8), state: 57 }));

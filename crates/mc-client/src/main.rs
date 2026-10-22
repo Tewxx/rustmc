@@ -28,6 +28,7 @@ mod tools;
 mod tooltip;
 mod item_use;
 mod scoreboard;
+mod tiles;
 
 use bench::Bench;
 use glam::Vec3;
@@ -534,8 +535,11 @@ struct App {
     stats: std::collections::HashMap<String, i32>,
     /// `WorldClient.mapStorage` map data (`S34`).
     maps: std::collections::HashMap<i32, level::MapData>,
-    /// `WorldClient.tileEntityMap` NBT (`S35`): skulls, banners, beacons, spawners…
-    tile_entities: std::collections::HashMap<BlockPos, mc_core::nbt::Compound>,
+    /// `WorldClient.tileEntityMap`: chests keep their `S35` NBT and their `update()` state here;
+    /// skulls, banners, beacons and spawners keep their NBT for their future renderers.
+    tiles: tiles::Tiles,
+    /// `TileEntityChestRenderer.isChristmas`: December 24th-26th.
+    christmas: bool,
     /// Sign text (`S33PacketUpdateSign`).
     signs: std::collections::HashMap<BlockPos, [String; 4]>,
     /// `Minecraft.setRenderViewEntity` (`S43PacketCamera`).
@@ -649,7 +653,8 @@ impl App {
             brand: String::new(),
             stats: Default::default(),
             maps: Default::default(),
-            tile_entities: Default::default(),
+            tiles: Default::default(),
+            christmas: tiles::is_christmas(std::time::SystemTime::now()),
             signs: Default::default(),
             camera_entity: None,
             tab_complete: None,
@@ -1021,6 +1026,10 @@ impl App {
                 let e = &self.entity;
                 n.update_walking(e.sprinting, e.is_sneaking(), e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
             }
+        }
+        // `World.updateEntities`: tile entities tick after the world's entities.
+        for s in self.tiles.update(&self.world, &mut self.rand) {
+            self.play_sound(s.name, Some(s.pos), s.volume, s.pitch);
         }
         self.ui.effects = self
             .entity
@@ -1687,13 +1696,10 @@ impl App {
                 C::SignEditorOpen(_) => {
                     // GuiEditSign is not ported yet; the server closes the window itself.
                 }
-                C::UpdateTileEntity(t) => {
-                    if let Some(nbt) = t.nbt {
-                        self.tile_entities.insert(t.pos, nbt);
-                    } else {
-                        self.tile_entities.remove(&t.pos);
-                    }
-                }
+                C::UpdateTileEntity(t) => match t.nbt {
+                    Some(nbt) => self.tiles.on_nbt(t.pos, Some(nbt)),
+                    None => self.tiles.remove(t.pos),
+                },
                 C::Maps(m) => {
                     let e = self.maps.entry(m.map_id).or_insert_with(|| level::MapData { scale: m.scale, colors: vec![0; 128 * 128], icons: Vec::new() });
                     e.scale = m.scale;
@@ -1744,7 +1750,7 @@ impl App {
     }
 
     /// `S24PacketBlockAction` → `World.addBlockEvent` → `Block.onBlockEventReceived`.
-    fn block_action(&mut self, pos: BlockPos, block_id: i32, _byte1: u8, byte2: u8) {
+    fn block_action(&mut self, pos: BlockPos, block_id: i32, byte1: u8, byte2: u8) {
         let state = self.world.state_at(pos.x, pos.y, pos.z);
         if state.block().id as i32 != block_id {
             return;
@@ -1765,7 +1771,11 @@ impl App {
                 self.play_sound(name, Some(c), 3.0, pitch);
             }
             // BlockChest/BlockEnderChest use event 1 to set the open count for the lid
-            // animation; the tile-entity renderer that reads it is not ported yet.
+            // animation: `BlockContainer.onBlockEventReceived` forwards it to the tile entity's
+            // `receiveClientEvent`, which stores it as `numPlayersUsing`.
+            54 | 130 | 146 => {
+                self.tiles.receive_event(pos, byte1, byte2);
+            }
             _ => {}
         }
     }
@@ -2060,6 +2070,7 @@ impl App {
 
     /// `WorldClient.doPreChunk(x, z, false)`
     fn unload_chunk(&mut self, x: i32, z: i32) {
+        self.tiles.unload_chunk(x, z);
         if self.world.remove(x, z).is_some() {
             if let Some(r) = &mut self.renderer {
                 let empty = mc_render::mesh::ChunkMesh::default();
@@ -2974,6 +2985,14 @@ impl App {
             damage,
             others: self.other_players(pt),
             mobs: self.mob_frames(pt),
+            tiles: {
+                let table = &self.lightmap;
+                let color = |sky: u8, block: u8| {
+                    let i = (sky as usize * 16 + block as usize) * 4;
+                    [table[i] as f32 / 255., table[i + 1] as f32 / 255., table[i + 2] as f32 / 255.]
+                };
+                self.tiles.frames(&self.world, pt, self.camera.pos.to_array(), self.christmas, &color)
+            },
             objects: self.object_frames(pt),
             billboards: self.billboards(pt),
             fixed_items,
@@ -3488,6 +3507,7 @@ impl App {
             self.world.set_block(p, block.id, meta)
         };
         if placed {
+            self.tiles.placed(p, state);
             if !self.entity.creative {
                 self.ui.inventory[self.player.selected_slot] = if stack.count > 1 {
                     Some(mc_gui::ItemStack {
@@ -4591,6 +4611,7 @@ fn main() {
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App::new(assets, models, world, center, settings);
+    app.tiles.seed_from_world(&app.world);
     app.info.seed = seed;
     app.in_game = args.play || connection.is_some();
     if args.screenshot.is_none() && std::env::var_os("RUSTMC_NO_SOUND").is_none() {

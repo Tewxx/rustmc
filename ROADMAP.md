@@ -302,11 +302,13 @@ maps, world border, lightning, minecarts/boats). Chat completion is server-owned
 creative flight sends C13. Server resource packs (`S48`) prompt, download with SHA-1,
 verify, apply with a full model/atlas/font/GUI reload and world remesh, and cache per server.
 
-Immediate order: (1) tile-entity renderers (signs, skulls, banners, chests,
-beacons); (2) maps, world border, lightning, minecart/boat, armour layers on stands, TNT
-flash; (3) remaining particle types (footstep, item crack, mob appearance) and crit emitters;
-(4) serverbound EnchantItem/SteerVehicle/Spectate/UpdateSignC; (5) movement/anti-cheat
-differential audit against `EntityPlayerSP`/`PlayerControllerMP`. Then return to the
+Immediate order: (1) tile-entity renderers — **chests done** (`TileEntityChestRenderer` with
+single/double/trapped/ender/christmas sheets, lid animation, sounds, 64-block cut-off); still
+missing are signs, skulls, banners and beacons; (2) maps, world border, lightning,
+minecart/boat, armour layers on stands, TNT flash; (3) remaining particle types (footstep,
+item crack, mob appearance) and crit emitters; (4) serverbound
+EnchantItem/SteerVehicle/Spectate/UpdateSignC; (5) movement/anti-cheat differential audit
+against `EntityPlayerSP`/`PlayerControllerMP`. Then return to the
 client-track segments below (S5 protocol stress, S7 physics replay, S8 streaming, S9 visuals,
 S12 performance).
 

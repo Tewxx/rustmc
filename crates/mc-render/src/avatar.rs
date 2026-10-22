@@ -154,6 +154,8 @@ pub struct AvatarFrame {
     pub armor: [Option<ArmorPiece>; 4],
     /// Living mobs in view.
     pub mobs: Vec<MobFrame>,
+    /// Tile entities (`TileEntityRendererDispatcher`); drawn with the world, after the entities.
+    pub tiles: Vec<crate::tile::TileFrame>,
     /// Non-living entities drawn from the entity atlas (arrows, XP orbs, paintings, stands).
     pub objects: Vec<crate::objects::ObjectFrame>,
     /// Item-model billboards (`RenderSnowball`).
@@ -201,6 +203,8 @@ pub struct AvatarRenderer {
     skins: wgpu::Texture,
     glint_pipeline: wgpu::RenderPipeline,
     mobs: MobModels,
+    /// `TileEntityChestRenderer`'s `simpleChest` / `largeChest`.
+    chests: crate::tile::ChestModels,
     /// Armour-stand parts, posed per frame.
     stands: crate::objects::ArmorStandModel,
     /// Mob texture rectangles in the mob atlas: (u, v, width, height), normalized.
@@ -529,6 +533,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             glint_pipeline,
             glint: Vec::new(),
             mobs: MobModels::new(),
+            chests: crate::tile::ChestModels::default(),
             stands: crate::objects::ArmorStandModel::new(),
             mob_atlas,
             additive_pipeline,
@@ -584,6 +589,9 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             }
             for o in &frame.objects {
                 self.object(&mut verts, o, world_vp, cam);
+            }
+            for t in &frame.tiles {
+                self.tile(&mut verts, t, world_vp, cam.pos);
             }
             for b in &frame.billboards {
                 // RenderSnowball: translate, scale 0.5, rotate(-playerViewY, Y),
@@ -1024,6 +1032,26 @@ impl AvatarRenderer {
             }
         });
     }
+    /// Tile entities: `TileEntityRendererDispatcher` with the standard item lighting active.
+    fn tile(&mut self, out: &mut Vec<Vertex>, f: &crate::tile::TileFrame, vp: Mat4, cam: Vec3) {
+        let lights = lights_in(Mat3::IDENTITY);
+        let light = f.light();
+        let atlas = &self.mob_atlas;
+        crate::tile::render(f, &self.chests, &mut |l, pm, q| {
+            let r = match l.tex {
+                Tex::Mob(t) => atlas.get(t).copied().unwrap_or([0., 0., 0., 0.]),
+                Tex::Armor(cell) => [0., cell as f32 / ARMOR_CELLS as f32, 1., 1. / ARMOR_CELLS as f32],
+            };
+            let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+            let shade = standard_lighting(n, lights);
+            let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
+            let clip = q.pos.map(|p| vp * ((pm * p.extend(1.)).truncate() - cam).extend(1.));
+            for i in [0, 1, 2, 0, 2, 3] {
+                let [u, v] = q.uv[i];
+                out.push(Vertex { clip: clip[i].to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind: MOB, overlay: [0.; 4] });
+            }
+        });
+    }
 }
 
 /// `LayerArmorBase.renderGlint` for one quad: two passes, lighting off, color
@@ -1049,6 +1077,7 @@ fn mob_atlas(load: &dyn Fn(&str) -> image::RgbaImage) -> (image::RgbaImage, std:
     let mut imgs: Vec<(&'static str, image::RgbaImage)> = crate::mobs::TEXTURES
         .iter()
         .chain(crate::objects::TEXTURES.iter())
+        .chain(crate::tile::TEXTURES.iter())
         .map(|t| (*t, load(&format!("textures/entity/{t}.png"))))
         .collect();
     // Object-atlas images outside `textures/entity/` (the painting sheet).

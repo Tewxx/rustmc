@@ -14,5 +14,6 @@ pub mod models;
 pub mod objects;
 pub mod sky;
 mod sky_gpu;
+pub mod tile;
 
 pub use gpu::{Camera, Renderer};
