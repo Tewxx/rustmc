@@ -728,6 +728,23 @@ impl App {
                 self.screen = None;
                 self.open(Box::new(screens::MainMenu::default()), false);
             }
+            Action::Connect { address, name, online } => {
+                // A running App has no world-reset/connection-switch path yet, so hand the
+                // direct-connect request to a fresh client process and stop this one.
+                let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("rustmc.exe"));
+                let mut cmd = std::process::Command::new(exe);
+                cmd.arg("--connect").arg(&address).arg("--name").arg(&name);
+                if online {
+                    cmd.arg("--online");
+                }
+                if !self.jar.as_os_str().is_empty() {
+                    cmd.arg("--jar").arg(&self.jar);
+                }
+                match cmd.spawn() {
+                    Ok(_) => el.exit(),
+                    Err(e) => eprintln!("could not start the client for {address}: {e}"),
+                }
+            }
             Action::Quit => el.exit(),
             Action::ResourcePackDecision(accept) => self.resource_pack_decision(accept),
             Action::TabComplete(prefix) => {
@@ -2767,6 +2784,7 @@ impl App {
     }
 
     fn sync_view(&mut self) {
+        self.ui.player_name = self.name.clone();
         let pt = self.tick_accum;
         let mut pos = self.entity.interpolated(pt);
         let mut eye = self.eye(pt);
@@ -4041,6 +4059,7 @@ impl App {
                 self.sync_view();
             }
             "creative" => self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false),
+            "multiplayer" => self.open(Box::new(screens::MultiplayerScreen::new()), false),
             "night" | "sunset" | "rain" | "cmds" => {
                 match which {
                     "night" => self.send_chat("/time set 18000"),
@@ -4534,6 +4553,7 @@ fn main() {
         }
     }
     app.name = connection.as_ref().map_or(args.name.clone(), |c| c.1.clone());
+    app.ui.player_name = app.name.clone();
     app.net = connection.map(|c| c.0);
     app.packs = pack::ResourcePacks::new(pack_mode);
     app.packs.applied = cached_applied;

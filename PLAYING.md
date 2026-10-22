@@ -36,6 +36,12 @@ remembered per-server choice. Pack sound overrides are not loaded yet (sounds co
 
 ## Joining real servers
 
+The title screen's **Multiplayer** button opens the direct-connect screen: type `host[:port]`,
+edit the username (prefilled from `--name`), then **Join Server** for offline-mode servers or
+**Join (Microsoft)** for online-mode servers. The client relaunches itself with the matching
+`--connect`/`--online` flags; the saved-server list and in-process server switching are not
+ported yet.
+
 Offline-mode (cracked) servers accept any name:
 
 ```

@@ -117,6 +117,8 @@ pub struct Ui {
     pub splash: String,
     /// True when a world is loaded (pause menu, world-tinted backgrounds).
     pub in_world: bool,
+    /// The local player's name, for screens that prefill it (`GuiMultiplayer`'s edit box).
+    pub player_name: String,
     /// Client ticks (20/s) plus partial tick, for animations.
     pub ticks: f32,
     /// Sound events GUI widgets played (`playPressSound`), drained by the client.
@@ -134,6 +136,7 @@ impl Ui {
             settings,
             splash: random_splash(assets),
             in_world: false,
+            player_name: "Player".into(),
             ticks: 0.0,
             sounds: Vec::new(),
             effects: Vec::new(),

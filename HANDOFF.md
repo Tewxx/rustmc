@@ -72,6 +72,10 @@ Commits cbf3425 … 5bc480a. New since the table above:
 - **Server resource packs (`S48`)** and **particles (`S2A`)** are in place and verified.
 
 **Next for multiplayer, in order:**
+0. **Multiplayer menu:** the title-screen button is enabled and opens a direct-connect screen
+   (address, username, offline/Microsoft join). It relaunches the client with `--connect`
+   (and `--online`); the vanilla saved-server list and in-process world switching are pending.
+   See `shots/mp2.png`.
 1. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
    the sign editor (`S36`/C12).
 2. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
