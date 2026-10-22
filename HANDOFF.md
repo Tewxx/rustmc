@@ -78,7 +78,7 @@ Commits cbf3425 … 5bc480a. New since the table above:
    bolts; minecart/boat models; wither skull; armour layers on stands; TNT flash (`f2` alpha
    pass); leash rendering.
 3. Remaining particle types: footstep (28), item crack (36), mob appearance (41); plus
-   attack-crit `EntityParticleEmitter` bursts and repeated block-hit dust while mining.
+   repeated block-hit dust while mining.
    Item take (40) has no factory in 1.8 and is correctly ignored.
 4. Serverbound `EnchantItem`, `SteerVehicle` (boats/horses), `Spectate`, `UpdateSignC`.
 5. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
@@ -114,6 +114,10 @@ then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --scre
   burst, tinted by the block colour) and the first hit of a block spawns
   `addBlockHitEffects` (one face particle, `multiplyVelocity(0.2)`, scale 0.6).
   `BlockModels::particle_uv` bakes each state's `#particle` sprite from its model.
+- **Crit emitters:** `EntityParticleEmitter` (16 unit-sphere attempts per tick, lifetime 3)
+  follows the hit entity; `EntityPlayerSP.onCriticalHit`/`onEnchantmentCritical` trigger CRIT
+  and MAGIC_CRIT when a falling airborne hit lands on another player (Sharpness for the magic
+  variant), with the exact `fallDistance`/ground/water/ladder/blindness/riding conditions.
 - **Verified:** `MOCK_PARTICLES=1` keeps a batch of every type alive while the screenshot is
   taken (`shots/particles2.png`, `shots/particles3.png`, `shots/blockfx.png` for the S28
   break burst); unit tests cover the camera basis, UV order, smoke animation/death,

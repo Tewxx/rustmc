@@ -924,7 +924,7 @@ impl App {
             self.tick_item_in_use();
             self.entity.tick(&self.world, &mut self.geometry, keys);
             let player = Vec3::new(self.entity.pos.x as f32, self.entity.pos.y as f32, self.entity.pos.z as f32);
-            self.particles.tick(&self.world, &mut self.geometry, &mut self.rand, player);
+            self.particles.tick(&self.world, &mut self.geometry, &mut self.rand, player, &self.remote.map, &self.models);
             // EntityLivingBase.heal from regeneration (the server corrects it with S06).
             // onDeathUpdate: deathTime stops at 20 when the dead player leaves the entity list.
             if self.player.health <= 0. && self.net.is_some() {
@@ -2236,6 +2236,27 @@ impl App {
             if amount > 0 {
                 self.damage_item(sel, amount);
             }
+        }
+        // EntityPlayerSP.onCriticalHit / onEnchantmentCritical: a falling, ungrounded hit emits
+        // the CRIT emitter at the target; Sharpness adds the MAGIC_CRIT emitter.
+        let Some(target) = self.remote.map.get(&id) else { return };
+        let (pos, width, height) = (target.pos, target.width, target.height);
+        let ladder = {
+            let mut w = player::PhysWorld { world: &self.world, geometry: &mut self.geometry };
+            self.entity.e.is_on_ladder(&mut w)
+        };
+        let riding = self.net.as_ref().is_some_and(|n| self.attached.contains_key(&n.entity_id));
+        let crit = self.entity.fall_distance > 0.
+            && !self.entity.on_ground
+            && !self.entity.in_water
+            && !self.entity.effects.has(mc_entity::effects::BLINDNESS)
+            && !ladder
+            && !riding;
+        if crit {
+            self.particles.emit_at_entity(id, pos, width, height, 9, &mut self.rand, &self.models);
+        }
+        if tooltip::enchantment_level(held.as_ref(), 16) > 0 {
+            self.particles.emit_at_entity(id, pos, width, height, 10, &mut self.rand, &self.models);
         }
     }
 
@@ -4595,5 +4616,28 @@ mod tests {
         let mut rand = mc_core::random::JavaRandom::new(1);
         particles.block_destroy(state, BlockPos::new(0, 0, 0), &World::default(), &models, &mut rand);
         assert_eq!(particles.len(), 64);
+    }
+
+    #[test]
+    fn crit_emitter_bursts_once_and_expires_after_three_ticks() {
+        let Some(jar) = find_jar() else {
+            return;
+        };
+        let mut assets = AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = BlockModels::load(&assets);
+        let mut particles = crate::particles::Particles::default();
+        let mut rand = mc_core::random::JavaRandom::new(9);
+        particles.emit_at_entity(1, mc_core::Vec3::new(0., 0., 0.), 0.6, 1.8, 9, &mut rand, &models);
+        let n = particles.len();
+        assert!(n > 0 && n <= 16, "{n} crit particles in the constructor burst");
+        assert_eq!(particles.emitter_count(), 1);
+        let world = World::default();
+        let mut geometry = BlockGeometry::new();
+        let remotes = std::collections::HashMap::new();
+        particles.tick(&world, &mut geometry, &mut rand, Vec3::ZERO, &remotes, &models);
+        assert_eq!(particles.emitter_count(), 1);
+        particles.tick(&world, &mut geometry, &mut rand, Vec3::ZERO, &remotes, &models);
+        assert_eq!(particles.emitter_count(), 0);
     }
 }

@@ -12,6 +12,7 @@ use mc_entity::world::colliding_boxes;
 use mc_core::Aabb;
 use mc_entity::EntityWorld;
 use mc_world::World;
+use std::collections::HashMap;
 
 /// Source texture of a particle quad.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,14 +99,51 @@ pub struct Particle {
 
 /// `WorldClient.effectRenderer`'s particle list.
 #[derive(Default)]
+/// `EntityParticleEmitter`: a short-lived emitter that follows an entity (critical-hit bursts).
+struct Emitter {
+    entity: i32,
+    particle: i32,
+    age: i32,
+}
+
+#[derive(Default)]
 pub struct Particles {
     list: Vec<Particle>,
+    emitters: Vec<Emitter>,
 }
 
 impl Particles {
     pub fn clear(&mut self) {
         self.list.clear();
+        self.emitters.clear();
         SPAWNS.with(|s| s.borrow_mut().clear());
+    }
+
+    /// `EffectRenderer.emitParticleAtEntity`: spawns the constructor burst immediately and
+    /// keeps emitting for the remaining two ticks of `EntityParticleEmitter.lifetime`.
+    pub fn emit_at_entity(&mut self, id: i32, pos: mc_core::Vec3, width: f64, height: f64, particle: i32, rand: &mut JavaRandom, models: &mc_render::models::BlockModels) {
+        let e = Emitter { entity: id, particle, age: 1 };
+        self.emitter_burst(&e, pos, width, height, rand, models);
+        self.emitters.push(e);
+    }
+
+    fn emitter_burst(&mut self, e: &Emitter, pos: mc_core::Vec3, width: f64, height: f64, rand: &mut JavaRandom, models: &mc_render::models::BlockModels) {
+        for _ in 0..16 {
+            let d0 = (rand.next_float() * 2.0 - 1.0) as f64;
+            let d1 = (rand.next_float() * 2.0 - 1.0) as f64;
+            let d2 = (rand.next_float() * 2.0 - 1.0) as f64;
+            if d0 * d0 + d1 * d1 + d2 * d2 <= 1.0 {
+                let x = pos.x + d0 * width / 4.0;
+                let y = pos.y + height / 2.0 + d1 * height / 4.0;
+                let z = pos.z + d2 * width / 4.0;
+                self.spawn(e.particle, x, y, z, d0, d1 + 0.2, d2, &[], rand, models);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn emitter_count(&self) -> usize {
+        self.emitters.len()
     }
 
     #[allow(dead_code)]
@@ -194,7 +232,7 @@ impl Particles {
     }
 
     /// `EffectRenderer.updateEffects` (one client tick).
-    pub fn tick(&mut self, world: &World, geometry: &mut mc_data::geometry::BlockGeometry, rand: &mut JavaRandom, player: Vec3) {
+    pub fn tick(&mut self, world: &World, geometry: &mut mc_data::geometry::BlockGeometry, rand: &mut JavaRandom, player: Vec3, remotes: &HashMap<i32, crate::entities::Remote>, models: &mc_render::models::BlockModels) {
         let mut w = PhysWorld { world, geometry };
         let mut next: Vec<Particle> = Vec::with_capacity(self.list.len() + 8);
         for mut p in std::mem::take(&mut self.list) {
@@ -205,6 +243,18 @@ impl Particles {
         }
         self.list = next;
         self.take_spawns();
+        // `EffectRenderer.updateEffects`: `EntityParticleEmitter`s follow their entity for 3 ticks.
+        let mut emitters = Vec::new();
+        for mut e in std::mem::take(&mut self.emitters) {
+            if let Some(r) = remotes.get(&e.entity) {
+                self.emitter_burst(&e, r.pos, r.width, r.height, rand, models);
+            }
+            e.age += 1;
+            if e.age < 3 {
+                emitters.push(e);
+            }
+        }
+        self.emitters = emitters;
     }
 
     /// Builds the camera-facing quads for one frame. Positions are world-space; `light`

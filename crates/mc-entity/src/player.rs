@@ -538,7 +538,7 @@ impl PlayerEntity {
         }
     }
 
-    fn is_on_ladder(&self, w: &impl EntityWorld) -> bool {
+    pub fn is_on_ladder(&self, w: &impl EntityWorld) -> bool {
         if self.no_clip {
             return false;
         }
