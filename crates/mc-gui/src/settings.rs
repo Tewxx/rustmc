@@ -15,6 +15,15 @@ pub enum Opt {
     Graphics,
     ViewBobbing,
     Vsync,
+    Anaglyph,
+    RenderClouds,
+    Particles,
+    Fullscreen,
+    MipmapLevels,
+    BlockAlternatives,
+    Vbo,
+    EntityShadows,
+    InvertMouse,
     /// A `SoundCategory` volume, by index into [`SOUND_CATEGORIES`].
     SoundVolume(u8),
 }
@@ -35,6 +44,15 @@ impl Opt {
             Opt::Graphics => "options.graphics",
             Opt::ViewBobbing => "options.viewBobbing",
             Opt::Vsync => "options.vsync",
+            Opt::Anaglyph => "options.anaglyph",
+            Opt::RenderClouds => "options.renderClouds",
+            Opt::Particles => "options.particles",
+            Opt::Fullscreen => "options.fullscreen",
+            Opt::MipmapLevels => "options.mipmapLevels",
+            Opt::BlockAlternatives => "options.blockAlternatives",
+            Opt::Vbo => "options.vbo",
+            Opt::EntityShadows => "options.entityShadows",
+            Opt::InvertMouse => "options.invertMouse",
             Opt::SoundVolume(i) => ["soundCategory.master", "soundCategory.music", "soundCategory.record", "soundCategory.weather", "soundCategory.block", "soundCategory.hostile", "soundCategory.neutral", "soundCategory.player", "soundCategory.ambient"][i as usize],
         }
     }
@@ -46,6 +64,7 @@ impl Opt {
             Opt::Sensitivity | Opt::Gamma | Opt::SoundVolume(_) => (0.0, 1.0, 0.0),
             Opt::RenderDistance => (2.0, 16.0, 1.0),
             Opt::FramerateLimit => (10.0, 260.0, 10.0),
+            Opt::MipmapLevels => (0.0, 4.0, 1.0),
             _ => return None,
         })
     }
@@ -80,6 +99,17 @@ pub struct Settings {
     pub fancy_graphics: bool,
     pub view_bobbing: bool,
     pub vsync: bool,
+    pub anaglyph: bool,
+    /// `clouds`: 0 off, 1 fast, 2 fancy.
+    pub clouds: i32,
+    /// `particleSetting`: 0 all, 1 decreased, 2 minimal.
+    pub particles: i32,
+    pub fullscreen: bool,
+    pub mipmap_levels: i32,
+    pub block_alternatives: bool,
+    pub use_vbo: bool,
+    pub entity_shadows: bool,
+    pub invert_mouse: bool,
     pub show_debug: bool,
     pub hide_gui: bool,
     /// `soundCategory_<name>` volumes (missing = 1.0).
@@ -101,6 +131,15 @@ impl Default for Settings {
             fancy_graphics: true,
             view_bobbing: true,
             vsync: true,
+            anaglyph: false,
+            clouds: 2,
+            particles: 0,
+            fullscreen: false,
+            mipmap_levels: 4,
+            block_alternatives: true,
+            use_vbo: false,
+            entity_shadows: true,
+            invert_mouse: false,
             show_debug: false,
             hide_gui: false,
             sound_volumes: Default::default(),
@@ -137,6 +176,21 @@ impl Settings {
                 "fancyGraphics" => s.fancy_graphics = b,
                 "bobView" => s.view_bobbing = b,
                 "enableVsync" => s.vsync = b,
+                "anaglyph3d" => s.anaglyph = b,
+                "renderClouds" => {
+                    s.clouds = match v {
+                        "true" => 2,
+                        "fast" => 1,
+                        _ => 0,
+                    }
+                }
+                "particles" => s.particles = i.unwrap_or(s.particles),
+                "fullscreen" => s.fullscreen = b,
+                "mipmapLevels" => s.mipmap_levels = i.unwrap_or(s.mipmap_levels),
+                "allowBlockAlternatives" => s.block_alternatives = b,
+                "useVbo" => s.use_vbo = b,
+                "entityShadows" => s.entity_shadows = b,
+                "invertYMouse" => s.invert_mouse = b,
                 _ if k.starts_with("soundCategory_") => {
                     if let Some(f) = f {
                         s.sound_volumes.insert(k["soundCategory_".len()..].to_string(), f);
@@ -162,6 +216,15 @@ impl Settings {
             ("fancyGraphics", self.fancy_graphics.to_string()),
             ("bobView", self.view_bobbing.to_string()),
             ("enableVsync", self.vsync.to_string()),
+            ("anaglyph3d", self.anaglyph.to_string()),
+            ("renderClouds", ["false", "fast", "true"][self.clouds.clamp(0, 2) as usize].to_string()),
+            ("particles", self.particles.to_string()),
+            ("fullscreen", self.fullscreen.to_string()),
+            ("mipmapLevels", self.mipmap_levels.to_string()),
+            ("allowBlockAlternatives", self.block_alternatives.to_string()),
+            ("useVbo", self.use_vbo.to_string()),
+            ("entityShadows", self.entity_shadows.to_string()),
+            ("invertYMouse", self.invert_mouse.to_string()),
         ];
         let sound_keys: Vec<String> = self.sound_volumes.keys().map(|k| format!("soundCategory_{k}")).collect();
         for (k, (_, v)) in sound_keys.iter().zip(&self.sound_volumes) {
@@ -189,6 +252,7 @@ impl Settings {
             Opt::Gamma => self.gamma,
             Opt::RenderDistance => self.render_distance as f32,
             Opt::FramerateLimit => self.limit_framerate as f32,
+            Opt::MipmapLevels => self.mipmap_levels as f32,
             Opt::SoundVolume(i) => self.sound_volume(SOUND_CATEGORIES[i as usize]),
             _ => 0.0,
         }
@@ -201,6 +265,7 @@ impl Settings {
             Opt::Gamma => self.gamma = v,
             Opt::RenderDistance => self.render_distance = v as i32,
             Opt::FramerateLimit => self.limit_framerate = v as i32,
+            Opt::MipmapLevels => self.mipmap_levels = v as i32,
             Opt::SoundVolume(i) => {
                 self.sound_volumes.insert(SOUND_CATEGORIES[i as usize].to_string(), v);
             }
@@ -216,6 +281,14 @@ impl Settings {
             Opt::Graphics => self.fancy_graphics = !self.fancy_graphics,
             Opt::ViewBobbing => self.view_bobbing = !self.view_bobbing,
             Opt::Vsync => self.vsync = !self.vsync,
+            Opt::Anaglyph => self.anaglyph = !self.anaglyph,
+            Opt::RenderClouds => self.clouds = (self.clouds + 1) % 3,
+            Opt::Particles => self.particles = (self.particles + 1) % 3,
+            Opt::Fullscreen => self.fullscreen = !self.fullscreen,
+            Opt::BlockAlternatives => self.block_alternatives = !self.block_alternatives,
+            Opt::Vbo => self.use_vbo = !self.use_vbo,
+            Opt::EntityShadows => self.entity_shadows = !self.entity_shadows,
+            Opt::InvertMouse => self.invert_mouse = !self.invert_mouse,
             _ => {}
         }
     }
@@ -240,6 +313,8 @@ impl Settings {
                 Opt::Gamma if f == 1.0 => s + &t("options.gamma.max"),
                 Opt::Gamma => format!("{s}+{}%", (f * 100.0) as i32),
                 Opt::RenderDistance => format!("{s}{} chunks", f1 as i32),
+                Opt::MipmapLevels if f1 == 0.0 => s + &t("options.off"),
+                Opt::MipmapLevels => format!("{s}{}", f1 as i32),
                 // GuiScreenOptionsSounds.getSoundVolume
                 Opt::SoundVolume(_) if f == 0.0 => s + &t("options.off"),
                 Opt::SoundVolume(_) => format!("{s}{}%", (f * 100.0) as i32),
@@ -258,6 +333,14 @@ impl Settings {
             Opt::Graphics => s + &t(if self.fancy_graphics { "options.graphics.fancy" } else { "options.graphics.fast" }),
             Opt::ViewBobbing => s + &on_off(self.view_bobbing),
             Opt::Vsync => s + &on_off(self.vsync),
+            Opt::Anaglyph => s + &on_off(self.anaglyph),
+            Opt::RenderClouds => s + &t(["options.off", "options.graphics.fast", "options.graphics.fancy"][self.clouds.clamp(0, 2) as usize]),
+            Opt::Particles => s + &t(["options.particles.all", "options.particles.decreased", "options.particles.minimal"][self.particles.clamp(0, 2) as usize]),
+            Opt::Fullscreen => s + &on_off(self.fullscreen),
+            Opt::BlockAlternatives => s + &on_off(self.block_alternatives),
+            Opt::Vbo => s + &on_off(self.use_vbo),
+            Opt::EntityShadows => s + &on_off(self.entity_shadows),
+            Opt::InvertMouse => s + &on_off(self.invert_mouse),
             _ => s,
         }
     }

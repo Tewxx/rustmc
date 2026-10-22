@@ -542,6 +542,11 @@ impl App {
         let Some(r) = &mut self.renderer else { return };
         r.render_distance_blocks = (s.render_distance * 16) as f32;
         r.set_vsync(s.vsync);
+        if s.fullscreen != self.applied.fullscreen {
+            if let Some(w) = &self.window {
+                w.set_fullscreen(s.fullscreen.then(|| winit::window::Fullscreen::Borderless(None)));
+            }
+        }
         if s.gamma != self.applied.gamma {
             r.set_lightmap(&self.lightmap);
         }
@@ -1745,7 +1750,10 @@ impl App {
             r.set_lightmap(&self.lightmap);
         }
         sky.ticks = self.ui.ticks;
-        sky.fancy_clouds = self.ui.settings.fancy_graphics;
+        // GameSettings.shouldRenderClouds: off below 4 chunks; 2 = fancy.
+        let clouds = if self.ui.settings.render_distance >= 4 { self.ui.settings.clouds } else { 0 };
+        sky.clouds = clouds != 0;
+        sky.fancy_clouds = clouds == 2;
         let light = self.light_at_eyes();
         let dropped = self
             .items
@@ -2538,7 +2546,7 @@ impl ApplicationHandler for App {
                 // EntityRenderer: f = sens*0.6+0.2; delta * f^3 * 8 * 0.15 degrees.
                 let f = self.ui.settings.mouse_sensitivity * 0.6 + 0.2;
                 let f1 = f * f * f * 8.0;
-                let invert = 1.;
+                let invert = if self.ui.settings.invert_mouse { -1. } else { 1. };
                 self.entity.turn(delta.0 as f32 * f1, -delta.1 as f32 * f1 * invert);
             }
         }

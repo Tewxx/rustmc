@@ -482,27 +482,25 @@ impl VideoSettings {
 impl Screen for VideoSettings {
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let t = |k: &str| ui.lang.get(k);
-        let off = |k: &str| format!("{}: {}", t(k), t("options.off"));
-        let on = |k: &str| format!("{}: {}", t(k), t("options.on"));
         self.height = h;
-        // Vanilla order. Settings this client doesn't have yet are shown locked.
+        // GuiVideoSettings order.
         self.buttons = vec![
             Button::option(0, 0, 0, Opt::Graphics, ui),
             Button::option(1, 0, 0, Opt::RenderDistance, ui),
             Button::option(2, 0, 0, Opt::AmbientOcclusion, ui),
             Button::option(3, 0, 0, Opt::FramerateLimit, ui),
-            Button::sized(4, 0, 0, 150, 20, off("options.anaglyph")).disabled(),
+            Button::option(4, 0, 0, Opt::Anaglyph, ui),
             Button::option(5, 0, 0, Opt::ViewBobbing, ui),
             Button::option(6, 0, 0, Opt::GuiScale, ui),
             Button::option(7, 0, 0, Opt::Gamma, ui),
-            Button::sized(8, 0, 0, 150, 20, format!("{}: {}", t("options.renderClouds"), t("options.graphics.fancy"))).disabled(),
-            Button::sized(9, 0, 0, 150, 20, format!("{}: {}", t("options.particles"), t("options.particles.all"))).disabled(),
-            Button::sized(10, 0, 0, 150, 20, off("options.fullscreen")).disabled(),
+            Button::option(8, 0, 0, Opt::RenderClouds, ui),
+            Button::option(9, 0, 0, Opt::Particles, ui),
+            Button::option(10, 0, 0, Opt::Fullscreen, ui),
             Button::option(11, 0, 0, Opt::Vsync, ui),
-            Button::sized(12, 0, 0, 150, 20, format!("{}: 4", t("options.mipmapLevels"))).disabled(),
-            Button::sized(13, 0, 0, 150, 20, on("options.blockAlternatives")).disabled(),
-            Button::sized(14, 0, 0, 150, 20, on("options.vbo")).disabled(),
-            Button::sized(15, 0, 0, 150, 20, on("options.entityShadows")).disabled(),
+            Button::option(12, 0, 0, Opt::MipmapLevels, ui),
+            Button::option(13, 0, 0, Opt::BlockAlternatives, ui),
+            Button::option(14, 0, 0, Opt::Vbo, ui),
+            Button::option(15, 0, 0, Opt::EntityShadows, ui),
         ];
         self.done = Some(Button::new(200, w / 2 - 100, h - 27, t("gui.done")));
         self.scroll = self.scroll.clamp(0, self.max_scroll());
@@ -591,7 +589,7 @@ impl Screen for Controls {
         let t = |k: &str| ui.lang.get(k);
         self.buttons = vec![
             Button::option(1, w / 2 - 155, 18, Opt::Sensitivity, ui),
-            Button::sized(2, w / 2 - 155 + 160, 18, 150, 20, format!("{}: {}", t("options.invertMouse"), t("options.off"))).disabled(),
+            Button::option(2, w / 2 - 155 + 160, 18, Opt::InvertMouse, ui),
             Button::sized(201, w / 2 - 155, h - 29, 150, 20, t("controls.resetAll")).disabled(),
             Button::sized(200, w / 2 - 155 + 160, h - 29, 150, 20, t("gui.done")),
         ];
