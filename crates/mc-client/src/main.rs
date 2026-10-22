@@ -994,6 +994,7 @@ impl App {
                     r.name = self.player_names.get(&sp.uuid).cloned().unwrap_or_default();
                     r.uuid = Some(sp.uuid);
                     r.held = (sp.current_item > 0).then(|| self.catalogue.index_of(sp.current_item as u16, 0)).flatten().map(|i| (i, 1));
+                    r.held_stack = r.held.map(|(i, c)| self.catalogue.stack(i, c));
                     apply_meta(&mut r, &sp.metadata);
                     self.remote.map.insert(sp.entity_id, r);
                 }
@@ -1043,10 +1044,18 @@ impl App {
                     }
                 }
                 C::EntityEquipment(e) => {
+                    if (1..=4).contains(&e.slot) {
+                        let stack = net::slot_stack(&self.catalogue, &e.item);
+                        if let Some(r) = self.remote.map.get_mut(&e.entity_id) {
+                            r.armor[e.slot as usize - 1] = stack;
+                        }
+                    }
                     if e.slot == 0 {
-                        let held = net::slot_stack(&self.catalogue, &e.item).map(|s| (s.item, s.count));
+                        let stack = net::slot_stack(&self.catalogue, &e.item);
+                        let held = stack.map(|s| (s.item, s.count));
                         if let Some(r) = self.remote.map.get_mut(&e.entity_id) {
                             r.held = held;
+                            r.held_stack = stack;
                         // A new held stack object ends the use (itemstack != itemInUse).
                             r.in_use = false;
                             r.use_count = 0;
@@ -1984,8 +1993,8 @@ impl App {
     }
 
     /// `RenderItem.renderItemModelForEntity`: a drawn bow shows its pulling model.
-    fn held_item_using(&self, index: usize, use_count: i32) -> Option<mc_render::avatar::HeldItem> {
-        let def = &self.catalogue.items[index];
+    fn held_item_using(&self, stack: &mc_gui::ItemStack, use_count: i32) -> Option<mc_render::avatar::HeldItem> {
+        let def = &self.catalogue.items[stack.item];
         if def.id == 261 && use_count > 0 {
             let i = 72000 - use_count;
             let name = if i >= 18 {
@@ -1997,17 +2006,26 @@ impl App {
             };
             if let Some(model) = self.models.items.by_name(name) {
                 let tints = std::array::from_fn(|i| mc_render::items::item_color(def.id, def.meta, i as i32, &self.models.colors));
-                return Some(mc_render::avatar::HeldItem { model: model.clone(), tints, entity_block: false });
+                let glint = tooltip::has_effect(&self.catalogue, stack);
+                return Some(mc_render::avatar::HeldItem { model: model.clone(), tints, entity_block: false, glint });
             }
         }
-        self.held_item(index)
+        self.held_item(stack)
     }
 
-    fn held_item(&self, index: usize) -> Option<mc_render::avatar::HeldItem> {
-        let def = &self.catalogue.items[index];
+    /// `RenderItem.renderItem(stack, model)` inputs: the model for the stack's damage value,
+    /// `getColorFromItemStack` tints and `hasEffect`.
+    fn held_item(&self, stack: &mc_gui::ItemStack) -> Option<mc_render::avatar::HeldItem> {
+        let def = self.catalogue.render_def(stack);
         let model = self.models.items.get(def.id, def.meta)?.clone();
-        let tints = std::array::from_fn(|i| mc_render::items::item_color(def.id, def.meta, i as i32, &self.models.colors));
-        Some(mc_render::avatar::HeldItem { model, tints, entity_block: matches!(def.block, 54 | 130 | 146) })
+        let meta = if def.id == 373 { stack.damage as u16 } else { def.meta };
+        let dye = tooltip::armor_dye(&self.catalogue, stack);
+        let tints = std::array::from_fn(|i| match dye {
+            Some(c) if i == 0 => c,
+            _ => mc_render::items::item_color(def.id, meta, i as i32, &self.models.colors),
+        });
+        let glint = tooltip::has_effect(&self.catalogue, stack);
+        Some(mc_render::avatar::HeldItem { model, tints, entity_block: matches!(def.block, 54 | 130 | 146), glint })
     }
 
     /// `EntityRenderer.hurtCameraEffect`: death roll, then the hurt shake.
@@ -2100,8 +2118,13 @@ impl App {
         self.player.eye_in_water = self.is_inside_of_material(mc_data::Material::Water);
         self.ui.selected_slot = self.player.selected_slot;
         let use_count = if self.item_in_use.is_some() { self.item_in_use_count } else { 0 };
-        let held = self.ui.inventory[self.player.selected_slot].and_then(|s| self.held_item_using(s.item, use_count));
-        let hand_item = self.entity.item_to_render.and_then(|(i, _)| self.held_item_using(i, use_count));
+        let current = self.ui.inventory[self.player.selected_slot];
+        let held = current.and_then(|s| self.held_item_using(&s, use_count));
+        // itemToRender keeps the stack it last equipped; ours keeps its index and count.
+        let hand_item = self.entity.item_to_render.and_then(|(i, c)| {
+            let s = current.filter(|s| s.item == i).unwrap_or_else(|| self.catalogue.stack(i, c));
+            self.held_item_using(&s, use_count)
+        });
         let outline = if self.ui.settings.hide_gui {
             None
         } else {
@@ -2143,7 +2166,7 @@ impl App {
                     age: it.age as f32 + pt,
                     hover_start: it.hover_start,
                     count: it.stack.1,
-                    item: self.held_item(it.stack.0)?,
+                    item: self.held_item(&mc_gui::ItemStack { tag: it.tag, ..mc_gui::ItemStack::new(it.stack.0, it.stack.1, it.damage) })?,
                     light: self.lightmap_color(sky, block),
                 })
             })
@@ -2176,6 +2199,7 @@ impl App {
             dropped,
             damage: self.damage_quads(),
             others: self.other_players(pt),
+            armor: std::array::from_fn(|i| self.ui.armor[3 - i].and_then(|s| tooltip::armor_piece(&self.catalogue, &s))),
             use_anim: self.item_in_use.filter(|_| self.item_in_use_count > 0).map(|s| {
                 let (a, max) = item_use::action(self.catalogue.items[s.item].id);
                 mc_render::avatar::UseAnim { action: a.index(), left: self.item_in_use_count as f32 - pt + 1., max: max as f32 }
@@ -2223,13 +2247,14 @@ impl App {
                     swing,
                     sneaking: r.sneaking,
                     perspective: 1,
-                    held: r.held.and_then(|(i, _)| self.held_item_using(i, r.use_count)),
+                    held: r.held_stack.and_then(|s| self.held_item_using(&s, r.use_count)),
                     light: self.lightmap_color(sky, block),
                     use_anim: r.held.filter(|_| r.use_count > 0).map(|(i, _)| {
                         let (a, max) = item_use::action(self.catalogue.items[i].id);
                         mc_render::avatar::UseAnim { action: a.index(), left: r.use_count as f32 - pt + 1., max: max as f32 }
                     }),
                     skin: r.uuid.and_then(|u| self.skins.loaded.get(&u)).map(|s| s.0),
+                    armor: r.armor.map(|s| s.and_then(|s| tooltip::armor_piece(&self.catalogue, &s))),
                     slim: r.uuid.is_some_and(|u| self.skins.loaded.get(&u).map_or(skins::default_slim(u), |s| s.1)),
                     ..Default::default()
                 })
@@ -2904,6 +2929,40 @@ impl App {
                 self.screen = None;
                 self.sync_view();
             }
+            "armor" | "armor-back" | "armor-inv" | "armor-tip" => {
+                use mc_core::nbt::{Compound, Interned, Tag};
+                // Enchanted diamond helmet, iron chestplate, red leather leggings, gold boots.
+                let mut ench = Compound::new();
+                let mut e = Compound::new();
+                e.insert("id".into(), Tag::Short(0));
+                e.insert("lvl".into(), Tag::Short(4));
+                ench.insert("ench".into(), Tag::List(10, vec![Tag::Compound(e)]));
+                let mut dyed = Compound::new();
+                let mut display = Compound::new();
+                display.insert("color".into(), Tag::Int(0xB02E26));
+                dyed.insert("display".into(), Tag::Compound(display));
+                for (slot, name, tag) in [(0, "diamond_helmet", Some(ench)), (1, "iron_chestplate", None), (2, "leather_leggings", Some(dyed)), (3, "golden_boots", None)] {
+                    if let Some(item) = self.catalogue.find(name, 0) {
+                        let mut st = self.catalogue.stack(item, 1);
+                        st.tag = tag.map(Interned::new);
+                        self.ui.armor[slot] = Some(st);
+                    }
+                }
+                // Potions by damage value (Swiftness II, splash Poison, Awkward), the enchanted apple.
+                for (slot, name, damage) in [(0, "potion", 8226), (1, "potion", 16388), (2, "potion", 16), (3, "golden_apple", 1), (4, "potion", 8197)] {
+                    if let Some(item) = self.catalogue.find(name, 0) {
+                        self.ui.inventory[slot] = Some(mc_gui::ItemStack { damage, ..self.catalogue.stack(item, 1) });
+                    }
+                }
+                if which == "armor-inv" || which == "armor-tip" {
+                    self.open(Box::new(survival::SurvivalInventory::new(self.catalogue.clone())), false);
+                } else {
+                    self.entity.perspective = if which == "armor" { 2 } else { 1 };
+                    self.entity.pitch = 10.;
+                    self.screen = None;
+                }
+                self.sync_view();
+            }
             w if w.starts_with("use-") => {
                 // use-<item>[-<ticks used>][-body]: an item in use, first person or F5.
                 let rest = w.strip_prefix("use-").unwrap();
@@ -2977,7 +3036,7 @@ impl App {
             (sr.width / 2) as f64 * sr.factor as f64,
             (sr.height / 4 + 48 + 5) as f64 * sr.factor as f64,
         );
-        if which == "net-inv-tip" {
+        if which == "net-inv-tip" || which == "armor-tip" {
             // Hover the first hotbar slot of GuiInventory.
             let (left, top) = (self.ui.effect_gui_left(sr.width, 176), (sr.height - 166) / 2);
             self.mouse_px = (((left + 16) * sr.factor) as f64, ((top + 150) * sr.factor) as f64);

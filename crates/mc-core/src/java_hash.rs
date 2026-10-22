@@ -15,6 +15,11 @@ pub fn spread(h: i32) -> u32 {
 
 /// `Integer.hashCode`
 #[inline]
+/// `String.hashCode` over UTF-16 units.
+pub fn string_hash(s: &str) -> i32 {
+    s.encode_utf16().fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(c as i32))
+}
+
 pub fn int_hash(v: i32) -> i32 {
     v
 }
@@ -53,6 +58,12 @@ impl<K: PartialEq, V> JavaHashMap<K, V> {
     /// `max(size / .75 + 1, 16)` rounded up to a power of two.
     pub fn with_expected(n: usize) -> Self {
         Self { entries: Vec::with_capacity(n), cap: table_size_for(((n as f32 / 0.75) as usize + 1).max(16)) }
+    }
+
+    /// `new HashMap<>(initial)`: the table rounded up to a power of two (Guava's
+    /// `newHashSetWithExpectedSize(n)` passes `n + n / 3`).
+    pub fn with_initial(initial: usize) -> Self {
+        Self { entries: Vec::new(), cap: table_size_for(initial.max(1)) }
     }
 
     pub fn len(&self) -> usize {

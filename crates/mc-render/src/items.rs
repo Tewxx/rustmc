@@ -196,8 +196,8 @@ impl IntoColor for u32 {
 }
 
 /// `PotionHelper.getLiquidColor`; only the water bottle (no effects) is ported so far.
-pub fn potion_color(_meta: u16) -> u32 {
-    3694022
+pub fn potion_color(meta: u16) -> u32 {
+    mc_data::potion::meta_color(meta as i32)
 }
 
 /// Projects an item model into 16×16 GUI space (`RenderItem.renderItemIntoGUI`): positions in
@@ -206,6 +206,9 @@ pub struct GuiQuad {
     pub pos: [[f32; 2]; 4],
     pub uv: [[f32; 2]; 4],
     pub color: [[u8; 4]; 4],
+    /// The quad's tint index (-1 untinted) and lighting, for per-stack recoloring.
+    pub tint_index: i32,
+    pub shade: f32,
 }
 
 pub fn gui_quads(model: &ItemModel, tint: impl Fn(i32) -> u32) -> Vec<GuiQuad> {
@@ -236,7 +239,7 @@ pub fn gui_quads(model: &ItemModel, tint: impl Fn(i32) -> u32) -> Vec<GuiQuad> {
         let ch = |v: u32| ((v & 255) as f32 * shade) as u8;
         let color = [ch(c >> 16), ch(c >> 8), ch(c), 255];
         let depth = p.iter().map(|v| v.z).sum::<f32>();
-        quads.push((depth, GuiQuad { pos: p.map(|v| [v.x, v.y]), uv: q.uv, color: [color; 4] }));
+        quads.push((depth, GuiQuad { pos: p.map(|v| [v.x, v.y]), uv: q.uv, color: [color; 4], tint_index: q.tint_index, shade }));
     }
     // Larger z is closer to the viewer after scale(1,1,-1); draw far faces first.
     quads.sort_by(|a, b| a.0.total_cmp(&b.0));

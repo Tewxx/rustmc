@@ -53,6 +53,168 @@ pub fn enchantments(stack: &ItemStack, key: &str) -> Vec<(i32, i32)> {
         .collect()
 }
 
+/// `ItemStack.isItemEnchanted`: an `ench` list tag, even an empty one.
+pub fn is_enchanted(stack: &ItemStack) -> bool {
+    stack.tag.is_some_and(|t| matches!(t.get().get("ench"), Some(Tag::List(..))))
+}
+
+/// `ItemStack.hasEffect` (`Item.hasEffect` overrides): the enchantment glint.
+pub fn has_effect(cat: &Catalogue, stack: &ItemStack) -> bool {
+    match cat.items[stack.item].id {
+        // ItemAppleGold: the enchanted apple
+        322 => stack.damage > 0,
+        // ItemEnchantedBook, ItemSimpleFoiled (experience bottle, nether star)
+        403 | 384 | 399 => true,
+        // ItemPotion: any effects
+        373 => !potion_effects(stack).is_empty(),
+        _ => is_enchanted(stack),
+    }
+}
+
+/// `ItemPotion.getEffects(stack)` as `(id, duration, amplifier, showParticles)`: a
+/// `CustomPotionEffects` list replaces the damage-value effects.
+pub fn potion_effects(stack: &ItemStack) -> Vec<(u8, i32, i32, bool)> {
+    if let Some(t) = stack.tag.map(|t| t.get()) {
+        if matches!(t.get("CustomPotionEffects"), Some(Tag::List(..))) {
+            // PotionEffect.readCustomPotionEffectFromNBT
+            return list(&t, "CustomPotionEffects", 10)
+                .iter()
+                .filter_map(|e| match e {
+                    Tag::Compound(e) => {
+                        let id = num(e, "Id") as i64 as i8;
+                        let particles = !matches!(e.get("ShowParticles"), Some(Tag::Byte(0)));
+                        (id >= 0 && mc_data::potion::by_id(id as u8).is_some()).then(|| (id as u8, num(e, "Duration") as i64 as i32, num(e, "Amplifier") as i64 as i8 as i32, particles))
+                    }
+                    _ => None,
+                })
+                .collect();
+        }
+    }
+    mc_data::potion::effects(stack.damage as i32).into_iter().map(|b| (b.id, b.duration, b.amplifier, true)).collect()
+}
+
+/// `ItemPotion.getItemStackDisplayName`
+fn potion_name(lang: &Lang, stack: &ItemStack) -> String {
+    let meta = stack.damage as i32;
+    if meta == 0 {
+        return lang.get("item.emptyPotion.name").trim().to_string();
+    }
+    let mut s = String::new();
+    if mc_data::potion::is_splash(meta) {
+        s = format!("{} ", lang.get("potion.prefix.grenade").trim());
+    }
+    match potion_effects(stack).first().and_then(|e| mc_data::potion::by_id(e.0)) {
+        Some(p) => s + lang.get(&format!("{}.postfix", p.name)).trim(),
+        None => format!("{} {}", lang.get(mc_data::potion::prefix(meta)).trim(), lang.get("item.potion.name").trim()),
+    }
+}
+
+/// `StringUtils.ticksToElapsedTime`
+fn elapsed(ticks: i32) -> String {
+    let s = ticks / 20;
+    let (m, s) = (s / 60, s % 60);
+    if s < 10 {
+        format!("{m}:0{s}")
+    } else {
+        format!("{m}:{s}")
+    }
+}
+
+/// `ItemPotion.addInformation`
+fn potion_information(lang: &Lang, stack: &ItemStack, list: &mut Vec<String>) {
+    use mc_core::java_hash::{string_hash, uuid_hash, JavaHashMap};
+    if stack.damage == 0 {
+        return;
+    }
+    let effects = potion_effects(stack);
+    // HashMultimap<String, AttributeModifier>: a HashMap of HashSets keyed by modifier UUID.
+    let mut multimap: JavaHashMap<&str, JavaHashMap<(u64, u64), (f64, i32)>> = JavaHashMap::new();
+    if effects.is_empty() {
+        list.push(format!("\u{a7}7{}", lang.get("potion.empty").trim()));
+    }
+    for &(id, duration, amp, _) in &effects {
+        let Some(p) = mc_data::potion::by_id(id) else { continue };
+        let mut s1 = lang.get(p.name).trim().to_string();
+        // Potion.attributeModifierMap with getAttributeModifierAmount (PotionAttackDamage overrides).
+        let modifier: Option<(&str, (u64, u64), f64, i32)> = match id {
+            1 => Some(("generic.movementSpeed", (0x91AEAA56376B4498, 0x935B2F7F68070635), 0.20000000298023224 * (amp + 1) as f64, 2)),
+            2 => Some(("generic.movementSpeed", (0x7107DE5E7CE84030, 0x940E514C1F160890), -0.15000000596046448 * (amp + 1) as f64, 2)),
+            5 => Some(("generic.attackDamage", (0x648D70646A604F59, 0x8ABEC2C23A6DD7A9), 1.3 * (amp + 1) as f64, 2)),
+            18 => Some(("generic.attackDamage", (0x22653B89116E49DC, 0x9B6B9971489B5BE5), (-0.5f32 * (amp + 1) as f32) as f64, 0)),
+            21 => Some(("generic.maxHealth", (0x5D6F0BA2118646AC, 0xB896C61C5CEE99CC), 4.0 * (amp + 1) as f64, 0)),
+            _ => None,
+        };
+        if let Some((name, uuid, amount, op)) = modifier {
+            if !multimap.contains_key(&name) {
+                multimap.insert(string_hash(name), name, JavaHashMap::with_initial(3));
+            }
+            let set = multimap.get_mut(&name).unwrap();
+            if !set.contains_key(&uuid) {
+                set.insert(uuid_hash(uuid.0, uuid.1), uuid, (amount, op));
+            }
+        }
+        if amp > 0 {
+            s1 = format!("{s1} {}", lang.get(&format!("potion.potency.{amp}")).trim());
+        }
+        if duration > 20 {
+            s1 = format!("{s1} ({})", elapsed(duration));
+        }
+        list.push(format!("\u{a7}{}{s1}", if p.bad { 'c' } else { '7' }));
+    }
+    if !multimap.is_empty() {
+        list.push(String::new());
+        list.push(format!("\u{a7}5{}", lang.get("potion.effects.whenDrank")));
+        for (name, set) in multimap.iter() {
+            for (_, &(d0, op)) in set.iter() {
+                let mut d1 = if op != 1 && op != 2 { d0 } else { d0 * 100.0 };
+                let attr = lang.get(&format!("attribute.name.{name}"));
+                if d0 > 0.0 {
+                    list.push(format!("\u{a7}9{}", lang.format(&format!("attribute.modifier.plus.{op}"), &[&decimal(d1), &attr])));
+                } else if d0 < 0.0 {
+                    d1 *= -1.0;
+                    list.push(format!("\u{a7}c{}", lang.format(&format!("attribute.modifier.take.{op}"), &[&decimal(d1), &attr])));
+                }
+            }
+        }
+    }
+}
+
+/// `ItemArmor.getColor` for leather with a `display.color` tag.
+pub fn armor_dye(cat: &Catalogue, stack: &ItemStack) -> Option<u32> {
+    if !(298..=301).contains(&cat.items[stack.item].id) {
+        return None;
+    }
+    stack.tag.and_then(|t| {
+        compound(&t.get(), "display").and_then(|d| match d.get("color") {
+            Some(Tag::Int(c)) => Some(*c as u32),
+            _ => None,
+        })
+    })
+}
+
+/// `LayerBipedArmor` input for an armor item (ids 298-317), else `None`.
+pub fn armor_piece(cat: &Catalogue, stack: &ItemStack) -> Option<mc_render::avatar::ArmorPiece> {
+    let id = cat.items[stack.item].id;
+    if !(298..=317).contains(&id) {
+        return None;
+    }
+    // Item order leather, chain, iron, diamond, gold; ArmorMaterial order swaps the last two.
+    let material = [0, 1, 2, 4, 3][(id as usize - 298) / 4];
+    // ItemArmor.getColor
+    let color = if material != 0 {
+        0xFFFFFF
+    } else {
+        stack
+            .tag
+            .and_then(|t| compound(&t.get(), "display").and_then(|d| match d.get("color") {
+                Some(Tag::Int(c)) => Some(*c as u32),
+                _ => None,
+            }))
+            .unwrap_or(10511680)
+    };
+    Some(mc_render::avatar::ArmorPiece { material, color, glint: is_enchanted(stack) })
+}
+
 /// `EnchantmentHelper.getEnchantmentLevel`
 pub fn enchantment_level(stack: Option<&ItemStack>, id: i32) -> i32 {
     stack.map_or(0, |s| enchantments(s, "ench").iter().find(|e| e.0 == id).map_or(0, |e| e.1))
@@ -155,8 +317,8 @@ pub fn lines(cat: &Catalogue, lang: &Lang, stack: &ItemStack, advanced: bool) ->
     let reg = mc_data::item::Item::by_id(def.id);
     let tag = stack.tag.map(|t| t.get());
     let mut list = Vec::new();
-    let mut s = display_name(cat, stack);
     let named = has_display_name(stack);
+    let mut s = if def.id == 373 && !named { potion_name(lang, stack) } else { display_name(cat, stack) };
     if named {
         s = format!("\u{a7}o{s}");
     }
@@ -268,9 +430,10 @@ pub fn enchantment_name(lang: &Lang, key: &str, level: i32) -> String {
     format!("{} {}", lang.get(key), lang.get(&format!("enchantment.level.{level}")))
 }
 
-/// `Item.addInformation` for the items that override it (potions are not modelled yet).
+/// `Item.addInformation` for the items that override it.
 fn add_information(lang: &Lang, id: u16, stack: &ItemStack, tag: Option<&Compound>, list: &mut Vec<String>) {
     match id {
+        373 => potion_information(lang, stack, list),
         // ItemEnchantedBook
         403 => {
             for (eid, lvl) in enchantments(stack, "StoredEnchantments") {

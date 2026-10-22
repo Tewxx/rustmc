@@ -176,6 +176,8 @@ pub struct PlayerModel {
     /// `heldItemRight`: 0 empty, 1 item, 3 blocking.
     pub held_right: i32,
     pub aimed_bow: bool,
+    /// The last `set_angles` input (armor layers re-pose their own models with it).
+    pub pose: Pose,
 }
 
 /// Inputs to `ModelBiped.setRotationAngles`.
@@ -223,13 +225,52 @@ impl PlayerModel {
             sneak: false,
             held_right: 0,
             aimed_bow: false,
+            pose: Pose::default(),
         }
+    }
+
+    /// `ModelBiped(delta, 0, 64, 32)`: `LayerBipedArmor`'s models (1.0, leggings 0.5). The
+    /// overlay parts stay empty.
+    pub fn biped(delta: f32) -> Self {
+        let t = [64., 32.];
+        Self {
+            head: Part::new().add_box(t, [0., 0.], [-4., -8., -4.], [8, 8, 8], delta, false),
+            headwear: Part::new().add_box(t, [32., 0.], [-4., -8., -4.], [8, 8, 8], delta + 0.5, false),
+            body: Part::new().add_box(t, [16., 16.], [-4., 0., -2.], [8, 12, 4], delta, false),
+            right_arm: Part::new().add_box(t, [40., 16.], [-3., -2., -2.], [4, 12, 4], delta, false).at(-5., 2., 0.),
+            left_arm: Part::new().add_box(t, [40., 16.], [-1., -2., -2.], [4, 12, 4], delta, true).at(5., 2., 0.),
+            right_leg: Part::new().add_box(t, [0., 16.], [-2., 0., -2.], [4, 12, 4], delta, false).at(-1.9, 12., 0.),
+            left_leg: Part::new().add_box(t, [0., 16.], [-2., 0., -2.], [4, 12, 4], delta, true).at(1.9, 12., 0.),
+            left_leg_wear: Part::new(),
+            right_leg_wear: Part::new(),
+            left_arm_wear: Part::new(),
+            right_arm_wear: Part::new(),
+            body_wear: Part::new(),
+            swing: 0.,
+            sneak: false,
+            held_right: 0,
+            aimed_bow: false,
+            pose: Pose::default(),
+        }
+    }
+
+    /// `LayerBipedArmor.setModelPartVisible` (1 boots, 2 leggings, 3 chestplate, 4 helmet).
+    pub fn show_armor_slot(&mut self, slot: usize) {
+        let s = |n: &[usize]| n.contains(&slot);
+        self.head.show = s(&[4]);
+        self.headwear.show = s(&[4]);
+        self.body.show = s(&[2, 3]);
+        self.right_arm.show = s(&[3]);
+        self.left_arm.show = s(&[3]);
+        self.right_leg.show = s(&[1, 2]);
+        self.left_leg.show = s(&[1, 2]);
     }
 
     /// `ModelBiped.setRotationAngles` followed by `ModelPlayer`'s overlay copies.
     pub fn set_angles(&mut self, p: Pose) {
         use std::f32::consts::PI;
         use mc_core::math::{cos, sin, sqrt_float as sqrt};
+        self.pose = p;
         self.head.rot.y = p.head_yaw / (180. / PI);
         self.head.rot.x = p.head_pitch / (180. / PI);
         self.right_arm.rot.x = cos(p.limb_swing * 0.6662 + PI) * 2. * p.limb_amount * 0.5;

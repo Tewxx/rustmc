@@ -27,6 +27,8 @@ pub struct IconQuad {
     pub pos: [[f32; 2]; 4],
     pub uv: [[f32; 2]; 4],
     pub color: [[u8; 4]; 4],
+    /// Tint index 0 quads take the stack's own color (dyed leather, potion damage values).
+    pub tint0: Option<f32>,
 }
 pub struct Catalogue {
     pub items: Vec<ItemDef>,
@@ -91,7 +93,7 @@ impl Catalogue {
                 let tint = |i: i32| mc_render::items::item_color(id, meta, i, &models.colors);
                 icon = mc_render::items::gui_quads(model, tint)
                     .into_iter()
-                    .map(|q| IconQuad { texture: "rustmc:block_atlas".into(), pos: q.pos, uv: q.uv, color: q.color })
+                    .map(|q| IconQuad { texture: "rustmc:block_atlas".into(), pos: q.pos, uv: q.uv, color: q.color, tint0: (q.tint_index == 0).then_some(q.shade) })
                     .collect();
             }
             if matches!(id, 54 | 130 | 146) {
@@ -151,6 +153,7 @@ impl Catalogue {
                     pos: [[0., 16.], [16., 16.], [16., 0.], [0., 0.]],
                     uv: [[0., 1.], [1., 1.], [1., 0.], [0., 0.]],
                     color: [[255; 4]; 4],
+                    tint0: None,
                 });
             }
             known.insert(key, items.len());
@@ -182,16 +185,45 @@ impl Catalogue {
             .iter()
             .position(|i| (i.name.trim_start_matches("minecraft:") == name || i.id.to_string() == name) && i.meta == meta)
     }
-    pub fn draw(&self, ui: &mut Ui, b: &mut GuiBatch, stack: ItemStack, x: i32, y: i32) {
+    /// The entry whose model draws `stack`: potions follow the splash bit of the damage value
+    /// (`ItemPotion` picks `bottle_splash` / `bottle_drinkable`).
+    pub fn render_def(&self, stack: &ItemStack) -> &ItemDef {
         let item = &self.items[stack.item];
+        let splash = mc_data::potion::is_splash(stack.damage as i32);
+        if item.id == 373 && splash != mc_data::potion::is_splash(item.meta as i32) {
+            if let Some(other) = self.items.iter().find(|i| i.id == 373 && i.meta != 0 && mc_data::potion::is_splash(i.meta as i32) == splash) {
+                return other;
+            }
+        }
+        item
+    }
+
+    pub fn draw(&self, ui: &mut Ui, b: &mut GuiBatch, stack: ItemStack, x: i32, y: i32) {
+        let item = self.render_def(&stack);
+        // Item.getColorFromItemStack for the NBT/damage-dependent cases.
+        let tint = if item.id == 373 && stack.damage as u16 != item.meta {
+            Some(mc_render::items::potion_color(stack.damage as u16))
+        } else {
+            crate::tooltip::armor_dye(self, &stack)
+        };
         for q in &item.icon {
-            b.quad(
-                Some(&q.texture),
-                true,
-                q.pos.map(|p| [p[0] + x as f32, p[1] + y as f32]),
-                q.uv,
-                q.color,
-            );
+            let color = match (tint, q.tint0) {
+                (Some(c), Some(shade)) => {
+                    let ch = |v: u32| ((v & 255) as f32 * shade) as u8;
+                    [[ch(c >> 16), ch(c >> 8), ch(c), 255]; 4]
+                }
+                _ => q.color,
+            };
+            b.quad(Some(&q.texture), true, q.pos.map(|p| [p[0] + x as f32, p[1] + y as f32]), q.uv, color);
+        }
+        // RenderItem.renderEffect: two glint passes in color -8372020 over the item's texels.
+        if crate::tooltip::has_effect(self, &stack) {
+            let saved = b.blend;
+            b.blend = mc_gui::batch::Blend::Glint;
+            for q in &item.icon {
+                b.quad(Some(&q.texture), true, q.pos.map(|p| [p[0] + x as f32, p[1] + y as f32]), q.uv, [[0x80, 0x40, 0xCC, 255]; 4]);
+            }
+            b.blend = saved;
         }
         // RenderItem.renderItemOverlayIntoGUI
         if stack.count > 1 {
@@ -269,6 +301,7 @@ fn entity_cube(texture: &str, lo: [f32; 3], size: [f32; 3], uv: [f32; 2], sheet:
                 [u2 / sheet[0], v2 / sheet[1]],
             ],
             color: [[tint[0], tint[1], tint[2], 255]; 4],
+            tint0: None,
         })
         .collect()
 }

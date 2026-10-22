@@ -40,6 +40,7 @@ pub struct GuiRenderer {
     linear: wgpu::Sampler,
     /// [blend][alpha_test]
     pipelines: [[wgpu::RenderPipeline; 2]; 2],
+    glint_pipeline: wgpu::RenderPipeline,
     blur_x: wgpu::RenderPipeline,
     blur_y: wgpu::RenderPipeline,
     textures: HashMap<String, GuiTexture>,
@@ -80,7 +81,7 @@ impl GuiRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, assets: &AssetSource) -> Self {
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gui globals"),
-            size: 16,
+            size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -193,6 +194,40 @@ impl GuiRenderer {
             alpha: alpha.alpha,
         };
         let pipelines = [[make(alpha, "fs_plain"), make(alpha, "fs_alpha_test")], [make(invert, "fs_plain"), make(invert, "fs_alpha_test")]];
+        let glint_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("gui glint"),
+            bind_group_layouts: &[&globals_layout, &tex_layout, &tex_layout],
+            push_constant_ranges: &[],
+        });
+        let add = wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add };
+        let glint_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("gui glint"),
+            layout: Some(&glint_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[vertex_layout.clone()],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_glint"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState {
+                        color: add,
+                        alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview: None,
+            cache: None,
+        });
 
         let white = Self::bind(device, &tex_layout, &nearest, &linear, &texture_from_rgba(device, queue, 1, 1, &[255; 4], "white"));
 
@@ -302,6 +337,7 @@ impl GuiRenderer {
             nearest,
             linear,
             pipelines,
+            glint_pipeline,
             blur_x,
             blur_y,
             textures: HashMap::new(),
@@ -374,7 +410,14 @@ impl GuiRenderer {
         sr: Scaled,
         assets: &AssetSource,
     ) {
-        queue.write_buffer(&self.globals, 0, bytemuck::cast_slice(&[sr.width_f as f32, sr.height_f as f32, srgb as u32 as f32, 0.0]));
+        // Minecraft.getSystemTime() for renderEffect's scrolling.
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        let (g0, g1) = ((ms % 3000) as f32 / 3000.0 / 8.0, (ms % 4873) as f32 / 4873.0 / 8.0);
+        queue.write_buffer(&self.globals, 0, bytemuck::cast_slice(&[sr.width_f as f32, sr.height_f as f32, srgb as u32 as f32, 0.0, g0, g1, 0.0, 0.0]));
+        const GLINT: &str = "textures/misc/enchanted_item_glint.png";
+        if batch.items.iter().any(|i| matches!(i, Item::Draw(d) if d.blend == Blend::Glint)) {
+            self.ensure_texture(device, queue, assets, GLINT);
+        }
 
         // Flatten quads to triangles and remember each draw's range.
         enum Op {
@@ -493,8 +536,13 @@ impl GuiRenderer {
             match op {
                 Op::Draw { tex, blend, alpha_test, linear, range } => {
                     let t = tex.as_ref().map_or(&self.white, |p| &self.textures[p]);
-                    let bi = (*blend == Blend::Invert) as usize;
-                    pass.set_pipeline(&self.pipelines[bi][*alpha_test as usize]);
+                    if *blend == Blend::Glint {
+                        pass.set_pipeline(&self.glint_pipeline);
+                        pass.set_bind_group(2, &self.textures[GLINT].nearest, &[]);
+                    } else {
+                        let bi = (*blend == Blend::Invert) as usize;
+                        pass.set_pipeline(&self.pipelines[bi][*alpha_test as usize]);
+                    }
                     pass.set_bind_group(1, if *linear { &t.linear } else { &t.nearest }, &[]);
                     pass.draw(range.clone(), 0..1);
                 }

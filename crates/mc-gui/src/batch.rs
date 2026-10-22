@@ -8,6 +8,9 @@ pub enum Blend {
     Alpha,
     /// (ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_COLOR): the inverted crosshair.
     Invert,
+    /// `RenderItem.renderEffect`: the enchantment glint over an item's opaque texels (the
+    /// texture is the item's own, used as the `GL_EQUAL` depth mask).
+    Glint,
 }
 
 #[derive(Clone, Copy, Debug)]

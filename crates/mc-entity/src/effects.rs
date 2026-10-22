@@ -2,48 +2,7 @@
 //! attributes (`ModifiableAttributeInstance`, `S20PacketEntityProperties`).
 use mc_core::java_hash::{int_hash, uuid_hash, JavaHashMap};
 
-/// One `Potion` registry entry.
-#[derive(Clone, Copy, Debug)]
-pub struct Potion {
-    pub id: u8,
-    /// Translation key, e.g. `potion.moveSpeed`.
-    pub name: &'static str,
-    pub bad: bool,
-    pub liquid_color: u32,
-    /// `statusIconIndex` into `textures/gui/container/inventory.png` (18×18 cells from 0,198), or -1.
-    pub icon: i32,
-}
-
-const fn p(id: u8, name: &'static str, bad: bool, liquid_color: u32, ix: i32, iy: i32) -> Potion {
-    Potion { id, name, bad, liquid_color, icon: if ix < 0 { -1 } else { ix + iy * 8 } }
-}
-
-/// `Potion.potionTypes` (ids 1..=23).
-pub const POTIONS: [Potion; 23] = [
-    p(1, "potion.moveSpeed", false, 8171462, 0, 0),
-    p(2, "potion.moveSlowdown", true, 5926017, 1, 0),
-    p(3, "potion.digSpeed", false, 14270531, 2, 0),
-    p(4, "potion.digSlowDown", true, 4866583, 3, 0),
-    p(5, "potion.damageBoost", false, 9643043, 4, 0),
-    p(6, "potion.heal", false, 16262179, -1, 0),
-    p(7, "potion.harm", true, 4393481, -1, 0),
-    p(8, "potion.jump", false, 2293580, 2, 1),
-    p(9, "potion.confusion", true, 5578058, 3, 1),
-    p(10, "potion.regeneration", false, 13458603, 7, 0),
-    p(11, "potion.resistance", false, 10044730, 6, 1),
-    p(12, "potion.fireResistance", false, 14981690, 7, 1),
-    p(13, "potion.waterBreathing", false, 3035801, 0, 2),
-    p(14, "potion.invisibility", false, 8356754, 0, 1),
-    p(15, "potion.blindness", true, 2039587, 5, 1),
-    p(16, "potion.nightVision", false, 2039713, 4, 1),
-    p(17, "potion.hunger", true, 5797459, 1, 1),
-    p(18, "potion.weakness", true, 4738376, 5, 0),
-    p(19, "potion.poison", true, 5149489, 6, 0),
-    p(20, "potion.wither", true, 3484199, 1, 2),
-    p(21, "potion.healthBoost", false, 16284963, 2, 2),
-    p(22, "potion.absorption", false, 2445989, 2, 2),
-    p(23, "potion.saturation", false, 16262179, -1, 0),
-];
+pub use mc_data::potion::{Potion, POTIONS};
 
 pub const SPEED: u8 = 1;
 pub const SLOWNESS: u8 = 2;

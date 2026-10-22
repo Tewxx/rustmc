@@ -50,6 +50,10 @@ pub struct Remote {
     pub on_ground: bool,
     /// Held item (`EntityEquipment` slot 0) as (catalogue index, count).
     pub held: Option<(usize, u8)>,
+    /// The full held stack (damage value and NBT pick the model, colors and glint).
+    pub held_stack: Option<mc_gui::ItemStack>,
+    /// `EntityEquipment` slots 1-4 (boots .. helmet).
+    pub armor: [Option<mc_gui::ItemStack>; 4],
     pub width: f64,
     pub height: f64,
     pub hurt_time: i32,
@@ -115,6 +119,8 @@ impl Remote {
             use_count: 0,
             on_ground: false,
             held: None,
+            held_stack: None,
+            armor: [None; 4],
             width: w,
             height: h,
             hurt_time: 0,

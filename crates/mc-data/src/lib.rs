@@ -14,6 +14,7 @@ pub mod item;
 mod generated;
 pub mod material;
 pub mod model_location;
+pub mod potion;
 
 pub use actual_state::BlockAccess;
 pub use block::{ids, Block, Property, PropertyKind, RenderLayer, SoundType, StateId};
