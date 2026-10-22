@@ -64,7 +64,20 @@ Every segment ships with **golden tests generated from the real Java code**, not
 
 Each segment is sized to be done and reviewed on its own. Do them in order unless marked parallel.
 
-### S0 — Ground rules & tooling  *(small, do first)*
+### S0 — Ground rules & tooling  *(DONE 2026-10-21)*
+
+Delivered: git repo; `mc-core::random::JavaRandom` and `mc-core::strict_math::log` (fdlibm), bit-exact
+vs JDK 8; `tools/extract/extract.ps1` → `golden/blocks.json` (all 198 blocks, every state, meta↔state,
+static properties); `mc-world/tests/golden_blocks.rs`; `rustmc --bench <s>`.
+Baseline (RTX 3060, radius 8, 10 s): avg 3118 fps, 1% low 1293, 0.1% low 923, CPU 0.27 ms/frame.
+GPU timestamp queries and a tracy/puffin feature were left for S12, when GPU cost is being tuned.
+
+Findings the golden test surfaced (fixed in `blocks.rs`):
+- Unregistered id/meta pairs read as **air** (`ExtendedBlockStorage.get` via `BLOCK_STATE_IDS`), not as
+  the block; the table used to render e.g. grass meta 1–15 and acacia/dark-oak variant bits 2–3.
+- Grass is `CUTOUT_MIPPED` (side overlay), not solid.
+
+Original scope:
 - `git init`, commit current state, `.gitignore` for `target/`, shots.
 - `tools/extract/`: build script that compiles extractors against `MCP-919` classes; first extractor
   dumps `Block.blockRegistry` (ids, names, every state, meta↔state) as a smoke test.

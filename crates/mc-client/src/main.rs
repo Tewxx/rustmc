@@ -2,9 +2,13 @@
 //!
 //! Usage: rustmc [--jar <1.8.9.jar>] [--pack <zip|dir>]... [--world <save dir>] [--radius N] [--pos X Z]
 //!               [--screenshot <out.png> [--screen title|pause|options|video|controls|hud|debug|chat]]
+//!               [--bench <seconds>]
 //! In game: click to grab mouse, WASD + Space/Shift to fly, Ctrl faster, Esc pause,
 //! F1 hide HUD, F3 debug, T chat, 1-9 / wheel hotbar.
 
+mod bench;
+
+use bench::Bench;
 use glam::Vec3;
 use mc_assets::AssetSource;
 use mc_core::nbt;
@@ -34,10 +38,11 @@ struct Args {
     pos: Option<(i32, i32)>,
     screenshot: Option<PathBuf>,
     screen: String,
+    bench: Option<f64>,
 }
 
 fn parse_args() -> Args {
-    let mut a = Args { jar: None, packs: vec![], world: None, radius: 4, pos: None, screenshot: None, screen: "hud".into() };
+    let mut a = Args { jar: None, packs: vec![], world: None, radius: 4, pos: None, screenshot: None, screen: "hud".into(), bench: None };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -46,6 +51,7 @@ fn parse_args() -> Args {
             "--world" => a.world = it.next().map(PathBuf::from),
             "--screenshot" => a.screenshot = it.next().map(PathBuf::from),
             "--screen" => a.screen = it.next().unwrap_or_default(),
+            "--bench" => a.bench = Some(it.next().and_then(|s| s.parse().ok()).unwrap_or(30.0)),
             "--radius" => a.radius = it.next().and_then(|s| s.parse().ok()).unwrap_or(4),
             "--pos" => {
                 let x = it.next().and_then(|s| s.parse().ok());
@@ -143,6 +149,7 @@ struct App {
     frames: u32,
     fps: u32,
     screenshot: Option<(PathBuf, String)>,
+    bench: Option<Bench>,
 }
 
 impl App {
@@ -425,6 +432,15 @@ impl ApplicationHandler for App {
             el.exit();
             return;
         }
+        if self.bench.is_some() {
+            // Uncapped for the run only; options.txt is untouched (only screens save settings).
+            self.ui.settings.vsync = false;
+            self.ui.settings.limit_framerate = 260;
+            self.apply_settings();
+            self.in_game = true;
+            self.ui.in_world = true;
+            return;
+        }
         self.open(Box::new(screens::MainMenu::default()), false);
     }
 
@@ -473,7 +489,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::Focused(false) => {
-                if self.in_game && self.screen.is_none() {
+                if self.in_game && self.screen.is_none() && self.bench.is_none() {
                     self.open(Box::new(screens::PauseMenu::default()), false);
                 }
                 self.keys.clear();
@@ -518,9 +534,21 @@ impl ApplicationHandler for App {
                 let now = Instant::now();
                 let dt = (now - self.last_frame).as_secs_f32().min(0.1);
                 self.last_frame = now;
+                if let Some(b) = &mut self.bench {
+                    let p = b.pose(now);
+                    (self.camera.pos, self.camera.yaw, self.camera.pitch) = (p.pos, p.yaw, p.pitch);
+                }
                 self.update(dt);
                 self.draw_frame();
                 self.frames += 1;
+                if let Some(b) = &mut self.bench {
+                    if b.frame(now, now.elapsed().as_secs_f64() * 1e3) {
+                        let gpu = self.renderer.as_ref().map_or(String::new(), |r| r.adapter_info.name.clone());
+                        b.finish(Path::new("bench.csv"), &gpu, self.world.chunks.len());
+                        el.exit();
+                    }
+                    return;
+                }
                 if self.fps_timer.elapsed().as_secs_f32() >= 1.0 {
                     self.fps = self.frames;
                     self.frames = 0;
@@ -622,6 +650,7 @@ fn main() {
         frames: 0,
         fps: 0,
         screenshot: args.screenshot.clone().map(|p| (p, args.screen.clone())),
+        bench: args.bench.map(|s| Bench::new(s, Vec3::new(center.0 as f32 + 0.5, surface_y as f32 + 6.0, center.1 as f32 + 0.5))),
     };
     event_loop.run_app(&mut app).expect("run app");
 }

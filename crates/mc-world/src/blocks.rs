@@ -118,11 +118,38 @@ fn leaves(wood: &str, tint: Tint) -> BlockInfo {
     }
 }
 
+/// Metas that `getMetaFromState` produces for the blocks in this table, as a bit mask.
+/// Chunks store raw `id << 4 | meta`, but `ExtendedBlockStorage.get` resolves only these
+/// (`Block.BLOCK_STATE_IDS`); any other pair reads as air.
+fn registered_metas(id: u16) -> u16 {
+    const fn upto(n: u16) -> u16 {
+        (1 << (n + 1)) - 1
+    }
+    match id {
+        1 => upto(6),
+        3 | 24 | 31 | 168 => upto(2),
+        5 => upto(5),
+        12 | 19 => upto(1),
+        17 | 18 | 35 | 159 => 0xFFFF,
+        38 => upto(8),
+        86 | 98 => upto(3),
+        155 => upto(4),
+        // Acacia/dark oak only: variant bits 0–1 of each axis/decay group.
+        161 | 162 => 0x3333,
+        170 => 1 | 1 << 4 | 1 << 8,
+        _ => 1,
+    }
+}
+
 pub fn lookup(id: u16, meta: u8) -> Option<BlockInfo> {
+    if meta > 15 || registered_metas(id) & (1 << meta) == 0 {
+        return None;
+    }
     let m = meta as usize;
     Some(match id {
         1 => solid(["stone", "granite", "smooth_granite", "diorite", "smooth_diorite", "andesite", "smooth_andesite"].get(m)?),
-        2 => BlockInfo { variant: "snowy=false".into(), tint: Tint::Grass, ..solid("grass") },
+        // BlockGrass renders in CUTOUT_MIPPED for its tinted side overlay.
+        2 => BlockInfo { variant: "snowy=false".into(), tint: Tint::Grass, layer: Layer::Cutout, ..solid("grass") },
         3 => match meta {
             1 => solid("coarse_dirt"),
             2 => BlockInfo { variant: "snowy=false".into(), ..solid("podzol") },

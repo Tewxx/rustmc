@@ -24,7 +24,14 @@ never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`
 
 Run: `cargo run --release --bin rustmc -- --radius 8`
 Screenshot any screen headless: `rustmc --screenshot out.png --screen title|pause|options|video|controls|hud|debug|chat`
-Tests: `cargo test --release` (32 passing; `mc-render/tests/vanilla_jar.rs` runs against the real jar).
+Tests: `cargo test --release` (41 passing; `mc-render/tests/vanilla_jar.rs` runs against the real jar,
+`mc-world/tests/golden_blocks.rs` against `golden/blocks.json`; both skip when their input is missing).
+Benchmark: `rustmc --radius 8 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
+Golden data: `powershell -ExecutionPolicy Bypass -File tools/extract/extract.ps1` (needs a JDK 8 and MCP's
+compiled `bin/minecraft`; writes `golden/`, which is gitignored because it's derived from Mojang code).
+
+**The plan now lives in `ROADMAP.md`** (segments S0–S13). The performance sections below are scheduled
+there as S8/S12; read the roadmap first.
 
 Measured (RTX 3060, radius 8 = 289 chunks, 732k quads):
 - Startup: light **1.66 s**, mesh **2.6 s** (both single-threaded) — too slow.
@@ -128,3 +135,7 @@ input latency. 10× is not realistic: above ~2000 FPS, present/compositor overhe
 - Chunk draw order comes from a `HashMap` → 1-pixel depth ties can vary between runs. Sort draws when
   doing P2.
 - Bash heredocs containing `'` break in this environment's Git Bash; use the Write/Edit tools.
+- Chunks store raw `id << 4 | meta`, but only pairs some state's `getMetaFromState` produces resolve;
+  every other pair is air. Check `golden/blocks.json` `states[].meta`, not `state_from_meta`.
+- Anything drawing from `Random.nextGaussian` needs `strict_math::log`, not `f64::ln` (ulp differences).
+- Golden dumps reflect a headless bootstrap: graphics-dependent blocks (leaves) report fast-graphics values.

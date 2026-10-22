@@ -9,11 +9,14 @@ pub mod block_pos;
 pub mod facing;
 pub mod math;
 pub mod nbt;
+pub mod random;
+pub mod strict_math;
 pub mod vec3;
 
 pub use aabb::Aabb;
 pub use block_pos::BlockPos;
 pub use facing::{Axis, Facing};
+pub use random::JavaRandom;
 pub use vec3::Vec3;
 
 /// Java `Math.min(double, double)`: NaN-propagating, and -0.0 < 0.0.

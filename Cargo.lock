@@ -903,6 +903,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "mc-core",
+ "serde_json",
 ]
 
 [[package]]
