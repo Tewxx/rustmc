@@ -22,9 +22,10 @@ struct Shared {
     voices: Vec<Voice>,
 }
 
+#[derive(Clone)]
 pub struct Mixer {
     shared: Arc<Mutex<Shared>>,
-    next: AtomicU64,
+    next: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
     /// Whether an output device opened.
     pub available: bool,
@@ -35,7 +36,7 @@ impl Mixer {
         let shared = Arc::new(Mutex::new(Shared::default()));
         let stop = Arc::new(AtomicBool::new(false));
         let available = start_output(shared.clone(), stop.clone());
-        Mixer { shared, next: AtomicU64::new(1), stop, available }
+        Mixer { shared, next: Arc::new(AtomicU64::new(1)), stop, available }
     }
 
     /// Starts a voice; `pitch` scales the playback rate, gains are per output channel.
@@ -75,8 +76,9 @@ impl Default for Mixer {
     }
 }
 
-impl Drop for Mixer {
-    fn drop(&mut self) {
+impl Mixer {
+    /// Stops the output thread.
+    pub fn shutdown(&self) {
         self.stop.store(true, Ordering::Relaxed);
     }
 }

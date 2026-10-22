@@ -3,7 +3,7 @@ fn main() {
     let ev = std::env::args().nth(1).unwrap_or_else(|| "random.orb".into());
     let dir = std::path::PathBuf::from(std::env::var_os("APPDATA").unwrap()).join(".minecraft/assets");
     let read = mc_sound::manager::index_reader(&dir, "1.8").expect("asset index");
-    let mut s = mc_sound::SoundManager::new(Box::new(read));
+    let mut s = mc_sound::SoundManager::new(std::sync::Arc::new(read));
     println!("{} events, output available: {}", s.event_count(), s.mixer.available);
     let t = std::time::Instant::now();
     s.play(&ev, None, 1.0, 1.0);

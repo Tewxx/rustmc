@@ -10,6 +10,7 @@ mod bench;
 mod auth;
 mod chat;
 mod entities;
+mod music;
 mod net;
 mod commands;
 mod container;
@@ -327,6 +328,7 @@ struct App {
     net: Option<net::Net>,
     name: String,
     remote: entities::Entities,
+    music: music::MusicTicker,
     skins: skins::Skins,
     /// Inventory as last synced, to send creative edits (C10) for what changed.
     creative_sync: Option<([Option<mc_gui::ItemStack>; 36], [Option<mc_gui::ItemStack>; 4])>,
@@ -408,6 +410,7 @@ impl App {
             net: None,
             name: "Player".into(),
             remote: entities::Entities::default(),
+            music: music::MusicTicker::default(),
             skins: skins::Skins::default(),
             creative_sync: None,
             open_window: None,
@@ -585,6 +588,21 @@ impl App {
         while self.tick_accum >= 1.0 {
             self.tick_accum -= 1.0;
             self.hud.tick();
+            // Minecraft.runTick: the music ticker runs in menus and in game.
+            if let Some(s) = &mut self.sound {
+                let kind = if !self.in_game {
+                    music::MusicType::Menu
+                } else if self.entity.creative && self.entity.allow_flying {
+                    music::MusicType::Creative
+                } else {
+                    music::MusicType::Game
+                };
+                for c in mc_sound::Category::ALL {
+                    s.volumes.insert(c, self.ui.settings.sound_volume(c.key()));
+                }
+                self.music.update(s, kind);
+                s.update_stream_volumes();
+            }
             if let Some(r) = &self.renderer {
                 let uploads = self.models.atlas.tick();
                 r.upload_atlas(&uploads);
@@ -2538,7 +2556,7 @@ fn main() {
     if args.screenshot.is_none() && std::env::var_os("RUSTMC_NO_SOUND").is_none() {
         let dir = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(".minecraft").join("assets"));
         if let Some(read) = dir.and_then(|d| mc_sound::manager::index_reader(&d, "1.8")) {
-            let s = mc_sound::SoundManager::new(Box::new(read));
+            let s = mc_sound::SoundManager::new(std::sync::Arc::new(read));
             println!("sound: {} events, output {}", s.event_count(), if s.mixer.available { "ok" } else { "unavailable" });
             app.sound = Some(s);
         } else {

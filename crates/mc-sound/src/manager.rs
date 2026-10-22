@@ -78,7 +78,7 @@ struct Event {
 }
 
 /// Where sound files come from: resource packs first, then the vanilla asset index.
-pub type Reader = Box<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>;
+pub type Reader = std::sync::Arc<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>;
 
 pub struct SoundManager {
     events: HashMap<String, Event>,
@@ -88,8 +88,15 @@ pub struct SoundManager {
     pub volumes: HashMap<Category, f32>,
     listener: ([f64; 3], f32),
     rand: u64,
-    /// Voices of looping/streamed sounds by caller key.
-    streams: HashMap<String, u64>,
+    /// Streamed sounds by caller key.
+    streams: HashMap<String, Stream>,
+}
+
+struct Stream {
+    /// Mixer voice id; `u64::MAX` while decoding, 0 when stopped or failed.
+    voice: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    category: Category,
+    base: f32,
 }
 
 impl SoundManager {
@@ -210,23 +217,56 @@ impl SoundManager {
         self.mixer.play(pcm, pitch, g, false);
     }
 
-    /// A looping/streamed sound under a caller key (music, rain loops); replaces any previous.
+    /// A streamed sound (music) under a caller key, decoded off the main thread; replaces any
+    /// previous one. It counts as playing from the request on.
     pub fn play_stream(&mut self, key: &str, event: &str, volume: f32) {
         self.stop_stream(key);
         let Some((entry, cat)) = self.pick(event, 0) else { return };
-        let Some(pcm) = self.load(&entry.name) else { return };
         let gain = (volume * entry.volume * self.category_volume(cat)).clamp(0.0, 1.0);
-        let id = self.mixer.play(pcm, 1.0, (gain, gain), false);
-        self.streams.insert(key.to_string(), id);
+        let pending = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(u64::MAX));
+        self.streams.insert(key.to_string(), Stream { voice: pending.clone(), category: cat, base: volume * entry.volume });
+        let (read, mixer) = (self.read.clone(), self.mixer.clone());
+        let path = format!("minecraft/sounds/{}.ogg", entry.name);
+        std::thread::spawn(move || {
+            let Some(pcm) = read(&path).and_then(|b| vorbis::decode(&b).ok()) else {
+                pending.store(0, std::sync::atomic::Ordering::Relaxed);
+                return;
+            };
+            if pending.load(std::sync::atomic::Ordering::Relaxed) == u64::MAX {
+                let id = mixer.play(std::sync::Arc::new(pcm), 1.0, (gain, gain), false);
+                // Stopped meanwhile? Then drop it right away.
+                if pending.compare_exchange(u64::MAX, id, std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed).is_err() {
+                    mixer.stop(id);
+                }
+            }
+        });
     }
 
     pub fn stream_playing(&self, key: &str) -> bool {
-        self.streams.get(key).is_some_and(|&id| self.mixer.is_playing(id))
+        self.streams.get(key).is_some_and(|s| match s.voice.load(std::sync::atomic::Ordering::Relaxed) {
+            u64::MAX => true,
+            0 => false,
+            id => self.mixer.is_playing(id),
+        })
+    }
+
+    /// Re-applies category volumes to running streams (the music slider).
+    pub fn update_stream_volumes(&mut self) {
+        for s in self.streams.values() {
+            let id = s.voice.load(std::sync::atomic::Ordering::Relaxed);
+            if id != u64::MAX && id != 0 {
+                let g = (s.base * self.category_volume(s.category)).clamp(0.0, 1.0);
+                self.mixer.set_gain(id, (g, g));
+            }
+        }
     }
 
     pub fn stop_stream(&mut self, key: &str) {
-        if let Some(id) = self.streams.remove(key) {
-            self.mixer.stop(id);
+        if let Some(s) = self.streams.remove(key) {
+            let id = s.voice.swap(0, std::sync::atomic::Ordering::Relaxed);
+            if id != u64::MAX && id != 0 {
+                self.mixer.stop(id);
+            }
         }
     }
 
