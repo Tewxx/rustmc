@@ -485,6 +485,8 @@ struct App {
     bench: Option<Bench>,
     /// The server connection when playing multiplayer.
     net: Option<net::Net>,
+    /// `GuiDisconnected` already shown for this connection.
+    disconnect_shown: bool,
     name: String,
     remote: entities::Entities,
     music: music::MusicTicker,
@@ -620,6 +622,7 @@ impl App {
             screenshot: None,
             bench: None,
             net: None,
+            disconnect_shown: false,
             name: "Player".into(),
             remote: entities::Entities::default(),
             music: music::MusicTicker::default(),
@@ -722,6 +725,11 @@ impl App {
                 self.grab(true);
             }
             Action::QuitToTitle => {
+                if let Some(n) = &mut self.net {
+                    n.disconnect();
+                }
+                self.net = None;
+                self.disconnect_shown = false;
                 self.in_game = false;
                 self.ui.in_world = false;
                 self.parents.clear();
@@ -854,8 +862,24 @@ impl App {
         self.grabbed = on;
     }
 
+    /// `NetHandlerPlayClient`: a closed connection shows `GuiDisconnected` instead of leaving
+    /// the player in a frozen world.
+    fn poll_disconnect(&mut self) {
+        if self.disconnect_shown {
+            return;
+        }
+        let Some(reason) = self.net.as_ref().and_then(|n| n.closed.clone()) else { return };
+        self.disconnect_shown = true;
+        let text = chat::format(&reason, &self.ui.lang);
+        self.in_game = false;
+        self.ui.in_world = false;
+        self.grab(false);
+        self.open(Box::new(screens::Disconnected::new(text)), false);
+    }
+
     fn update(&mut self, dt: f32) {
         self.process_net();
+        self.poll_disconnect();
         self.flush_window();
         for (cell, rgba) in self.skins.poll() {
             if let Some(r) = &self.renderer {
@@ -1086,6 +1110,7 @@ impl App {
                 C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
+                    self.disconnect_shown = false;
                     self.particles.clear();
                     // A new WorldClient brings a fresh Scoreboard; the player info map stays.
                     let players = std::mem::take(&mut self.scoreboard.players);
@@ -4458,7 +4483,23 @@ impl ApplicationHandler for App {
     }
 }
 
+/// Panics normally vanish with the window when the client is started from Explorer. Write the
+/// panic and a backtrace to `rustmc-crash.log` (and stderr) so a crash can be reported.
+fn install_crash_log() {
+    let args: Vec<String> = std::env::args().collect();
+    std::panic::set_hook(Box::new(move |info| {
+        let bt = std::backtrace::Backtrace::force_capture();
+        let msg = format!(
+            "rustmc panic\nargs: {args:?}\ncwd: {:?}\n{info}\n{bt}\n",
+            std::env::current_dir().ok()
+        );
+        let _ = std::fs::write("rustmc-crash.log", &msg);
+        eprintln!("{msg}");
+    }));
+}
+
 fn main() {
+    install_crash_log();
     let args = parse_args();
     let Some(jar) = args.jar.clone().or_else(find_jar) else {
         eprintln!("Could not find 1.8.9.jar. Pass --jar <path to 1.8.9.jar>.");
@@ -4499,30 +4540,39 @@ fn main() {
         t.elapsed().as_secs_f64() * 1e3
     );
 
-    let connection = args.connect.as_deref().map(|addr| {
+    let mut connection = None;
+    let mut connect_error: Option<String> = None;
+    if let Some(addr) = args.connect.as_deref() {
         let (host, port) = match addr.rsplit_once(':') {
             Some((h, p)) if p.parse::<u16>().is_ok() => (h.to_string(), p.parse().unwrap()),
             _ => (addr.to_string(), 25565),
         };
-        let session = args.online.then(|| match auth::login() {
-            Ok(s) => {
-                println!("Signed in as {}", s.name);
-                s
+        let session = if args.online {
+            match auth::login() {
+                Ok(s) => {
+                    println!("Signed in as {}", s.name);
+                    Some(s)
+                }
+                Err(e) => {
+                    connect_error = Some(format!("Microsoft sign-in failed: {e}"));
+                    None
+                }
             }
-            Err(e) => {
-                eprintln!("Microsoft sign-in failed: {e}");
-                std::process::exit(1);
-            }
-        });
-        let name = session.as_ref().map_or(args.name.clone(), |s| s.name.clone());
-        match net::Net::connect(&host, port, &name, session.as_ref()).map(|n| (n, name)) {
-            Ok(n) => n,
-            Err(e) => {
-                eprintln!("Failed to connect to the server: {}", chat::format(&e, &mc_gui::lang::Lang::default()));
-                std::process::exit(1);
+        } else {
+            None
+        };
+        if connect_error.is_none() {
+            let name = session.as_ref().map_or(args.name.clone(), |s| s.name.clone());
+            match net::Net::connect(&host, port, &name, session.as_ref()) {
+                Ok(n) => connection = Some((n, name)),
+                Err(e) => {
+                    let reason = chat::format(&e, &mc_gui::lang::Lang::default());
+                    eprintln!("Failed to connect to the server: {reason}");
+                    connect_error = Some(reason);
+                }
             }
         }
-    });
+    }
     let (world, center, seed) = if connection.is_some() {
         let mut w = World::default();
         w.track_dirty = true;
@@ -4566,6 +4616,11 @@ fn main() {
     app.bench = args
         .bench
         .map(|s| Bench::new(s, Vec3::new(center.0 as f32 + 0.5, surface_y as f32 + 6., center.1 as f32 + 0.5)));
+    if let Some(reason) = connect_error {
+        app.in_game = false;
+        app.ui.in_world = false;
+        app.open(Box::new(screens::Disconnected::new(reason)), false);
+    }
     event_loop.run_app(&mut app).expect("run app");
 }
 

@@ -434,6 +434,61 @@ impl Screen for MultiplayerScreen {
     }
 }
 
+// ---------------------------------------------------------------- disconnected
+
+/// `GuiDisconnected`: the reason a connection failed or ended, without closing the window.
+pub struct Disconnected {
+    buttons: Vec<Button>,
+    pub reason: String,
+}
+
+impl Disconnected {
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self { buttons: Vec::new(), reason: reason.into() }
+    }
+}
+
+impl Screen for Disconnected {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        self.buttons = vec![
+            Button::new(0, w / 2 - 100, h / 2 + 40, ui.lang.get("gui.toTitle")),
+            Button::new(1, w / 2 - 100, h / 2 + 64, ui.lang.get("menu.quit")),
+        ];
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        default_background(ui, b, w, h);
+        ui.font.draw_centered(b, &ui.lang.get("disconnect.lost"), w / 2, h / 2 - 60, 0xFFFF_FFFF);
+        // `GuiDisconnected` wraps the reason with `fontRendererObj.listFormattedStringToWidth`.
+        let mut lines = Vec::new();
+        let mut line = String::new();
+        for word in self.reason.split_whitespace() {
+            let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+            if !line.is_empty() && ui.font.width(&candidate) > w - 40 {
+                lines.push(std::mem::take(&mut line));
+                line = word.to_string();
+            } else {
+                line = candidate;
+            }
+        }
+        if !line.is_empty() {
+            lines.push(line);
+        }
+        for (i, l) in lines.iter().take(8).enumerate() {
+            ui.font.draw_centered(b, l, w / 2, h / 2 - 40 + i as i32 * 10, 0xFFA0_A0A0);
+        }
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+    }
+
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        match click_buttons(&mut self.buttons, ui, mx, my) {
+            Some(0) => Action::QuitToTitle,
+            Some(1) => Action::Quit,
+            _ => Action::None,
+        }
+    }
+}
+
 // ---------------------------------------------------------------- pause menu
 
 #[derive(Default)]
