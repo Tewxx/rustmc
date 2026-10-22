@@ -77,8 +77,9 @@ Commits cbf3425 … 5bc480a. New since the table above:
 2. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
    bolts; minecart/boat models; wither skull; armour layers on stands; TNT flash (`f2` alpha
    pass); leash rendering.
-3. Remaining particle types: footstep (28), item crack (36), block crack/dust (37/38), mob
-   appearance (41). Item take (40) has no factory in 1.8 and is correctly ignored.
+3. Remaining particle types: footstep (28), item crack (36), mob appearance (41); plus
+   attack-crit `EntityParticleEmitter` bursts and repeated block-hit dust while mining.
+   Item take (40) has no factory in 1.8 and is correctly ignored.
 4. Serverbound `EnchantItem`, `SteerVehicle` (boats/horses), `Spectate`, `UpdateSignC`.
 5. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
    `PlayerControllerMP` (rotation, onGround, sprint/sneak, flying) with loopback tests.
@@ -103,14 +104,20 @@ then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --scre
   4×4 `explosion.png` animation, and the block/atlas lightmap bumps (flame/portal/enchant/
   lava/firework). Quads are sorted back-to-front and drawn with a 1/255 alpha cutoff
   (`kind 10` in the avatar shader).
-- **Ported types (36):** explosion normal/large/huge, firework spark, bubble, splash, wake,
+- **Ported types (38):** explosion normal/large/huge, firework spark, bubble, splash, wake,
   suspended, suspended-depth, crit, magic crit, smoke normal/large, spell/instant/mob/
   ambient/witch, drip water/lava, angry/happy villager, town aura, note, portal, enchantment,
-  flame, lava, cloud, redstone, snowball, snow shovel, slime, heart, barrier, water drop.
-  Deferred: footstep (28), item crack (36), block crack/dust (37/38), mob appearance (41).
+  flame, lava, cloud, redstone, snowball, snow shovel, slime, heart, barrier, water drop,
+  block crack/dust (37/38).
+  Deferred: footstep (28), item crack (36), mob appearance (41).
+- **Local emitters:** `S28` event 2001 spawns `addBlockDestroyEffects` (the 4×4×4 digging
+  burst, tinted by the block colour) and the first hit of a block spawns
+  `addBlockHitEffects` (one face particle, `multiplyVelocity(0.2)`, scale 0.6).
+  `BlockModels::particle_uv` bakes each state's `#particle` sprite from its model.
 - **Verified:** `MOCK_PARTICLES=1` keeps a batch of every type alive while the screenshot is
-  taken (`shots/particles2.png`, `shots/particles3.png`); unit tests cover the camera basis,
-  UV order, smoke animation/death, large-explosion frames and huge-explosion children.
+  taken (`shots/particles2.png`, `shots/particles3.png`, `shots/blockfx.png` for the S28
+  break burst); unit tests cover the camera basis, UV order, smoke animation/death,
+  large-explosion frames, huge-explosion children and the 64-particle destroy grid.
 
 ## Session log — server resource packs (Oct 2026)
 

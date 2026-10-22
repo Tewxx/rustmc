@@ -1227,6 +1227,9 @@ impl App {
                             let st = mc_data::StateId::try_from_network(ef.data).unwrap_or(mc_data::StateId::AIR);
                             if st.block().id != 0 {
                                 self.block_break_sound(st, p);
+                                // `RenderGlobal.playAuxSFX`: destroy particles for the state the
+                                // server broke, not whatever the client already applied.
+                                self.particles.block_destroy(st, p, &self.world, &self.models, &mut self.rand);
                             }
                         }
                         2002 => self.play_sound("game.potion.smash", Some(c), 1.0, rand_f64() as f32 * 0.1 + 0.9),
@@ -2463,8 +2466,15 @@ impl App {
             }
         } else {
             self.click_block(t.pos);
+            self.block_hit_particles(t.pos, t.face);
         }
         self.swing();
+    }
+
+    /// `Minecraft.clickMouse` → `EffectRenderer.addBlockHitEffects` for the first hit of a block.
+    fn block_hit_particles(&mut self, pos: BlockPos, face: Facing) {
+        let st = self.world.state_at(pos.x, pos.y, pos.z);
+        self.particles.block_hit(st, pos, face, &self.world, &self.models, &mut self.rand);
     }
 
     /// `BlockRendererDispatcher.renderBlockDamage`: the block's model with every quad's UVs moved
@@ -4569,5 +4579,21 @@ mod tests {
         app.player.selected_slot = 6;
         app.right_click_mouse();
         assert_eq!(app.ui.inventory[6].unwrap().count, 1);
+    }
+
+    #[test]
+    fn block_break_effects_spawn_a_4x4x4_grid() {
+        let Some(jar) = find_jar() else {
+            return;
+        };
+        let mut assets = AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = BlockModels::load(&assets);
+        let state = mc_data::StateId::try_from_network(1 << 4).unwrap();
+        assert!(models.particle_uv(state).is_some(), "stone has a particle texture");
+        let mut particles = crate::particles::Particles::default();
+        let mut rand = mc_core::random::JavaRandom::new(1);
+        particles.block_destroy(state, BlockPos::new(0, 0, 0), &World::default(), &models, &mut rand);
+        assert_eq!(particles.len(), 64);
     }
 }

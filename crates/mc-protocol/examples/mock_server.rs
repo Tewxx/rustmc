@@ -347,6 +347,10 @@ fn handle(stream: TcpStream) {
                             // Large explosion's scale argument arrives through `speed * offset.x`.
                             let p = PlayClientbound::Particles(Particles { particle_id: 1, long_distance: true, pos: (10.5, 7.0, 15.0), offset: (1.0, 0.0, 0.0), speed: 0.1, count: 0, args: vec![] });
                             send(&w3, threshold, &p.to_bytes());
+                            // S28 2001: the server's block-break effect must produce the 4x4x4
+                            // `blockcrack` burst around this floating stone block.
+                            let e = PlayClientbound::Effect(Effect { effect_id: 2001, pos: BlockPos::new(7, 5, 14), data: 1 << 4, global: false });
+                            send(&w3, threshold, &e.to_bytes());
                             std::thread::sleep(Duration::from_millis(250));
                         });
                     }

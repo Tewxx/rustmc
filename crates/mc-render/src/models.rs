@@ -24,6 +24,9 @@ pub struct BlockModels {
     /// States differing only in ignored properties share the same model.
     entries: Vec<Option<usize>>,
     baked: Vec<BlockEntry>,
+    /// `Block.getParticleTexture()` per state, in atlas UV space
+    /// (`BlockModelShapes.getTexture`), used by block crack/dust and destroy particles.
+    state_particles: Vec<Option<[f32; 4]>>,
     missing: Vec<ModelLocation>,
     pub colors: BlockColors,
     pub items: crate::items::ItemModels,
@@ -82,6 +85,7 @@ impl BlockModels {
         let mut locations = HashMap::new();
         let mut entries = vec![None; mc_data::block::STATE_COUNT];
         let mut pending: Vec<Option<Vec<Variant>>> = Vec::new();
+        let mut particle_models: Vec<Option<String>> = Vec::new();
         let mut textures = Vec::new();
         let mut missing = Vec::new();
         for state in Block::all().iter().flat_map(Block::states) {
@@ -92,9 +96,13 @@ impl BlockModels {
                     .or_insert_with(|| BlockStateDef::load(assets, loc.name.trim_start_matches("minecraft:")));
                 let variants = def.as_ref().and_then(|d| d.variants.get(&loc.variant));
                 let mut resolved = Vec::new();
+                let mut first_model = None;
                 if let Some(variants) = variants {
                     for v in variants {
                         if let Some(m) = loader.get(&format!("block/{}", v.model)) {
+                            if first_model.is_none() {
+                                first_model = Some(format!("block/{}", v.model));
+                            }
                             textures.extend(m.texture_names());
                             resolved.push(v.clone());
                         }
@@ -107,7 +115,9 @@ impl BlockModels {
                 }
                 // ModelBakery skips unresolved alternatives; the entire location falls back
                 // to the missing model only when none resolved.
-                pending.push(if resolved.is_empty() { None } else { Some(resolved) });
+                let present = !resolved.is_empty();
+                pending.push(if present { Some(resolved) } else { None });
+                particle_models.push(if present { first_model } else { None });
                 pending.len() - 1
             });
             entries[state.0 as usize] = Some(index);
@@ -145,7 +155,26 @@ impl BlockModels {
                 BlockEntry { models, weights }
             })
             .collect();
-        Self { atlas, entries, baked, missing, colors: BlockColors::load(assets), items, item_frame, item_frame_map }
+        // `BlockModelShapes.getTexture(state)`: the model's `particle` texture. Models that do
+        // not declare one resolve to the missing sprite, like vanilla.
+        let mut state_particles = vec![None; mc_data::block::STATE_COUNT];
+        for state in Block::all().iter().flat_map(Block::states) {
+            let Some(loc) = entries[state.0 as usize].and_then(|i| particle_models.get(i)).cloned().flatten() else { continue };
+            let Some(m) = loader.get(&loc) else { continue };
+            let s = atlas.sprite(&m.resolve_texture("#particle"));
+            state_particles[state.0 as usize] = Some([s.min_u, s.min_v, s.max_u, s.max_v]);
+        }
+        Self {
+            atlas,
+            entries,
+            baked,
+            state_particles,
+            missing,
+            colors: BlockColors::load(assets),
+            items,
+            item_frame,
+            item_frame_map,
+        }
     }
 
     pub fn get_state(&self, state: StateId) -> Option<&BlockEntry> {
@@ -161,6 +190,11 @@ impl BlockModels {
 
     pub fn missing_locations(&self) -> &[ModelLocation] {
         &self.missing
+    }
+
+    /// `Block.getParticleTexture()` for a state, in atlas UV space.
+    pub fn particle_uv(&self, state: StateId) -> Option<[f32; 4]> {
+        self.state_particles.get(state.0 as usize).copied().flatten()
     }
 
     pub fn tint_color(&self, world: &World, state: StateId, pos: BlockPos) -> u32 {

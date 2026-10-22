@@ -304,7 +304,7 @@ verify, apply with a full model/atlas/font/GUI reload and world remesh, and cach
 
 Immediate order: (1) tile-entity renderers (signs, skulls, banners, chests,
 beacons); (2) maps, world border, lightning, minecart/boat, armour layers on stands, TNT
-flash; (3) remaining particle types (footstep, item/block crack, mob appearance);
+flash; (3) remaining particle types (footstep, item crack, mob appearance) and crit emitters;
 (4) serverbound EnchantItem/SteerVehicle/Spectate/UpdateSignC; (5) movement/anti-cheat
 differential audit against `EntityPlayerSP`/`PlayerControllerMP`. Then return to the
 client-track segments below (S5 protocol stress, S7 physics replay, S8 streaming, S9 visuals,

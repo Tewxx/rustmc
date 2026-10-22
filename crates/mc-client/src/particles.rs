@@ -61,6 +61,7 @@ enum Kind {
     Cloud,
     SnowShovel,
     Breaking,
+    Digging { dust: bool },
     Barrier,
     Drop { water: bool },
     /// Placeholder for types that are not ported (never spawned).
@@ -172,9 +173,19 @@ impl Particles {
             33 => breaking(x, y, z, rand, models, "items/slimeball"),
             34 => heart(x, y, z, rand, false),
             35 => barrier(x, y, z, rand, models),
+            37 => {
+                let Some(state) = args.first().copied().and_then(mc_data::StateId::try_from_network) else { return };
+                let Some(p) = block_crack(x, y, z, vx, vy, vz, rand, models, state, false) else { return };
+                p
+            }
+            38 => {
+                let Some(state) = args.first().copied().and_then(mc_data::StateId::try_from_network) else { return };
+                let Some(p) = block_crack(x, y, z, vx, vy, vz, rand, models, state, true) else { return };
+                p
+            }
             39 => rain(x, y, z, rand),
-            // Deferred, see `Particle` docs: 28 footstep, 36 item crack, 37 block crack,
-            // 38 block dust, 40 item take (no factory in 1.8), 41 mob appearance.
+            // Deferred, see `Particle` docs: 28 footstep, 36 item crack, 40 item take (no
+            // factory in 1.8), 41 mob appearance.
             _ => return,
         };
         if p.kind != Kind::Unsupported {
@@ -542,7 +553,7 @@ impl Particle {
                     self.dead = true;
                 }
             }
-            Kind::Breaking | Kind::Barrier => base(self),
+            Kind::Breaking | Kind::Digging { .. } | Kind::Barrier => base(self),
             Kind::Drop { water } => {
                 if water {
                     self.color = [0.2, 0.3, 1.0];
@@ -1082,6 +1093,93 @@ fn snow_shovel(x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, rand: &mut Jav
     p.no_clip = false;
     p.kind = Kind::SnowShovel;
     p
+}
+
+/// `EntityDiggingFX` / `EntityBlockDustFX`: a block's particle sprite cut into 1/4×1/4 cells.
+#[allow(clippy::too_many_arguments)]
+fn block_crack(x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, rand: &mut JavaRandom, models: &mc_render::models::BlockModels, state: mc_data::StateId, dust: bool) -> Option<Particle> {
+    let rect = models.particle_uv(state)?;
+    let tint = state.render_color(&models.colors);
+    Some(digging(x, y, z, vx, vy, vz, rand, rect, tint, dust))
+}
+
+/// `EntityDiggingFX` with an already chosen atlas rect and `getRenderColor`/`colorMultiplier`.
+#[allow(clippy::too_many_arguments)]
+fn digging(x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, rand: &mut JavaRandom, rect: [f32; 4], tint: u32, exact_motion: bool) -> Particle {
+    let mut p = base(rand, x, y, z, vx, vy, vz);
+    if exact_motion {
+        p.motion = DVec3::new(vx, vy, vz);
+    }
+    p.gravity = 1.0;
+    p.scale /= 2.0;
+    p.base_scale = p.scale;
+    p.rect = Some(rect);
+    let f = 0.6;
+    p.color = [
+        f * (tint >> 16 & 255) as f32 / 255.,
+        f * (tint >> 8 & 255) as f32 / 255.,
+        f * (tint & 255) as f32 / 255.,
+    ];
+    p.no_clip = false;
+    p.kind = Kind::Digging { dust: exact_motion };
+    p
+}
+
+impl Particles {
+    /// `EffectRenderer.addBlockDestroyEffects`: 4×4×4 digging particles with outward velocity.
+    pub fn block_destroy(&mut self, state: mc_data::StateId, pos: mc_core::BlockPos, world: &World, models: &mc_render::models::BlockModels, rand: &mut JavaRandom) {
+        if state.block().material == Material::Air {
+            return;
+        }
+        let state = state.actual_state(world, pos);
+        let Some(rect) = models.particle_uv(state) else { return };
+        // `EntityDiggingFX.setBlockPos`: grass keeps its own (untinted) particle texture.
+        let tint = if state.block().class == "BlockGrass" { 0xffffff } else { models.tint_color(world, state, pos) };
+        for j in 0..4 {
+            for k in 0..4 {
+                for l in 0..4 {
+                    let x = pos.x as f64 + (j as f64 + 0.5) / 4.0;
+                    let y = pos.y as f64 + (k as f64 + 0.5) / 4.0;
+                    let z = pos.z as f64 + (l as f64 + 0.5) / 4.0;
+                    let vx = x - pos.x as f64 - 0.5;
+                    let vy = y - pos.y as f64 - 0.5;
+                    let vz = z - pos.z as f64 - 0.5;
+                    let p = digging(x, y, z, vx, vy, vz, rand, rect, tint, false);
+                    self.list.push(p);
+                }
+            }
+        }
+    }
+
+    /// `EffectRenderer.addBlockHitEffects`: one digging particle on the struck face, slowed to
+    /// `multiplyVelocity(0.2)` and shrunk by `multipleParticleScaleBy(0.6)`.
+    pub fn block_hit(&mut self, state: mc_data::StateId, pos: mc_core::BlockPos, face: mc_core::Facing, world: &World, models: &mc_render::models::BlockModels, rand: &mut JavaRandom) {
+        if state.block().material == Material::Air {
+            return;
+        }
+        let Some(rect) = models.particle_uv(state) else { return };
+        let b = state.block().default_bounds;
+        let (min_x, min_y, min_z, max_x, max_y, max_z) = (b[0] as f64, b[1] as f64, b[2] as f64, b[3] as f64, b[4] as f64, b[5] as f64);
+        let f = 0.1;
+        let mut x = pos.x as f64 + rand.next_double() * (max_x - min_x - f * 2.0) + f + min_x;
+        let mut y = pos.y as f64 + rand.next_double() * (max_y - min_y - f * 2.0) + f + min_y;
+        let mut z = pos.z as f64 + rand.next_double() * (max_z - min_z - f * 2.0) + f + min_z;
+        match face {
+            mc_core::Facing::Down => y = pos.y as f64 + min_y - f,
+            mc_core::Facing::Up => y = pos.y as f64 + max_y + f,
+            mc_core::Facing::North => z = pos.z as f64 + min_z - f,
+            mc_core::Facing::South => z = pos.z as f64 + max_z + f,
+            mc_core::Facing::West => x = pos.x as f64 + min_x - f,
+            mc_core::Facing::East => x = pos.x as f64 + max_x + f,
+        }
+        let tint = if state.block().class == "BlockGrass" { 0xffffff } else { models.tint_color(world, state, pos) };
+        let mut p = digging(x, y, z, 0., 0., 0., rand, rect, tint, false);
+        p.motion = DVec3::new(p.motion.x * 0.2, (p.motion.y - 0.1) * 0.2 + 0.1, p.motion.z * 0.2);
+        p.size *= 0.6;
+        p.scale *= 0.6;
+        p.base_scale = p.scale;
+        self.list.push(p);
+    }
 }
 
 fn breaking(x: f64, y: f64, z: f64, rand: &mut JavaRandom, models: &mc_render::models::BlockModels, sprite: &str) -> Particle {
