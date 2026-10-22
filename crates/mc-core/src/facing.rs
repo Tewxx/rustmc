@@ -27,6 +27,9 @@ impl Facing {
     /// Ordered by `horizontalIndex` (S, W, N, E), as used by yaw and `getHorizontal`.
     pub const HORIZONTALS: [Facing; 4] = [Facing::South, Facing::West, Facing::North, Facing::East];
 
+    /// `EnumFacing.Plane.HORIZONTAL` iteration order (N, E, S, W); differs from [`Facing::HORIZONTALS`].
+    pub const PLANE_HORIZONTAL: [Facing; 4] = [Facing::North, Facing::East, Facing::South, Facing::West];
+
     pub fn index(self) -> usize {
         self as usize
     }
@@ -96,6 +99,17 @@ impl Facing {
         }
     }
 
+    /// `rotateYCCW`: counter-clockwise looking down. Panics on vertical facings, like vanilla throws.
+    pub fn rotate_y_ccw(self) -> Facing {
+        match self {
+            Facing::North => Facing::West,
+            Facing::East => Facing::North,
+            Facing::South => Facing::East,
+            Facing::West => Facing::South,
+            f => panic!("Unable to get CCW facing of {f:?}"),
+        }
+    }
+
     /// `rotateX`: North→Down→South→Up→North.
     pub fn rotate_x(self) -> Facing {
         match self {
@@ -140,6 +154,9 @@ mod tests {
             assert_eq!(f.opposite().opposite(), f);
         }
         assert_eq!(Facing::North.rotate_y().rotate_y(), Facing::South);
+        for f in Facing::PLANE_HORIZONTAL {
+            assert_eq!(f.rotate_y().rotate_y_ccw(), f);
+        }
         assert_eq!(Facing::from_angle(0.0), Facing::South);
         assert_eq!(Facing::from_angle(90.0), Facing::West);
         assert_eq!(Facing::from_angle(-90.0), Facing::East);

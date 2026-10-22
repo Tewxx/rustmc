@@ -15,7 +15,7 @@ import net.minecraft.init.Bootstrap;
 public final class Main {
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("usage: Main <out dir> [blocks|state_ids|materials]...");
+            System.err.println("usage: Main <out dir> [blocks|state_ids|materials|actual_states]...");
             System.exit(2);
         }
         File outDir = new File(args[0]);
@@ -32,6 +32,9 @@ public final class Main {
         if (all || contains(args, "materials")) {
             write(new File(outDir, "materials.json"), DumpMaterials.dump());
         }
+        if (all || contains(args, "actual_states")) {
+            write(new File(outDir, "actual_states.json"), DumpActualStates.dump(), false);
+        }
     }
 
     private static boolean contains(String[] args, String name) {
@@ -44,9 +47,18 @@ public final class Main {
     }
 
     private static void write(File f, JsonElement e) throws Exception {
+        write(f, e, true);
+    }
+
+    /** Large scene dumps are written compactly; pretty printing would multiply their size. */
+    private static void write(File f, JsonElement e, boolean pretty) throws Exception {
         Writer w = new OutputStreamWriter(new FileOutputStream(f), "UTF-8");
         try {
-            new GsonBuilder().setPrettyPrinting().serializeSpecialFloatingPointValues().create().toJson(e, w);
+            GsonBuilder gb = new GsonBuilder().serializeSpecialFloatingPointValues();
+            if (pretty) {
+                gb.setPrettyPrinting();
+            }
+            gb.create().toJson(e, w);
         } finally {
             w.close();
         }

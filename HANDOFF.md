@@ -13,7 +13,7 @@ never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`
 | Area | Status | Where |
 |---|---|---|
 | Core math (`MathHelper`, AABB, Vec3, BlockPos, EnumFacing, NBT) | Bit-exact ports, tested | `crates/mc-core` |
-| Block registry: all 198 blocks, 7806 states, materials, sounds (generated, golden-tested) | Done | `crates/mc-data` |
+| Block registry: all 198 blocks, 7806 states, materials, sounds, `getActualState` (golden-tested) | Done | `crates/mc-data` |
 | Assets: layered packs, blockstates, models, baking, atlas, colormaps | Done | `crates/mc-assets` |
 | World: 1.8 chunks, Anvil loader, demo terrain, ~80-block id table | Done | `crates/mc-world` |
 | Sky/block light (vanilla steady state, edge-seeded BFS) | Done, single-threaded | `mc-world/src/light.rs` |
@@ -25,7 +25,7 @@ never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`
 
 Run: `cargo run --release --bin rustmc -- --radius 8`
 Screenshot any screen headless: `rustmc --screenshot out.png --screen title|pause|options|video|controls|hud|debug|chat`
-Tests: `cargo test --release` (48 passing; `mc-render/tests/vanilla_jar.rs` runs against the real jar,
+Tests: `cargo test --release` (50 passing; `mc-render/tests/vanilla_jar.rs` runs against the real jar,
 `mc-world/tests/golden_blocks.rs` against `golden/blocks.json`; both skip when their input is missing).
 Benchmark: `rustmc --radius 8 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
 Golden data: `powershell -ExecutionPolicy Bypass -File tools/extract/extract.ps1` (needs a JDK 8 and MCP's

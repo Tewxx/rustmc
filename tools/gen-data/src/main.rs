@@ -251,9 +251,30 @@ fn gen_blocks(blocks: &Value, state_ids: &Value, mat_index: &HashMap<String, Str
             i(blk, "mobility"), i(blk, "render_type"), f32_lit(blk, "ao_light_value"), bounds.join(", "),
         )
         .unwrap();
+        let chain: Vec<String> = blk["class_chain"].as_array().unwrap().iter().map(|c| format!("{:?}", c.as_str().unwrap())).collect();
+        let crop = i(blk, "stem_crop");
+        writeln!(
+            src,
+            "        class_chain: &[{}], actual_state_override: {}, fire_encouragement: {}, fire_flammability: {}, diode_powered: {}, stem_crop: {},",
+            chain.join(", "),
+            b(blk, "actual_state_override"),
+            i(blk, "fire_encouragement"),
+            i(blk, "fire_flammability"),
+            b(blk, "diode_powered"),
+            if crop < 0 { "None".to_string() } else { format!("Some({crop})") },
+        )
+        .unwrap();
         writeln!(src, "    }},").unwrap();
     }
     src.push_str("];\n\n");
+
+    // Named ids, e.g. `ids::SNOW_LAYER`, for behaviour code that compares against specific blocks.
+    src.push_str("/// Block ids by registry name (`minecraft:snow_layer` → `SNOW_LAYER`).\npub mod ids {\n");
+    for blk in list {
+        let path = s(blk, "name").trim_start_matches("minecraft:").to_ascii_uppercase();
+        writeln!(src, "    pub const {path}: u16 = {};", i(blk, "id")).unwrap();
+    }
+    src.push_str("}\n\n");
 
     // Block index of every state.
     let mut state_block = vec![0u16; total];

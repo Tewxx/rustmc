@@ -34,6 +34,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockAir", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 1
     Block {
@@ -47,6 +48,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStone", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 2
     Block {
@@ -60,6 +62,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockGrass", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 3
     Block {
@@ -73,6 +76,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[2], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDirt", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 4
     Block {
@@ -86,6 +90,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 5
     Block {
@@ -99,6 +104,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPlanks", "Block"], actual_state_override: false, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 6
     Block {
@@ -112,6 +118,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.09999999403953552, 0.0, 0.09999999403953552, 0.8999999761581421, 0.800000011920929, 0.8999999761581421],
+        class_chain: &["BlockSapling", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 7
     Block {
@@ -125,6 +132,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 8
     Block {
@@ -138,6 +146,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDynamicLiquid", "BlockLiquid", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 9
     Block {
@@ -151,6 +160,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStaticLiquid", "BlockLiquid", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 10
     Block {
@@ -164,6 +174,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDynamicLiquid", "BlockLiquid", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 11
     Block {
@@ -177,6 +188,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStaticLiquid", "BlockLiquid", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 12
     Block {
@@ -190,6 +202,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[4], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSand", "BlockFalling", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 13
     Block {
@@ -203,6 +216,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[2], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockGravel", "BlockFalling", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 14
     Block {
@@ -216,6 +230,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 15
     Block {
@@ -229,6 +244,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 16
     Block {
@@ -242,6 +258,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 17
     Block {
@@ -255,6 +272,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOldLog", "BlockLog", "BlockRotatedPillar", "Block"], actual_state_override: false, fire_encouragement: 5, fire_flammability: 5, diode_powered: false, stem_crop: None,
     },
     // 18
     Block {
@@ -268,6 +286,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: false, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOldLeaf", "BlockLeaves", "BlockLeavesBase", "Block"], actual_state_override: false, fire_encouragement: 30, fire_flammability: 60, diode_powered: false, stem_crop: None,
     },
     // 19
     Block {
@@ -281,6 +300,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSponge", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 20
     Block {
@@ -294,6 +314,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockGlass", "BlockBreakable", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 21
     Block {
@@ -307,6 +328,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 22
     Block {
@@ -320,6 +342,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 23
     Block {
@@ -333,6 +356,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDispenser", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 24
     Block {
@@ -346,6 +370,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSandStone", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 25
     Block {
@@ -359,6 +384,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockNote", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 26
     Block {
@@ -372,6 +398,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.5625, 1.0],
+        class_chain: &["BlockBed", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 27
     Block {
@@ -385,6 +412,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRailPowered", "BlockRailBase", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 28
     Block {
@@ -398,6 +426,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: true, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRailDetector", "BlockRailBase", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 29
     Block {
@@ -411,6 +440,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 2, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPistonBase", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 30
     Block {
@@ -424,6 +454,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockWeb", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 31
     Block {
@@ -437,6 +468,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.09999999403953552, 0.0, 0.09999999403953552, 0.8999999761581421, 0.800000011920929, 0.8999999761581421],
+        class_chain: &["BlockTallGrass", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 60, fire_flammability: 100, diode_powered: false, stem_crop: None,
     },
     // 32
     Block {
@@ -450,6 +482,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.09999999403953552, 0.0, 0.09999999403953552, 0.8999999761581421, 0.800000011920929, 0.8999999761581421],
+        class_chain: &["BlockDeadBush", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 60, fire_flammability: 100, diode_powered: false, stem_crop: None,
     },
     // 33
     Block {
@@ -463,6 +496,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 2, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPistonBase", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 34
     Block {
@@ -476,6 +510,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 2, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPistonExtension", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 35
     Block {
@@ -489,6 +524,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[7], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockColored", "Block"], actual_state_override: false, fire_encouragement: 30, fire_flammability: 60, diode_powered: false, stem_crop: None,
     },
     // 36
     Block {
@@ -502,6 +538,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 2, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPistonMoving", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 37
     Block {
@@ -515,6 +552,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.30000001192092896, 0.0, 0.30000001192092896, 0.699999988079071, 0.6000000238418579, 0.699999988079071],
+        class_chain: &["BlockYellowFlower", "BlockFlower", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 60, fire_flammability: 100, diode_powered: false, stem_crop: None,
     },
     // 38
     Block {
@@ -528,6 +566,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.30000001192092896, 0.0, 0.30000001192092896, 0.699999988079071, 0.6000000238418579, 0.699999988079071],
+        class_chain: &["BlockRedFlower", "BlockFlower", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 60, fire_flammability: 100, diode_powered: false, stem_crop: None,
     },
     // 39
     Block {
@@ -541,6 +580,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.30000001192092896, 0.0, 0.30000001192092896, 0.699999988079071, 0.4000000059604645, 0.699999988079071],
+        class_chain: &["BlockMushroom", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 40
     Block {
@@ -554,6 +594,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.30000001192092896, 0.0, 0.30000001192092896, 0.699999988079071, 0.4000000059604645, 0.699999988079071],
+        class_chain: &["BlockMushroom", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 41
     Block {
@@ -567,6 +608,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 42
     Block {
@@ -580,6 +622,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 43
     Block {
@@ -593,6 +636,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoubleStoneSlab", "BlockStoneSlab", "BlockSlab", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 44
     Block {
@@ -606,6 +650,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.5, 1.0],
+        class_chain: &["BlockHalfStoneSlab", "BlockStoneSlab", "BlockSlab", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 45
     Block {
@@ -619,6 +664,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 46
     Block {
@@ -632,6 +678,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: false, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockTNT", "Block"], actual_state_override: false, fire_encouragement: 15, fire_flammability: 100, diode_powered: false, stem_crop: None,
     },
     // 47
     Block {
@@ -645,6 +692,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockBookshelf", "Block"], actual_state_override: false, fire_encouragement: 30, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 48
     Block {
@@ -658,6 +706,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 49
     Block {
@@ -671,6 +720,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockObsidian", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 50
     Block {
@@ -684,6 +734,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockTorch", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 51
     Block {
@@ -697,6 +748,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: false, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: false, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[7], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFire", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 52
     Block {
@@ -710,6 +762,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: false, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockMobSpawner", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 53
     Block {
@@ -723,6 +776,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 54
     Block {
@@ -736,6 +790,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 2, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0625, 0.0, 0.0625, 0.9375, 0.875, 0.9375],
+        class_chain: &["BlockChest", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 55
     Block {
@@ -749,6 +804,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.0625, 1.0],
+        class_chain: &["BlockRedstoneWire", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 56
     Block {
@@ -762,6 +818,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 57
     Block {
@@ -775,6 +832,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 58
     Block {
@@ -788,6 +846,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockWorkbench", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 59
     Block {
@@ -801,6 +860,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.25, 1.0],
+        class_chain: &["BlockCrops", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 60
     Block {
@@ -814,6 +874,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[2], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.9375, 1.0],
+        class_chain: &["BlockFarmland", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 61
     Block {
@@ -827,6 +888,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFurnace", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 62
     Block {
@@ -840,6 +902,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFurnace", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 63
     Block {
@@ -853,6 +916,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.25, 0.0, 0.25, 0.75, 1.0, 0.75],
+        class_chain: &["BlockStandingSign", "BlockSign", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 64
     Block {
@@ -866,6 +930,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoor", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 65
     Block {
@@ -879,6 +944,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[8], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockLadder", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 66
     Block {
@@ -892,6 +958,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRail", "BlockRailBase", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 67
     Block {
@@ -905,6 +972,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 68
     Block {
@@ -918,6 +986,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.25, 0.0, 0.25, 0.75, 1.0, 0.75],
+        class_chain: &["BlockWallSign", "BlockSign", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 69
     Block {
@@ -931,6 +1000,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockLever", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 70
     Block {
@@ -944,6 +1014,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPressurePlate", "BlockBasePressurePlate", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 71
     Block {
@@ -957,6 +1028,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoor", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 72
     Block {
@@ -970,6 +1042,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPressurePlate", "BlockBasePressurePlate", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 73
     Block {
@@ -983,6 +1056,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockRedstoneOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 74
     Block {
@@ -996,6 +1070,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockRedstoneOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 75
     Block {
@@ -1009,6 +1084,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockRedstoneTorch", "BlockTorch", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 76
     Block {
@@ -1022,6 +1098,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockRedstoneTorch", "BlockTorch", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 77
     Block {
@@ -1035,6 +1112,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockButtonStone", "BlockButton", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 78
     Block {
@@ -1048,6 +1126,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[9], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.0, 1.0],
+        class_chain: &["BlockSnow", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 79
     Block {
@@ -1061,6 +1140,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: false, normal_cube: false, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockIce", "BlockBreakable", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 80
     Block {
@@ -1074,6 +1154,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[9], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSnowBlock", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 81
     Block {
@@ -1087,6 +1168,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[7], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockCactus", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 82
     Block {
@@ -1100,6 +1182,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[2], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockClay", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 83
     Block {
@@ -1113,6 +1196,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.125, 0.0, 0.125, 0.875, 1.0, 0.875],
+        class_chain: &["BlockReed", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 84
     Block {
@@ -1126,6 +1210,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockJukebox", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 85
     Block {
@@ -1139,6 +1224,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFence", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 86
     Block {
@@ -1152,6 +1238,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPumpkin", "BlockDirectional", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 87
     Block {
@@ -1165,6 +1252,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockNetherrack", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 88
     Block {
@@ -1178,6 +1266,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[4], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSoulSand", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 89
     Block {
@@ -1191,6 +1280,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: false, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockGlowstone", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 90
     Block {
@@ -1204,6 +1294,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 2, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPortal", "BlockBreakable", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 91
     Block {
@@ -1217,6 +1308,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPumpkin", "BlockDirectional", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 92
     Block {
@@ -1230,6 +1322,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[7], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockCake", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 93
     Block {
@@ -1243,6 +1336,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRedstoneRepeater", "BlockRedstoneDiode", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 94
     Block {
@@ -1256,6 +1350,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRedstoneRepeater", "BlockRedstoneDiode", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: true, stem_crop: None,
     },
     // 95
     Block {
@@ -1269,6 +1364,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStainedGlass", "BlockBreakable", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 96
     Block {
@@ -1282,6 +1378,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockTrapDoor", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 97
     Block {
@@ -1295,6 +1392,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSilverfish", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 98
     Block {
@@ -1308,6 +1406,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStoneBrick", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 99
     Block {
@@ -1321,6 +1420,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockHugeMushroom", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 100
     Block {
@@ -1334,6 +1434,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockHugeMushroom", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 101
     Block {
@@ -1347,6 +1448,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPane", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 102
     Block {
@@ -1360,6 +1462,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPane", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 103
     Block {
@@ -1373,6 +1476,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockMelon", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 104
     Block {
@@ -1386,6 +1490,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.375, 0.0, 0.375, 0.625, 0.25, 0.625],
+        class_chain: &["BlockStem", "BlockBush", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: Some(86),
     },
     // 105
     Block {
@@ -1399,6 +1504,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.375, 0.0, 0.375, 0.625, 0.25, 0.625],
+        class_chain: &["BlockStem", "BlockBush", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: Some(103),
     },
     // 106
     Block {
@@ -1412,6 +1518,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockVine", "Block"], actual_state_override: true, fire_encouragement: 15, fire_flammability: 100, diode_powered: false, stem_crop: None,
     },
     // 107
     Block {
@@ -1425,6 +1532,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFenceGate", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 108
     Block {
@@ -1438,6 +1546,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 109
     Block {
@@ -1451,6 +1560,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 110
     Block {
@@ -1464,6 +1574,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockMycelium", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 111
     Block {
@@ -1477,6 +1588,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.015625, 1.0],
+        class_chain: &["BlockLilyPad", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 112
     Block {
@@ -1490,6 +1602,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockNetherBrick", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 113
     Block {
@@ -1503,6 +1616,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFence", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 114
     Block {
@@ -1516,6 +1630,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 115
     Block {
@@ -1529,6 +1644,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.25, 1.0],
+        class_chain: &["BlockNetherWart", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 116
     Block {
@@ -1542,6 +1658,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.75, 1.0],
+        class_chain: &["BlockEnchantmentTable", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 117
     Block {
@@ -1555,6 +1672,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockBrewingStand", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 118
     Block {
@@ -1568,6 +1686,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockCauldron", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 119
     Block {
@@ -1581,6 +1700,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 2, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockEndPortal", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 120
     Block {
@@ -1594,6 +1714,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: false, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockEndPortalFrame", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 121
     Block {
@@ -1607,6 +1728,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 122
     Block {
@@ -1620,6 +1742,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0625, 0.0, 0.0625, 0.9375, 1.0, 0.9375],
+        class_chain: &["BlockDragonEgg", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 123
     Block {
@@ -1633,6 +1756,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockRedstoneLight", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 124
     Block {
@@ -1646,6 +1770,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockRedstoneLight", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 125
     Block {
@@ -1659,6 +1784,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoubleWoodSlab", "BlockWoodSlab", "BlockSlab", "Block"], actual_state_override: false, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 126
     Block {
@@ -1672,6 +1798,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.5, 1.0],
+        class_chain: &["BlockHalfWoodSlab", "BlockWoodSlab", "BlockSlab", "Block"], actual_state_override: false, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 127
     Block {
@@ -1685,6 +1812,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockCocoa", "BlockDirectional", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 128
     Block {
@@ -1698,6 +1826,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 129
     Block {
@@ -1711,6 +1840,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 130
     Block {
@@ -1724,6 +1854,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 2, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0625, 0.0, 0.0625, 0.9375, 0.875, 0.9375],
+        class_chain: &["BlockEnderChest", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 131
     Block {
@@ -1737,6 +1868,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockTripWireHook", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 132
     Block {
@@ -1750,6 +1882,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.15625, 1.0],
+        class_chain: &["BlockTripWire", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 133
     Block {
@@ -1763,6 +1896,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 134
     Block {
@@ -1776,6 +1910,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 135
     Block {
@@ -1789,6 +1924,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 136
     Block {
@@ -1802,6 +1938,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 137
     Block {
@@ -1815,6 +1952,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockCommandBlock", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 138
     Block {
@@ -1828,6 +1966,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockBeacon", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 139
     Block {
@@ -1841,6 +1980,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockWall", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 140
     Block {
@@ -1854,6 +1994,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.3125, 0.0, 0.3125, 0.6875, 0.375, 0.6875],
+        class_chain: &["BlockFlowerPot", "BlockContainer", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 141
     Block {
@@ -1867,6 +2008,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.25, 1.0],
+        class_chain: &["BlockCarrot", "BlockCrops", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 142
     Block {
@@ -1880,6 +2022,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.25, 1.0],
+        class_chain: &["BlockPotato", "BlockCrops", "BlockBush", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 143
     Block {
@@ -1893,6 +2036,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockButtonWood", "BlockButton", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 144
     Block {
@@ -1906,6 +2050,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.25, 0.0, 0.25, 0.75, 0.5, 0.75],
+        class_chain: &["BlockSkull", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 145
     Block {
@@ -1919,6 +2064,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 2, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[10], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockAnvil", "BlockFalling", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 146
     Block {
@@ -1932,6 +2078,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: true, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 2, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0625, 0.0, 0.0625, 0.9375, 0.875, 0.9375],
+        class_chain: &["BlockChest", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 147
     Block {
@@ -1945,6 +2092,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPressurePlateWeighted", "BlockBasePressurePlate", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 148
     Block {
@@ -1958,6 +2106,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPressurePlateWeighted", "BlockBasePressurePlate", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 149
     Block {
@@ -1971,6 +2120,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: true, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRedstoneComparator", "BlockRedstoneDiode", "BlockDirectional", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 150
     Block {
@@ -1984,6 +2134,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: true, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRedstoneComparator", "BlockRedstoneDiode", "BlockDirectional", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: true, stem_crop: None,
     },
     // 151
     Block {
@@ -1997,6 +2148,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.375, 1.0],
+        class_chain: &["BlockDaylightDetector", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 152
     Block {
@@ -2010,6 +2162,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: false, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockCompressedPowered", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 153
     Block {
@@ -2023,6 +2176,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockOre", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 154
     Block {
@@ -2036,6 +2190,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockHopper", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 155
     Block {
@@ -2049,6 +2204,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockQuartz", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 156
     Block {
@@ -2062,6 +2218,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 157
     Block {
@@ -2075,6 +2232,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.125, 1.0],
+        class_chain: &["BlockRailPowered", "BlockRailBase", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 158
     Block {
@@ -2088,6 +2246,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: false, comparator_override: true, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDropper", "BlockDispenser", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 159
     Block {
@@ -2101,6 +2260,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockColored", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 160
     Block {
@@ -2114,6 +2274,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStainedGlassPane", "BlockPane", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 161
     Block {
@@ -2127,6 +2288,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: false, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockNewLeaf", "BlockLeaves", "BlockLeavesBase", "Block"], actual_state_override: false, fire_encouragement: 30, fire_flammability: 60, diode_powered: false, stem_crop: None,
     },
     // 162
     Block {
@@ -2140,6 +2302,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockNewLog", "BlockLog", "BlockRotatedPillar", "Block"], actual_state_override: false, fire_encouragement: 5, fire_flammability: 5, diode_powered: false, stem_crop: None,
     },
     // 163
     Block {
@@ -2153,6 +2316,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 164
     Block {
@@ -2166,6 +2330,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 165
     Block {
@@ -2179,6 +2344,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: false, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[11], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSlime", "BlockBreakable", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 166
     Block {
@@ -2192,6 +2358,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: false, normal_cube: true, block_normal_cube: true, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 2, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockBarrier", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 167
     Block {
@@ -2205,6 +2372,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[6], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockTrapDoor", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 168
     Block {
@@ -2218,6 +2386,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPrismarine", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 169
     Block {
@@ -2231,6 +2400,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: false, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockSeaLantern", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 170
     Block {
@@ -2244,6 +2414,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[1], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockHay", "BlockRotatedPillar", "Block"], actual_state_override: false, fire_encouragement: 60, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 171
     Block {
@@ -2257,6 +2428,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[7], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.0625, 1.0],
+        class_chain: &["BlockCarpet", "Block"], actual_state_override: false, fire_encouragement: 60, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 172
     Block {
@@ -2270,6 +2442,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockHardenedClay", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 173
     Block {
@@ -2283,6 +2456,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["Block"], actual_state_override: false, fire_encouragement: 5, fire_flammability: 5, diode_powered: false, stem_crop: None,
     },
     // 174
     Block {
@@ -2296,6 +2470,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[5], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockPackedIce", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 175
     Block {
@@ -2309,6 +2484,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: true, use_neighbor_brightness: true,
         ticks_randomly: true, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[1], default_bounds: [0.30000001192092896, 0.0, 0.30000001192092896, 0.699999988079071, 0.6000000238418579, 0.699999988079071],
+        class_chain: &["BlockDoublePlant", "BlockBush", "Block"], actual_state_override: true, fire_encouragement: 60, fire_flammability: 100, diode_powered: false, stem_crop: None,
     },
     // 176
     Block {
@@ -2322,6 +2498,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.25, 0.0, 0.25, 0.75, 1.0, 0.75],
+        class_chain: &["BlockBannerStanding", "BlockBanner", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 177
     Block {
@@ -2335,6 +2512,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: true, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: true,
         mobility: 0, render_type: -1, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.25, 0.0, 0.25, 0.75, 1.0, 0.75],
+        class_chain: &["BlockBannerHanging", "BlockBanner", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 178
     Block {
@@ -2348,6 +2526,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: true, can_provide_power: true, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.375, 1.0],
+        class_chain: &["BlockDaylightDetector", "BlockContainer", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 179
     Block {
@@ -2361,6 +2540,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: false,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockRedSandstone", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 180
     Block {
@@ -2374,6 +2554,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockStairs", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 181
     Block {
@@ -2387,6 +2568,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: true, full_block: true, normal_cube: true, block_normal_cube: true, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 0.2, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoubleStoneSlabNew", "BlockStoneSlabNew", "BlockSlab", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 182
     Block {
@@ -2400,6 +2582,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[0], default_bounds: [0.0, 0.0, 0.0, 1.0, 0.5, 1.0],
+        class_chain: &["BlockHalfStoneSlabNew", "BlockStoneSlabNew", "BlockSlab", "Block"], actual_state_override: false, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 183
     Block {
@@ -2413,6 +2596,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFenceGate", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 184
     Block {
@@ -2426,6 +2610,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFenceGate", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 185
     Block {
@@ -2439,6 +2624,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFenceGate", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 186
     Block {
@@ -2452,6 +2638,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFenceGate", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 187
     Block {
@@ -2465,6 +2652,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFenceGate", "BlockDirectional", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 188
     Block {
@@ -2478,6 +2666,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFence", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 189
     Block {
@@ -2491,6 +2680,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFence", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 190
     Block {
@@ -2504,6 +2694,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFence", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 191
     Block {
@@ -2517,6 +2708,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFence", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 192
     Block {
@@ -2530,6 +2722,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: true, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 0, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockFence", "Block"], actual_state_override: true, fire_encouragement: 5, fire_flammability: 20, diode_powered: false, stem_crop: None,
     },
     // 193
     Block {
@@ -2543,6 +2736,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoor", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 194
     Block {
@@ -2556,6 +2750,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoor", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 195
     Block {
@@ -2569,6 +2764,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoor", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 196
     Block {
@@ -2582,6 +2778,7 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoor", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
     // 197
     Block {
@@ -2595,8 +2792,211 @@ pub(crate) static BLOCKS: [Block; 198] = [
         full_cube: false, full_block: false, normal_cube: false, block_normal_cube: false, translucent: false, use_neighbor_brightness: true,
         ticks_randomly: false, collidable: true, enable_stats: false, has_tile_entity: false, can_provide_power: false, comparator_override: false, requires_updates: true, can_spawn_in: false,
         mobility: 1, render_type: 3, ao_light_value: 1.0, sound: &SOUNDS[3], default_bounds: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        class_chain: &["BlockDoor", "Block"], actual_state_override: true, fire_encouragement: 0, fire_flammability: 0, diode_powered: false, stem_crop: None,
     },
 ];
+
+/// Block ids by registry name (`minecraft:snow_layer` → `SNOW_LAYER`).
+pub mod ids {
+    pub const AIR: u16 = 0;
+    pub const STONE: u16 = 1;
+    pub const GRASS: u16 = 2;
+    pub const DIRT: u16 = 3;
+    pub const COBBLESTONE: u16 = 4;
+    pub const PLANKS: u16 = 5;
+    pub const SAPLING: u16 = 6;
+    pub const BEDROCK: u16 = 7;
+    pub const FLOWING_WATER: u16 = 8;
+    pub const WATER: u16 = 9;
+    pub const FLOWING_LAVA: u16 = 10;
+    pub const LAVA: u16 = 11;
+    pub const SAND: u16 = 12;
+    pub const GRAVEL: u16 = 13;
+    pub const GOLD_ORE: u16 = 14;
+    pub const IRON_ORE: u16 = 15;
+    pub const COAL_ORE: u16 = 16;
+    pub const LOG: u16 = 17;
+    pub const LEAVES: u16 = 18;
+    pub const SPONGE: u16 = 19;
+    pub const GLASS: u16 = 20;
+    pub const LAPIS_ORE: u16 = 21;
+    pub const LAPIS_BLOCK: u16 = 22;
+    pub const DISPENSER: u16 = 23;
+    pub const SANDSTONE: u16 = 24;
+    pub const NOTEBLOCK: u16 = 25;
+    pub const BED: u16 = 26;
+    pub const GOLDEN_RAIL: u16 = 27;
+    pub const DETECTOR_RAIL: u16 = 28;
+    pub const STICKY_PISTON: u16 = 29;
+    pub const WEB: u16 = 30;
+    pub const TALLGRASS: u16 = 31;
+    pub const DEADBUSH: u16 = 32;
+    pub const PISTON: u16 = 33;
+    pub const PISTON_HEAD: u16 = 34;
+    pub const WOOL: u16 = 35;
+    pub const PISTON_EXTENSION: u16 = 36;
+    pub const YELLOW_FLOWER: u16 = 37;
+    pub const RED_FLOWER: u16 = 38;
+    pub const BROWN_MUSHROOM: u16 = 39;
+    pub const RED_MUSHROOM: u16 = 40;
+    pub const GOLD_BLOCK: u16 = 41;
+    pub const IRON_BLOCK: u16 = 42;
+    pub const DOUBLE_STONE_SLAB: u16 = 43;
+    pub const STONE_SLAB: u16 = 44;
+    pub const BRICK_BLOCK: u16 = 45;
+    pub const TNT: u16 = 46;
+    pub const BOOKSHELF: u16 = 47;
+    pub const MOSSY_COBBLESTONE: u16 = 48;
+    pub const OBSIDIAN: u16 = 49;
+    pub const TORCH: u16 = 50;
+    pub const FIRE: u16 = 51;
+    pub const MOB_SPAWNER: u16 = 52;
+    pub const OAK_STAIRS: u16 = 53;
+    pub const CHEST: u16 = 54;
+    pub const REDSTONE_WIRE: u16 = 55;
+    pub const DIAMOND_ORE: u16 = 56;
+    pub const DIAMOND_BLOCK: u16 = 57;
+    pub const CRAFTING_TABLE: u16 = 58;
+    pub const WHEAT: u16 = 59;
+    pub const FARMLAND: u16 = 60;
+    pub const FURNACE: u16 = 61;
+    pub const LIT_FURNACE: u16 = 62;
+    pub const STANDING_SIGN: u16 = 63;
+    pub const WOODEN_DOOR: u16 = 64;
+    pub const LADDER: u16 = 65;
+    pub const RAIL: u16 = 66;
+    pub const STONE_STAIRS: u16 = 67;
+    pub const WALL_SIGN: u16 = 68;
+    pub const LEVER: u16 = 69;
+    pub const STONE_PRESSURE_PLATE: u16 = 70;
+    pub const IRON_DOOR: u16 = 71;
+    pub const WOODEN_PRESSURE_PLATE: u16 = 72;
+    pub const REDSTONE_ORE: u16 = 73;
+    pub const LIT_REDSTONE_ORE: u16 = 74;
+    pub const UNLIT_REDSTONE_TORCH: u16 = 75;
+    pub const REDSTONE_TORCH: u16 = 76;
+    pub const STONE_BUTTON: u16 = 77;
+    pub const SNOW_LAYER: u16 = 78;
+    pub const ICE: u16 = 79;
+    pub const SNOW: u16 = 80;
+    pub const CACTUS: u16 = 81;
+    pub const CLAY: u16 = 82;
+    pub const REEDS: u16 = 83;
+    pub const JUKEBOX: u16 = 84;
+    pub const FENCE: u16 = 85;
+    pub const PUMPKIN: u16 = 86;
+    pub const NETHERRACK: u16 = 87;
+    pub const SOUL_SAND: u16 = 88;
+    pub const GLOWSTONE: u16 = 89;
+    pub const PORTAL: u16 = 90;
+    pub const LIT_PUMPKIN: u16 = 91;
+    pub const CAKE: u16 = 92;
+    pub const UNPOWERED_REPEATER: u16 = 93;
+    pub const POWERED_REPEATER: u16 = 94;
+    pub const STAINED_GLASS: u16 = 95;
+    pub const TRAPDOOR: u16 = 96;
+    pub const MONSTER_EGG: u16 = 97;
+    pub const STONEBRICK: u16 = 98;
+    pub const BROWN_MUSHROOM_BLOCK: u16 = 99;
+    pub const RED_MUSHROOM_BLOCK: u16 = 100;
+    pub const IRON_BARS: u16 = 101;
+    pub const GLASS_PANE: u16 = 102;
+    pub const MELON_BLOCK: u16 = 103;
+    pub const PUMPKIN_STEM: u16 = 104;
+    pub const MELON_STEM: u16 = 105;
+    pub const VINE: u16 = 106;
+    pub const FENCE_GATE: u16 = 107;
+    pub const BRICK_STAIRS: u16 = 108;
+    pub const STONE_BRICK_STAIRS: u16 = 109;
+    pub const MYCELIUM: u16 = 110;
+    pub const WATERLILY: u16 = 111;
+    pub const NETHER_BRICK: u16 = 112;
+    pub const NETHER_BRICK_FENCE: u16 = 113;
+    pub const NETHER_BRICK_STAIRS: u16 = 114;
+    pub const NETHER_WART: u16 = 115;
+    pub const ENCHANTING_TABLE: u16 = 116;
+    pub const BREWING_STAND: u16 = 117;
+    pub const CAULDRON: u16 = 118;
+    pub const END_PORTAL: u16 = 119;
+    pub const END_PORTAL_FRAME: u16 = 120;
+    pub const END_STONE: u16 = 121;
+    pub const DRAGON_EGG: u16 = 122;
+    pub const REDSTONE_LAMP: u16 = 123;
+    pub const LIT_REDSTONE_LAMP: u16 = 124;
+    pub const DOUBLE_WOODEN_SLAB: u16 = 125;
+    pub const WOODEN_SLAB: u16 = 126;
+    pub const COCOA: u16 = 127;
+    pub const SANDSTONE_STAIRS: u16 = 128;
+    pub const EMERALD_ORE: u16 = 129;
+    pub const ENDER_CHEST: u16 = 130;
+    pub const TRIPWIRE_HOOK: u16 = 131;
+    pub const TRIPWIRE: u16 = 132;
+    pub const EMERALD_BLOCK: u16 = 133;
+    pub const SPRUCE_STAIRS: u16 = 134;
+    pub const BIRCH_STAIRS: u16 = 135;
+    pub const JUNGLE_STAIRS: u16 = 136;
+    pub const COMMAND_BLOCK: u16 = 137;
+    pub const BEACON: u16 = 138;
+    pub const COBBLESTONE_WALL: u16 = 139;
+    pub const FLOWER_POT: u16 = 140;
+    pub const CARROTS: u16 = 141;
+    pub const POTATOES: u16 = 142;
+    pub const WOODEN_BUTTON: u16 = 143;
+    pub const SKULL: u16 = 144;
+    pub const ANVIL: u16 = 145;
+    pub const TRAPPED_CHEST: u16 = 146;
+    pub const LIGHT_WEIGHTED_PRESSURE_PLATE: u16 = 147;
+    pub const HEAVY_WEIGHTED_PRESSURE_PLATE: u16 = 148;
+    pub const UNPOWERED_COMPARATOR: u16 = 149;
+    pub const POWERED_COMPARATOR: u16 = 150;
+    pub const DAYLIGHT_DETECTOR: u16 = 151;
+    pub const REDSTONE_BLOCK: u16 = 152;
+    pub const QUARTZ_ORE: u16 = 153;
+    pub const HOPPER: u16 = 154;
+    pub const QUARTZ_BLOCK: u16 = 155;
+    pub const QUARTZ_STAIRS: u16 = 156;
+    pub const ACTIVATOR_RAIL: u16 = 157;
+    pub const DROPPER: u16 = 158;
+    pub const STAINED_HARDENED_CLAY: u16 = 159;
+    pub const STAINED_GLASS_PANE: u16 = 160;
+    pub const LEAVES2: u16 = 161;
+    pub const LOG2: u16 = 162;
+    pub const ACACIA_STAIRS: u16 = 163;
+    pub const DARK_OAK_STAIRS: u16 = 164;
+    pub const SLIME: u16 = 165;
+    pub const BARRIER: u16 = 166;
+    pub const IRON_TRAPDOOR: u16 = 167;
+    pub const PRISMARINE: u16 = 168;
+    pub const SEA_LANTERN: u16 = 169;
+    pub const HAY_BLOCK: u16 = 170;
+    pub const CARPET: u16 = 171;
+    pub const HARDENED_CLAY: u16 = 172;
+    pub const COAL_BLOCK: u16 = 173;
+    pub const PACKED_ICE: u16 = 174;
+    pub const DOUBLE_PLANT: u16 = 175;
+    pub const STANDING_BANNER: u16 = 176;
+    pub const WALL_BANNER: u16 = 177;
+    pub const DAYLIGHT_DETECTOR_INVERTED: u16 = 178;
+    pub const RED_SANDSTONE: u16 = 179;
+    pub const RED_SANDSTONE_STAIRS: u16 = 180;
+    pub const DOUBLE_STONE_SLAB2: u16 = 181;
+    pub const STONE_SLAB2: u16 = 182;
+    pub const SPRUCE_FENCE_GATE: u16 = 183;
+    pub const BIRCH_FENCE_GATE: u16 = 184;
+    pub const JUNGLE_FENCE_GATE: u16 = 185;
+    pub const DARK_OAK_FENCE_GATE: u16 = 186;
+    pub const ACACIA_FENCE_GATE: u16 = 187;
+    pub const SPRUCE_FENCE: u16 = 188;
+    pub const BIRCH_FENCE: u16 = 189;
+    pub const JUNGLE_FENCE: u16 = 190;
+    pub const DARK_OAK_FENCE: u16 = 191;
+    pub const ACACIA_FENCE: u16 = 192;
+    pub const SPRUCE_DOOR: u16 = 193;
+    pub const BIRCH_DOOR: u16 = 194;
+    pub const JUNGLE_DOOR: u16 = 195;
+    pub const ACACIA_DOOR: u16 = 196;
+    pub const DARK_OAK_DOOR: u16 = 197;
+}
 
 #[rustfmt::skip]
 pub(crate) static STATE_BLOCK: [u8; 7806] = [

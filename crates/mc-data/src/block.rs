@@ -6,11 +6,12 @@
 
 use crate::generated::blocks::{BLOCKS, RAW_TO_STATE, STATE_BLOCK};
 use crate::material::Material;
+use mc_core::Facing;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::OnceLock;
 
-pub use crate::generated::blocks::STATE_COUNT;
+pub use crate::generated::blocks::{ids, STATE_COUNT};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PropertyKind {
@@ -109,6 +110,17 @@ pub struct Block {
     /// Bounds right after construction (`minX, minY, minZ, maxX, maxY, maxZ`); state-dependent
     /// bounds come from `setBlockBoundsBasedOnState`.
     pub default_bounds: [f64; 6],
+    /// Class and its superclasses up to `Block`, for vanilla's `instanceof` checks.
+    pub class_chain: &'static [&'static str],
+    /// Whether the class overrides `getActualState` (see [`crate::actual_state`]).
+    pub actual_state_override: bool,
+    /// `BlockFire.setFireInfo` values; 0 when the block isn't registered there.
+    pub fire_encouragement: u8,
+    pub fire_flammability: u8,
+    /// `BlockRedstoneDiode.isRepeaterPowered` (the `powered_*` repeater/comparator blocks).
+    pub diode_powered: bool,
+    /// `BlockStem.crop`: the fruit block a stem points at.
+    pub stem_crop: Option<u16>,
 }
 
 impl Block {
@@ -153,6 +165,11 @@ impl Block {
     /// `getExplosionResistance(Entity)`
     pub fn explosion_resistance(&self) -> f32 {
         self.resistance / 5.0
+    }
+
+    /// `this instanceof <class>` for a vanilla class name such as `BlockSlab`.
+    pub fn is_a(&self, class: &str) -> bool {
+        self.class_chain.contains(&class)
     }
 }
 
@@ -245,6 +262,35 @@ impl StateId {
     pub fn cycle(self, name: &str) -> Option<StateId> {
         let (i, p) = self.block().property(name)?;
         Some(self.with_index(i, (self.value_index(i) + 1) % p.values.len()))
+    }
+
+    /// `getValue` of a boolean property. Panics if the block lacks it (vanilla throws).
+    pub fn get_bool(self, name: &str) -> bool {
+        self.expect(name) == "true"
+    }
+
+    /// `getValue` of a direction property.
+    pub fn get_facing(self, name: &str) -> Facing {
+        Facing::by_name(self.expect(name)).unwrap_or_else(|| panic!("{self}: {name} is not a direction"))
+    }
+
+    /// `getValue` of an integer property.
+    pub fn get_int(self, name: &str) -> i32 {
+        self.expect(name).parse().unwrap_or_else(|_| panic!("{self}: {name} is not an integer"))
+    }
+
+    /// `getValue` by name. Panics if the block lacks the property (vanilla throws).
+    pub fn expect(self, name: &str) -> &'static str {
+        self.value(name).unwrap_or_else(|| panic!("Cannot get property {name} as it does not exist in {}", self.block().name))
+    }
+
+    /// `withProperty` that panics like vanilla when the property or value is missing.
+    pub fn set(self, name: &str, value: &str) -> StateId {
+        self.with(name, value).unwrap_or_else(|| panic!("Cannot set property {name}={value} on {self}"))
+    }
+
+    pub fn set_bool(self, name: &str, value: bool) -> StateId {
+        self.set(name, if value { "true" } else { "false" })
     }
 
     /// `(name, value)` pairs in property order (sorted by name).

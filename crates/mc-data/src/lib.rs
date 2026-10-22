@@ -4,9 +4,11 @@
 //! the real game by `tools/gen-data` into `generated/`. Behaviour that depends on the world
 //! (`getActualState`, bounding boxes, ticks) is hand-ported on top of these types.
 
+pub mod actual_state;
 pub mod block;
 mod generated;
 pub mod material;
 
-pub use block::{Block, Property, PropertyKind, RenderLayer, SoundType, StateId};
+pub use actual_state::BlockAccess;
+pub use block::{ids, Block, Property, PropertyKind, RenderLayer, SoundType, StateId};
 pub use material::{Material, MaterialProps};

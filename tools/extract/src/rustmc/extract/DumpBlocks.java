@@ -7,7 +7,13 @@ import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.TreeMap;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockFire;
 import net.minecraft.block.BlockLeaves;
+import net.minecraft.block.BlockRedstoneDiode;
+import net.minecraft.block.BlockStem;
+import net.minecraft.init.Blocks;
+import net.minecraft.util.BlockPos;
+import net.minecraft.world.IBlockAccess;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.properties.PropertyBool;
@@ -26,6 +32,10 @@ public final class DumpBlocks {
         Field resistance = Block.class.getDeclaredField("blockResistance");
         hardness.setAccessible(true);
         resistance.setAccessible(true);
+        Field diodePowered = BlockRedstoneDiode.class.getDeclaredField("isRepeaterPowered");
+        Field stemCrop = BlockStem.class.getDeclaredField("crop");
+        diodePowered.setAccessible(true);
+        stemCrop.setAccessible(true);
 
         JsonArray out = new JsonArray();
         for (Block b : Block.blockRegistry) {
@@ -63,6 +73,17 @@ public final class DumpBlocks {
             }
 
             o.addProperty("unlocalized_name", b.getUnlocalizedName());
+            JsonArray supers = new JsonArray();
+            for (Class<?> c = b.getClass(); c != Object.class; c = c.getSuperclass()) {
+                supers.add(Json.str(c.getSimpleName()));
+            }
+            o.add("class_chain", supers);
+            o.addProperty("actual_state_override",
+                    b.getClass().getMethod("getActualState", IBlockState.class, IBlockAccess.class, BlockPos.class).getDeclaringClass() != Block.class);
+            o.addProperty("fire_encouragement", fireInfo("encouragements", b));
+            o.addProperty("fire_flammability", fireInfo("flammabilities", b));
+            o.addProperty("diode_powered", b instanceof BlockRedstoneDiode && diodePowered.getBoolean(b));
+            o.addProperty("stem_crop", b instanceof BlockStem ? Block.getIdFromBlock((Block) stemCrop.get(b)) : -1);
             o.addProperty("collidable", b.isCollidable());
             o.addProperty("enable_stats", b.getEnableStats());
             o.addProperty("mobility", b.getMobilityFlag());
@@ -143,6 +164,15 @@ public final class DumpBlocks {
             o.addProperty(e.getKey(), e.getValue());
         }
         return o;
+    }
+
+    /** `BlockFire`'s per-block tables (`setFireInfo`); 0 when absent. */
+    @SuppressWarnings("unchecked")
+    static int fireInfo(String field, Block b) throws Exception {
+        Field f = BlockFire.class.getDeclaredField(field);
+        f.setAccessible(true);
+        Integer v = ((Map<Block, Integer>) f.get(Blocks.fire)).get(b);
+        return v == null ? 0 : v;
     }
 
     /** Name, kind and allowed values in `getAllowedValues()` order (which fixes state order). */

@@ -62,7 +62,40 @@ Every segment ships with **golden tests generated from the real Java code**, not
 
 ## Segments
 
-Each segment is sized to be done and reviewed on its own. Do them in order unless marked parallel.
+Each segment is sized to be done and reviewed on its own. Segment numbers are names, not the
+execution order; the order is below.
+
+### Execution order (decided 2026-10-21): client track first
+
+Two tracks reach full 1:1 in the end. The **client track** comes first because it reaches a usable
+product sooner (our client playing on real servers, the original PvP goal) and because a real
+vanilla/Spigot server then acts as a free 1:1 oracle for everything the client shows.
+
+1. **Client track:** S1b–S1d → **SJ** → S3 → S5 → S7 (player physics only) → S8 → S9 → S11 → S12 → S13.
+   Milestone M1: rustmc joins a local Spigot 1.8.8 server and plays, movement bit-exact.
+2. **Server track:** **SH** → S4 → S6 → S7 (rest of the entities) → S10.
+   Milestone M2: a vanilla 1.8.9 client plays on the rustmc server in a generated world.
+3. M3: singleplayer through the integrated server reaches parity. M4: the S12 performance targets.
+
+Two cross-cutting segments, added to the original list:
+
+**SJ — Java semantics layer** (`mc-core::java`), before anything ticks. Vanilla depends on Java
+implementation details that porting the logic does not reproduce: `HashMap`/`HashSet` iteration
+order (redstone wire updates neighbours in `HashSet` order), `String.hashCode` (seeds),
+`float`/`double` and overflow semantics, `StrictMath`, which `Random` instance is drawn from and when.
+Port `HashMap`/`HashSet`/`LinkedHashMap` with identical hashing and iteration, plus `BlockPos.hashCode`
+etc., each golden-tested against JDK 8.
+
+**SH — differential harness.** Grow `tools/extract` from static dumps into behaviour checks: run the
+real 1.8.9 server headless from the MCP classes, apply scripted actions, record per-tick world/entity
+state and packet streams, and replay the same script against rustmc. Later: cross-play (vanilla client
+↔ rustmc server, rustmc client ↔ vanilla server).
+
+**Scope of "1:1".** Game logic, physics, worldgen and protocol: bit-exact, including vanilla's bugs
+(many mechanics depend on them). Rendering: visually identical within a per-scene screenshot
+tolerance (GL fixed-function vs wgpu and driver differences rule out guaranteed bit-identical pixels).
+Excluded: dead services (Twitch, Realms, Mojang login → Microsoft auth instead), JVM/LWJGL quirks,
+mod loaders.
 
 ### S0 — Ground rules & tooling  *(DONE 2026-10-21)*
 
@@ -97,10 +130,14 @@ meta, storage id (`id<<4|meta` via `BLOCK_STATE_IDS`, last state wins) and netwo
 (`id + (meta<<12)`) through the public API. `mc-world` light/AO properties now come from the
 registry for every block; output is pixel-identical on the demo terrain.
 
-**S1b — `getActualState`.** Hand-port every override (fences, walls, panes, stairs shape, redstone
-wire, doors, vines, fire, grass/mycelium/podzol snowy, tripwire, flower pots, …) on `StateId` +
-a `BlockAccess` trait. Golden: extractor builds a fake `IBlockAccess` and dumps actual states for
-every block over a set of neighbour configurations.
+**S1b — `getActualState` (DONE 2026-10-21).** `mc-data/src/actual_state.rs`: all 19 overriding
+classes (52 blocks) hand-ported on `StateId::actual_state` + a `BlockAccess` trait (block states,
+flower-pot and comparator tile entities). The registry gained `class_chain` (for `instanceof`),
+fire encouragement/flammability, diode/stem fields and `ids::*` constants. Golden:
+`golden/actual_states.json`, 104,000 random 3×3×3 scenes evaluated by the real code on a fake
+`IBlockAccess` (`tools/extract/.../SceneWorld.java`), with neighbours biased per class towards the
+blocks its logic inspects so rare branches are well sampled; `mc-data/tests/actual_state.rs` replays
+them all. Not yet wired into rendering (S1c).
 
 **S1c — state → model + tints, renderer switch.** Port `BlockModelShapes` state mappers (blockstate
 file, ignored properties, per-variant names) and block colors (`colorMultiplier`/`getRenderColor`).
@@ -215,6 +252,4 @@ Original scope:
 
 ## Next action
 
-**S0, then S1.** S1 (the block registry) is the single biggest blocker: world storage, lighting,
-worldgen, physics (collision boxes), the renderer and the protocol all read block states. Until it
-exists, every other system would be built on the provisional `blocks.rs` table and rewritten later.
+Follow the execution order above. Current position: **S1c** (state → model + tints, renderer switch), then S1d, SJ.
