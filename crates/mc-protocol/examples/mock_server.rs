@@ -95,6 +95,14 @@ fn handle(stream: TcpStream) {
                         entity_id: 8,
                         metadata: vec![(10, mc_protocol::MetaValue::Item(Some(mc_protocol::Slot { id: 264, count: 3, damage: 0, nbt: None })))],
                     }));
+                    if std::env::var_os("MOCK_CHEST").is_some() {
+                        play(PlayClientbound::OpenWindow(OpenWindow { window_id: 3, kind: "minecraft:chest".into(), title: r#"{"text":"Kit Selector","color":"dark_red"}"#.into(), slots: 27, entity_id: 0 }));
+                        let mut items: Vec<Option<mc_protocol::Slot>> = vec![None; 63];
+                        for (i, id) in [(10usize, 276i16), (12, 322), (14, 261), (16, 310), (30, 1), (60, 364)] {
+                            items[i] = Some(mc_protocol::Slot { id, count: if id == 1 { 64 } else { 1 }, damage: 0, nbt: None });
+                        }
+                        play(PlayClientbound::WindowItems(WindowItems { window_id: 3, items }));
+                    }
                     let w2 = w.clone();
                     std::thread::spawn(move || {
                         let mut k = 0;

@@ -12,6 +12,7 @@ mod chat;
 mod entities;
 mod net;
 mod commands;
+mod container;
 mod icon;
 mod inventory;
 mod player;
@@ -325,6 +326,8 @@ struct App {
     net: Option<net::Net>,
     name: String,
     remote: entities::Entities,
+    /// The open server window (`openContainer` other than the player's).
+    open_window: Option<Arc<std::sync::Mutex<container::Window>>>,
     /// Tab list names by profile UUID (`playerInfoMap`).
     player_names: std::collections::HashMap<mc_protocol::Uuid, String>,
     sound: Option<mc_sound::SoundManager>,
@@ -401,6 +404,7 @@ impl App {
             net: None,
             name: "Player".into(),
             remote: entities::Entities::default(),
+            open_window: None,
             player_names: Default::default(),
             sound: None,
             step_sound_counter: 0.,
@@ -560,6 +564,7 @@ impl App {
 
     fn update(&mut self, dt: f32) {
         self.process_net();
+        self.flush_window();
         if !self.ui.sounds.is_empty() {
             self.flush_sounds();
         }
@@ -755,6 +760,35 @@ impl App {
                     }
                 }
                 C::SpawnPosition(sp) => self.info.spawn = sp.pos,
+                C::OpenWindow(o) => {
+                    let title = chat::format(&o.title, &self.ui.lang);
+                    let title = title.trim_end_matches("\u{a7}r").to_string();
+                    let w = Arc::new(std::sync::Mutex::new(container::Window::new(o.window_id, &o.kind, title, o.slots)));
+                    self.open_window = Some(w.clone());
+                    self.parents.clear();
+                    self.screen = None;
+                    self.open(Box::new(container::ContainerScreen::new(w, self.catalogue.clone())), false);
+                }
+                C::CloseWindowS(_) => {
+                    // handleCloseWindow: closeScreenAndDropStack without a packet.
+                    self.open_window = None;
+                    if self.screen.is_some() {
+                        self.close_screen();
+                    }
+                }
+                C::WindowProperty(p) => {
+                    if let Some(w) = &self.open_window {
+                        let mut w = w.lock().unwrap();
+                        if w.id == p.window_id && (0..4).contains(&p.property) {
+                            w.props[p.property as usize] = p.value;
+                        }
+                    }
+                }
+                C::ConfirmTransactionS(t) => {
+                    if !t.accepted {
+                        n.send(S::ConfirmTransactionC(ConfirmTransactionC { window_id: t.window_id, action: t.action, accepted: true }));
+                    }
+                }
                 C::PlayerListItem(pl) => {
                     for e in pl.entries {
                         match pl.action {
@@ -964,14 +998,27 @@ impl App {
                 }
                 C::SetSlot(s) => {
                     let stack = net::slot_stack(&self.catalogue, &s.item);
-                    if s.window_id == 0 {
+                    let open = self.open_window.clone().filter(|w| w.lock().unwrap().id as i8 == s.window_id);
+                    if s.window_id == -1 && s.slot == -1 {
+                        if let Some(w) = &self.open_window {
+                            w.lock().unwrap().cursor = stack;
+                        }
+                    } else if let Some(w) = open {
+                        w.lock().unwrap().set(&mut self.ui, s.slot as usize, stack);
+                    } else if s.window_id == 0 {
                         self.set_container_slot(s.slot as usize, stack);
                     } else if s.window_id == -2 && (0..36).contains(&s.slot) {
                         self.ui.inventory[s.slot as usize] = stack;
                     }
                 }
                 C::WindowItems(w) => {
-                    if w.window_id == 0 {
+                    if let Some(win) = self.open_window.clone().filter(|x| x.lock().unwrap().id == w.window_id && w.window_id != 0) {
+                        let mut win = win.lock().unwrap();
+                        for (i, it) in w.items.iter().enumerate() {
+                            let stack = net::slot_stack(&self.catalogue, it);
+                            win.set(&mut self.ui, i, stack);
+                        }
+                    } else if w.window_id == 0 {
                         for (i, it) in w.items.iter().enumerate() {
                             let stack = net::slot_stack(&self.catalogue, it);
                             self.set_container_slot(i, stack);
@@ -1007,6 +1054,25 @@ impl App {
         r.move_to(yaw, pitch);
         if let Some(g) = on_ground {
             r.on_ground = g;
+        }
+    }
+
+    /// Sends the open window's queued clicks (`PlayerControllerMP.windowClick`) and its close.
+    fn flush_window(&mut self) {
+        let Some(w) = self.open_window.clone() else { return };
+        let (clicks, closed, id, mut tx) = {
+            let mut w = w.lock().unwrap();
+            (std::mem::take(&mut w.clicks), w.closed, w.id, w.transaction)
+        };
+        for c in clicks {
+            tx += 1;
+            let item = net::stack_slot(&self.catalogue, c.item);
+            self.send(mc_protocol::packets::PlayServerbound::ClickWindow(mc_protocol::packets::ClickWindow { window_id: id, slot: c.slot, button: c.button, action: tx, mode: c.mode, item }));
+        }
+        w.lock().unwrap().transaction = tx;
+        if closed {
+            self.send(mc_protocol::packets::PlayServerbound::CloseWindowC(mc_protocol::packets::CloseWindowC { window_id: id }));
+            self.open_window = None;
         }
     }
 
@@ -2077,6 +2143,7 @@ impl App {
                 self.ui.settings.show_debug = true;
                 self.screen = None;
             }
+            "net" => {}
             _ => self.screen = None,
         }
         // Give screens a fake mouse over the first button for hover states.
