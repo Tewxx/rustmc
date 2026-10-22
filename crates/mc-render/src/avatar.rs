@@ -401,15 +401,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let light = f.light;
         let start = out.len();
         model.render(m, &mut |pm, q| model_quad(out, vp, pm, q, kind, lights, light, [1.; 3], false));
-        if let Some(cell) = f.skin {
-            // Retarget the body's skin UVs into the downloaded skin's atlas cell.
-            let per = (SKIN_ATLAS / 64) as f32;
-            let (cx, cy) = ((cell % (SKIN_ATLAS / 64)) as f32, (cell / (SKIN_ATLAS / 64)) as f32);
-            for v in &mut out[start..] {
-                v.kind = 5.;
-                v.uv = [(cx + v.uv[0]) / per, (cy + v.uv[1]) / per];
-            }
-        }
+        retarget_skin(&mut out[start..], f.skin);
         if let Some(item) = &f.held {
             let mut im = m * model.right_arm.post_render() * Mat4::from_translation(Vec3::new(-0.0625, 0.4375, 0.0625));
             if item.entity_block {
@@ -482,9 +474,22 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                     * Mat4::from_translation(Vec3::new(5.6, 0., 0.));
                 let model = if f.slim { &mut self.alex } else { &mut self.steve };
                 let kind = if f.slim { 2. } else { SKIN };
+                let start = out.len();
                 model.render_right_arm(m, &mut |pm, q| model_quad(out, proj, pm, q, kind, lights, light, [1.; 3], false));
+                retarget_skin(&mut out[start..], f.skin);
             }
         }
+    }
+}
+
+/// Points skin-textured vertices at a downloaded skin's cell in the skin atlas.
+fn retarget_skin(verts: &mut [Vertex], skin: Option<u32>) {
+    let Some(cell) = skin else { return };
+    let per = (SKIN_ATLAS / 64) as f32;
+    let (cx, cy) = ((cell % (SKIN_ATLAS / 64)) as f32, (cell / (SKIN_ATLAS / 64)) as f32);
+    for v in verts {
+        v.kind = 5.;
+        v.uv = [(cx + v.uv[0]) / per, (cy + v.uv[1]) / per];
     }
 }
 

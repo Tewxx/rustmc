@@ -18,6 +18,8 @@ pub struct Net {
     writer: Writer,
     rx: Receiver<Incoming>,
     pub entity_id: i32,
+    /// Our profile UUID from `LoginSuccess`.
+    pub uuid: mc_protocol::Uuid,
     // EntityPlayerSP
     last_x: f64,
     last_y: f64,
@@ -39,7 +41,7 @@ impl Net {
             Some(s) => crate::auth::join_server(s, hash),
             None => Err("Not authenticated with Minecraft.net (use --online)".into()),
         };
-        let (mut reader, writer, _ok) = login(host, port, name, Some(&mut join)).map_err(|e| match e {
+        let (mut reader, writer, ok) = login(host, port, name, Some(&mut join)).map_err(|e| match e {
             mc_protocol::net::LoginError::Kicked(json) => json,
             mc_protocol::net::LoginError::Io(e) => format!("Connection refused: {e}"),
             mc_protocol::net::LoginError::Auth(s) | mc_protocol::net::LoginError::Protocol(s) => s,
@@ -66,6 +68,7 @@ impl Net {
             writer,
             rx,
             entity_id: 0,
+            uuid: parse_uuid(&ok.uuid),
             last_x: 0.,
             last_y: 0.,
             last_z: 0.,
@@ -165,6 +168,15 @@ impl Net {
             self.send(PlayServerbound::HeldItemChangeC(HeldItemChangeC { slot: slot as i16 }));
         }
     }
+}
+
+/// A dashed (or plain) hex UUID string.
+pub fn parse_uuid(s: &str) -> mc_protocol::Uuid {
+    let hex: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+    if hex.len() != 32 {
+        return mc_protocol::Uuid(0, 0);
+    }
+    mc_protocol::Uuid(u64::from_str_radix(&hex[..16], 16).unwrap_or(0), u64::from_str_radix(&hex[16..], 16).unwrap_or(0))
 }
 
 fn unpack(n: &[u8; 2048], out: &mut [u8; 4096]) {
