@@ -1,0 +1,156 @@
+//! `KeyBinding`s as `GameSettings` declares them: LWJGL key codes, mouse buttons as
+//! `button - 100`, saved as `key_<description>:<code>`.
+
+/// `(description, category, default code)` in `GameSettings.keyBindings` order.
+pub const BINDINGS: [(&str, &str, i32); 33] = [
+    ("key.attack", "key.categories.gameplay", -100),
+    ("key.use", "key.categories.gameplay", -99),
+    ("key.forward", "key.categories.movement", 17),
+    ("key.left", "key.categories.movement", 30),
+    ("key.back", "key.categories.movement", 31),
+    ("key.right", "key.categories.movement", 32),
+    ("key.jump", "key.categories.movement", 57),
+    ("key.sneak", "key.categories.movement", 42),
+    ("key.sprint", "key.categories.movement", 29),
+    ("key.drop", "key.categories.inventory", 16),
+    ("key.inventory", "key.categories.inventory", 18),
+    ("key.chat", "key.categories.multiplayer", 20),
+    ("key.playerlist", "key.categories.multiplayer", 15),
+    ("key.pickItem", "key.categories.gameplay", -98),
+    ("key.command", "key.categories.multiplayer", 53),
+    ("key.screenshot", "key.categories.misc", 60),
+    ("key.togglePerspective", "key.categories.misc", 63),
+    ("key.smoothCamera", "key.categories.misc", 0),
+    ("key.streamStartStop", "key.categories.stream", 64),
+    ("key.streamPauseUnpause", "key.categories.stream", 65),
+    ("key.streamCommercial", "key.categories.stream", 0),
+    ("key.streamToggleMic", "key.categories.stream", 0),
+    ("key.fullscreen", "key.categories.misc", 87),
+    ("key.spectatorOutlines", "key.categories.misc", 0),
+    ("key.hotbar.1", "key.categories.inventory", 2),
+    ("key.hotbar.2", "key.categories.inventory", 3),
+    ("key.hotbar.3", "key.categories.inventory", 4),
+    ("key.hotbar.4", "key.categories.inventory", 5),
+    ("key.hotbar.5", "key.categories.inventory", 6),
+    ("key.hotbar.6", "key.categories.inventory", 7),
+    ("key.hotbar.7", "key.categories.inventory", 8),
+    ("key.hotbar.8", "key.categories.inventory", 9),
+    ("key.hotbar.9", "key.categories.inventory", 10),
+];
+
+/// `KeyBinding.keybindArray` sorted the way `GuiKeyBindingList` shows them: by category
+/// order, then by translated description (`KeyBinding.compareTo`).
+pub fn sorted(tr: impl Fn(&str) -> String) -> Vec<(&'static str, &'static str, i32)> {
+    const ORDER: [&str; 6] = [
+        "key.categories.movement",
+        "key.categories.gameplay",
+        "key.categories.inventory",
+        "key.categories.multiplayer",
+        "key.categories.stream",
+        "key.categories.misc",
+    ];
+    let mut v = BINDINGS.to_vec();
+    v.sort_by(|a, b| {
+        let ca = ORDER.iter().position(|c| *c == a.1).unwrap_or(99);
+        let cb = ORDER.iter().position(|c| *c == b.1).unwrap_or(99);
+        ca.cmp(&cb).then_with(|| tr(a.0).cmp(&tr(b.0)))
+    });
+    v
+}
+
+/// `GameSettings.getKeyDisplayString` for keyboard codes (`Keyboard.getKeyName`).
+pub fn key_name(code: i32) -> String {
+    if code < 0 {
+        return format!("Button {}", code + 101);
+    }
+    let s = match code {
+        0 => "NONE",
+        1 => "ESCAPE",
+        2..=10 => return (code - 1).to_string(),
+        11 => "0",
+        12 => "MINUS",
+        13 => "EQUALS",
+        14 => "BACK",
+        15 => "TAB",
+        16 => "Q",
+        17 => "W",
+        18 => "E",
+        19 => "R",
+        20 => "T",
+        21 => "Y",
+        22 => "U",
+        23 => "I",
+        24 => "O",
+        25 => "P",
+        26 => "LBRACKET",
+        27 => "RBRACKET",
+        28 => "RETURN",
+        29 => "LCONTROL",
+        30 => "A",
+        31 => "S",
+        32 => "D",
+        33 => "F",
+        34 => "G",
+        35 => "H",
+        36 => "J",
+        37 => "K",
+        38 => "L",
+        39 => "SEMICOLON",
+        40 => "APOSTROPHE",
+        41 => "GRAVE",
+        42 => "LSHIFT",
+        43 => "BACKSLASH",
+        44 => "Z",
+        45 => "X",
+        46 => "C",
+        47 => "V",
+        48 => "B",
+        49 => "N",
+        50 => "M",
+        51 => "COMMA",
+        52 => "PERIOD",
+        53 => "SLASH",
+        54 => "RSHIFT",
+        55 => "MULTIPLY",
+        56 => "LMENU",
+        57 => "SPACE",
+        58 => "CAPITAL",
+        59..=68 => return format!("F{}", code - 58),
+        69 => "NUMLOCK",
+        70 => "SCROLL",
+        71 => "NUMPAD7",
+        72 => "NUMPAD8",
+        73 => "NUMPAD9",
+        74 => "SUBTRACT",
+        75 => "NUMPAD4",
+        76 => "NUMPAD5",
+        77 => "NUMPAD6",
+        78 => "ADD",
+        79 => "NUMPAD1",
+        80 => "NUMPAD2",
+        81 => "NUMPAD3",
+        82 => "NUMPAD0",
+        83 => "DECIMAL",
+        87 => "F11",
+        88 => "F12",
+        156 => "NUMPADENTER",
+        157 => "RCONTROL",
+        181 => "DIVIDE",
+        184 => "RMENU",
+        197 => "PAUSE",
+        199 => "HOME",
+        200 => "UP",
+        201 => "PRIOR",
+        203 => "LEFT",
+        205 => "RIGHT",
+        207 => "END",
+        208 => "DOWN",
+        209 => "NEXT",
+        210 => "INSERT",
+        211 => "DELETE",
+        219 => "LMETA",
+        220 => "RMETA",
+        _ => return format!("{code}"),
+    };
+    s.to_string()
+}

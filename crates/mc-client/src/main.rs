@@ -16,6 +16,7 @@ mod commands;
 mod container;
 mod icon;
 mod inventory;
+mod keymap;
 mod player;
 mod server;
 mod skins;
@@ -263,18 +264,16 @@ fn rand_f64() -> f64 {
     })
 }
 
-fn map_key(code: KeyCode) -> Key {
+/// Screen keys: the inventory and hotbar keys follow their bindings (`GuiContainer.keyTyped`).
+fn map_key(code: KeyCode, settings: &mc_gui::settings::Settings) -> Key {
+    let lw = keymap::lwjgl(code);
+    if lw != 0 && lw == settings.key("key.inventory") {
+        return Key::Inventory;
+    }
+    if let Some(n) = (0..9).find(|&i| lw != 0 && settings.key(&format!("key.hotbar.{}", i + 1)) == lw) {
+        return Key::Number(n);
+    }
     match code {
-        KeyCode::KeyE => Key::Inventory,
-        KeyCode::Digit1
-        | KeyCode::Digit2
-        | KeyCode::Digit3
-        | KeyCode::Digit4
-        | KeyCode::Digit5
-        | KeyCode::Digit6
-        | KeyCode::Digit7
-        | KeyCode::Digit8
-        | KeyCode::Digit9 => Key::Number(format!("{code:?}").trim_start_matches("Digit").parse::<usize>().unwrap() - 1),
         KeyCode::Escape => Key::Escape,
         KeyCode::Enter | KeyCode::NumpadEnter => Key::Enter,
         KeyCode::Backspace => Key::Backspace,
@@ -443,6 +442,19 @@ impl App {
             pending_items: Default::default(),
         }
     }
+    /// `KeyBinding.isKeyDown`: keyboard codes against held keys, negative codes against mouse buttons.
+    fn bound_down(&self, name: &str) -> bool {
+        let code = self.ui.settings.key(name);
+        match code {
+            0 => false,
+            -100 => self.buttons.contains(&MouseButton::Left),
+            -99 => self.buttons.contains(&MouseButton::Right),
+            -98 => self.buttons.contains(&MouseButton::Middle),
+            c if c < 0 => false,
+            c => self.keys.iter().any(|&k| keymap::lwjgl(k) == c),
+        }
+    }
+
     fn scaled(&self) -> Scaled {
         let (w, h) = self.renderer.as_ref().map_or((1280, 720), |r| (r.config.width, r.config.height));
         Scaled::new(w, h, self.ui.settings.gui_scale)
@@ -691,15 +703,14 @@ impl App {
         }
         let current = self.ui.inventory[self.player.selected_slot].map(|s| (s.item, s.count));
         self.entity.update_equipped(current);
-        let k = |c| self.screen.is_none() && self.keys.contains(&c);
         let keys = player::Keys {
-            forward: k(KeyCode::KeyW),
-            back: k(KeyCode::KeyS),
-            left: k(KeyCode::KeyA),
-            right: k(KeyCode::KeyD),
-            jump: k(KeyCode::Space),
-            sneak: k(KeyCode::ShiftLeft) || k(KeyCode::ShiftRight),
-            sprint: k(KeyCode::ControlLeft) || k(KeyCode::ControlRight),
+            forward: self.screen.is_none() && self.bound_down("key.forward"),
+            back: self.screen.is_none() && self.bound_down("key.back"),
+            left: self.screen.is_none() && self.bound_down("key.left"),
+            right: self.screen.is_none() && self.bound_down("key.right"),
+            jump: self.screen.is_none() && self.bound_down("key.jump"),
+            sneak: self.screen.is_none() && self.bound_down("key.sneak"),
+            sprint: self.screen.is_none() && self.bound_down("key.sprint"),
             using_item: false,
         };
         // EntityPlayerSP.onUpdate only runs over a loaded chunk.
@@ -2450,8 +2461,10 @@ impl ApplicationHandler for App {
                     self.keys.insert(code);
                     self.ui.shift_down = true;
                 }
+                self.ui.key_code = keymap::lwjgl(code);
+                let mapped = map_key(code, &self.ui.settings);
                 if let Some(s) = &mut self.screen {
-                    let a = s.key(&mut self.ui, map_key(code));
+                    let a = s.key(&mut self.ui, mapped);
                     if let Some(text) = &event.text {
                         if let Some(s) = &mut self.screen {
                             for c in text.chars() {
@@ -2469,46 +2482,43 @@ impl ApplicationHandler for App {
                 if event.repeat {
                     return;
                 }
+                // Fixed keys first (GuiScreen/Minecraft.runTick hard-codes these), then bindings.
                 match code {
-                    KeyCode::KeyE => {
-                        if self.entity.creative {
-                            self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false)
-                        } else if self.net.is_some() {
-                            // ContainerPlayer is window 0; clicks go to the server like any window.
-                            let title = self.ui.lang.get("container.crafting");
-                            let w = Arc::new(std::sync::Mutex::new(container::Window::new(0, "player", title, 5)));
-                            self.open_window = Some(w.clone());
-                            self.open(Box::new(container::ContainerScreen::new(w, self.catalogue.clone())), false)
-                        } else {
-                            self.open(Box::new(survival::SurvivalInventory::new(self.catalogue.clone())), false)
-                        }
-                    }
-                    KeyCode::KeyQ => {
-                        let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
-                        self.drop_presses.push(ctrl);
-                    }
-                    KeyCode::F5 => {
-                        self.entity.perspective = (self.entity.perspective + 1) % 3;
-                        self.sync_view();
-                    }
-                    KeyCode::Escape => self.open(Box::new(screens::PauseMenu::default()), false),
-                    KeyCode::F3 => self.ui.settings.show_debug = !self.ui.settings.show_debug,
-                    KeyCode::F1 => self.ui.settings.hide_gui = !self.ui.settings.hide_gui,
-                    KeyCode::KeyT => self.open(Box::new(screens::Chat::default()), false),
-                    KeyCode::Slash => self.open(Box::new(screens::Chat::with_text("/")), false),
-                    KeyCode::Digit1
-                    | KeyCode::Digit2
-                    | KeyCode::Digit3
-                    | KeyCode::Digit4
-                    | KeyCode::Digit5
-                    | KeyCode::Digit6
-                    | KeyCode::Digit7
-                    | KeyCode::Digit8
-                    | KeyCode::Digit9 => {
-                        let n = format!("{code:?}").trim_start_matches("Digit").parse::<usize>().unwrap_or(1);
-                        self.player.selected_slot = n - 1;
-                    }
+                    KeyCode::Escape => return self.open(Box::new(screens::PauseMenu::default()), false),
+                    KeyCode::F3 => return self.ui.settings.show_debug = !self.ui.settings.show_debug,
+                    KeyCode::F1 => return self.ui.settings.hide_gui = !self.ui.settings.hide_gui,
                     _ => {}
+                }
+                let lw = keymap::lwjgl(code);
+                let is = |name: &str| lw != 0 && self.ui.settings.key(name) == lw;
+                if is("key.inventory") {
+                    if self.entity.creative {
+                        self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false)
+                    } else if self.net.is_some() {
+                        // ContainerPlayer is window 0; clicks go to the server like any window.
+                        let title = self.ui.lang.get("container.crafting");
+                        let w = Arc::new(std::sync::Mutex::new(container::Window::new(0, "player", title, 5)));
+                        self.open_window = Some(w.clone());
+                        self.open(Box::new(container::ContainerScreen::new(w, self.catalogue.clone())), false)
+                    } else {
+                        self.open(Box::new(survival::SurvivalInventory::new(self.catalogue.clone())), false)
+                    }
+                } else if is("key.drop") {
+                    let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+                    self.drop_presses.push(ctrl);
+                } else if is("key.togglePerspective") {
+                    self.entity.perspective = (self.entity.perspective + 1) % 3;
+                    self.sync_view();
+                } else if is("key.chat") {
+                    self.open(Box::new(screens::Chat::default()), false)
+                } else if is("key.command") {
+                    self.open(Box::new(screens::Chat::with_text("/")), false)
+                } else if is("key.fullscreen") {
+                    self.ui.settings.fullscreen = !self.ui.settings.fullscreen;
+                    self.ui.settings.save();
+                    self.apply_settings();
+                } else if let Some(n) = (1..=9).find(|i| is(&format!("key.hotbar.{i}"))) {
+                    self.player.selected_slot = n - 1;
                 }
             }
             WindowEvent::RedrawRequested => {

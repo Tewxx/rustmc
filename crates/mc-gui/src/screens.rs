@@ -650,34 +650,157 @@ impl Screen for VideoSettings {
 
 // ---------------------------------------------------------------- controls (sensitivity only for now)
 
-#[derive(Default)]
 pub struct Controls {
     buttons: Vec<Button>,
+    /// `GuiKeyBindingList` entries: `(description, category)` in display order.
+    entries: Vec<(&'static str, &'static str)>,
+    /// `buttonId`: the binding waiting for a key.
+    selected: Option<&'static str>,
+    scroll: i32,
+    height: i32,
+    width: i32,
+}
+
+impl Controls {
+    const SLOT: i32 = 20;
+    fn top(&self) -> i32 {
+        63
+    }
+    fn bottom(&self) -> i32 {
+        self.height - 32
+    }
+    /// Rows: a header before each new category, then the bindings.
+    fn rows(&self) -> Vec<(Option<&'static str>, &'static str)> {
+        let mut out = Vec::new();
+        let mut last = "";
+        for &(name, cat) in &self.entries {
+            if cat != last {
+                out.push((None, cat));
+                last = cat;
+            }
+            out.push((Some(name), cat));
+        }
+        out
+    }
+    fn max_scroll(&self) -> i32 {
+        (self.rows().len() as i32 * Self::SLOT + 4 - (self.bottom() - self.top() - 4)).max(0)
+    }
+    fn set_key(&mut self, ui: &mut Ui, code: i32) {
+        if let Some(name) = self.selected.take() {
+            ui.settings.key_codes.insert(name.to_string(), code);
+            ui.settings.save();
+        }
+    }
+}
+
+impl Default for Controls {
+    fn default() -> Self {
+        Controls { buttons: Vec::new(), entries: Vec::new(), selected: None, scroll: 0, height: 0, width: 0 }
+    }
 }
 
 impl Screen for Controls {
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let t = |k: &str| ui.lang.get(k);
+        self.height = h;
+        self.width = w;
+        self.entries = crate::keys::sorted(|k| ui.lang.get(k)).into_iter().map(|b| (b.0, b.1)).collect();
         self.buttons = vec![
             Button::option(1, w / 2 - 155, 18, Opt::Sensitivity, ui),
             Button::option(2, w / 2 - 155 + 160, 18, Opt::InvertMouse, ui),
-            Button::sized(201, w / 2 - 155, h - 29, 150, 20, t("controls.resetAll")).disabled(),
+            Button::sized(201, w / 2 - 155, h - 29, 150, 20, t("controls.resetAll")),
             Button::sized(200, w / 2 - 155 + 160, h - 29, 150, 20, t("gui.done")),
         ];
+        self.scroll = self.scroll.clamp(0, self.max_scroll());
     }
 
     fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
         default_background(ui, b, w, h);
+        let (top, bottom) = (self.top(), self.bottom());
+        dirt(b, top, bottom, w, 32, self.scroll as f32);
+        let label_w = self.entries.iter().map(|e| ui.font.width(&ui.lang.get(e.0))).max().unwrap_or(0);
+        // GuiKeyBindingList.getListWidth = 220 + 32; entries start at left + 2.
+        let left = w / 2 - 252 / 2 + 2;
+        let mut any_reset = false;
+        for (i, (name, cat)) in self.rows().into_iter().enumerate() {
+            let y = top + 4 + i as i32 * Self::SLOT - self.scroll;
+            if y + Self::SLOT < top || y > bottom {
+                continue;
+            }
+            let Some(name) = name else {
+                let text = ui.lang.get(cat);
+                let tw = ui.font.width(&text);
+                ui.font.draw(b, &text, (w / 2 - tw / 2) as f32, (y + Self::SLOT - 9 - 1) as f32, 16777215);
+                continue;
+            };
+            let label = ui.lang.get(name);
+            ui.font.draw(b, &label, (left + 90 - label_w) as f32, (y + Self::SLOT / 2 - 9 / 2) as f32, 16777215);
+            let code = ui.settings.key(name);
+            let default = crate::keys::BINDINGS.iter().find(|k| k.0 == name).map_or(0, |k| k.2);
+            let conflict = code != 0 && self.entries.iter().any(|e| e.0 != name && ui.settings.key(e.0) == code);
+            let mut text = crate::keys::key_name(code);
+            if self.selected == Some(name) {
+                text = format!("\u{a7}f> \u{a7}e{text}\u{a7}f <");
+            } else if conflict {
+                text = format!("\u{a7}c{text}");
+            }
+            let in_list = my >= top && my <= bottom;
+            let (hx, hy) = if in_list { (mx, my) } else { (-1, -1) };
+            let mut kb = Button::sized(0, left + 105, y, 75, 20, text);
+            kb.draw(ui, b, hx, hy);
+            let mut rb = Button::sized(1, left + 190, y, 50, 20, ui.lang.get("controls.reset"));
+            rb.enabled = code != default;
+            any_reset |= code != default;
+            rb.draw(ui, b, hx, hy);
+        }
+        dirt(b, 0, top, w, 64, 0.0);
+        dirt(b, bottom, h, w, 64, 0.0);
+        b.gradient(0, top, w, top + 4, 0xFF00_0000, 0x0000_0000);
+        b.gradient(0, bottom - 4, w, bottom, 0x0000_0000, 0xFF00_0000);
+        if let Some(r) = self.buttons.iter_mut().find(|b| b.id == 201) {
+            r.enabled = any_reset;
+        }
         let title = ui.lang.get("controls.title");
         ui.font.draw_centered(b, &title, w / 2, 8, 16777215);
         draw_buttons(&mut self.buttons, ui, b, mx, my);
     }
 
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        // GuiControls.mouseClicked: a pending binding takes the mouse button.
+        if self.selected.is_some() {
+            self.set_key(ui, -100);
+            return Action::None;
+        }
+        if my >= self.top() && my <= self.bottom() {
+            let left = self.width / 2 - 252 / 2 + 2;
+            let row = (my - self.top() - 4 + self.scroll).div_euclid(Self::SLOT);
+            if let Some((Some(name), _)) = self.rows().get(row.max(0) as usize).copied() {
+                let y = self.top() + 4 + row * Self::SLOT - self.scroll;
+                if my >= y && my < y + 20 {
+                    if mx >= left + 105 && mx < left + 180 {
+                        ui.sounds.push("gui.button.press");
+                        self.selected = Some(name);
+                        return Action::None;
+                    }
+                    let default = crate::keys::BINDINGS.iter().find(|k| k.0 == name).map_or(0, |k| k.2);
+                    if mx >= left + 190 && mx < left + 240 && ui.settings.key(name) != default {
+                        ui.sounds.push("gui.button.press");
+                        ui.settings.key_codes.remove(name);
+                        ui.settings.save();
+                        return Action::None;
+                    }
+                }
+            }
+        }
         match click_buttons(&mut self.buttons, ui, mx, my) {
             Some(200) => {
                 ui.settings.save();
                 Action::Close
+            }
+            Some(201) => {
+                ui.settings.key_codes.clear();
+                ui.settings.save();
+                Action::None
             }
             _ => Action::None,
         }
@@ -688,6 +811,24 @@ impl Screen for Controls {
             b.release(ui);
         }
         ui.settings.save();
+    }
+
+    /// `GuiControls.keyTyped`: Escape clears the binding being set, any other key takes it.
+    fn key(&mut self, ui: &mut Ui, key: Key) -> Action {
+        if self.selected.is_some() {
+            let code = if key == Key::Escape { 0 } else { ui.key_code };
+            self.set_key(ui, code);
+            return Action::None;
+        }
+        if key == Key::Escape {
+            ui.settings.save();
+            return Action::Close;
+        }
+        Action::None
+    }
+
+    fn scroll(&mut self, delta: i32) {
+        self.scroll = (self.scroll - delta * Self::SLOT / 2).clamp(0, self.max_scroll());
     }
 
     fn settings_dirty(&self) -> bool {

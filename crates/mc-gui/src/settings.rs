@@ -147,6 +147,8 @@ pub struct Settings {
     pub chat_height_unfocused: f32,
     /// Skin-parts mask sent in `C15PacketClientSettings`.
     pub model_parts: u8,
+    /// Rebound keys by description (missing = the binding's default).
+    pub key_codes: std::collections::BTreeMap<String, i32>,
     pub show_debug: bool,
     pub hide_gui: bool,
     /// `soundCategory_<name>` volumes (missing = 1.0).
@@ -187,6 +189,7 @@ impl Default for Settings {
             chat_height_focused: 1.0,
             chat_height_unfocused: 0.44366196,
             model_parts: 0x7f,
+            key_codes: Default::default(),
             show_debug: false,
             hide_gui: false,
             sound_volumes: Default::default(),
@@ -247,6 +250,11 @@ impl Settings {
                 "chatWidth" => s.chat_width = f.unwrap_or(s.chat_width),
                 "chatHeightFocused" => s.chat_height_focused = f.unwrap_or(s.chat_height_focused),
                 "chatHeightUnfocused" => s.chat_height_unfocused = f.unwrap_or(s.chat_height_unfocused),
+                _ if k.starts_with("key_") => {
+                    if let Some(i) = i {
+                        s.key_codes.insert(k[4..].to_string(), i);
+                    }
+                }
                 _ if k.starts_with("modelPart_") => {
                     if let Some(bit) = MODEL_PARTS.iter().position(|p| *p == &k["modelPart_".len()..]) {
                         if b {
@@ -304,6 +312,10 @@ impl Settings {
         for (i, k) in part_keys.iter().enumerate() {
             ours.push((k.as_str(), (self.model_parts >> i & 1 != 0).to_string()));
         }
+        let binding_keys: Vec<String> = crate::keys::BINDINGS.iter().map(|b| format!("key_{}", b.0)).collect();
+        for (k, b) in binding_keys.iter().zip(crate::keys::BINDINGS.iter()) {
+            ours.push((k.as_str(), self.key(b.0).to_string()));
+        }
         let sound_keys: Vec<String> = self.sound_volumes.keys().map(|k| format!("soundCategory_{k}")).collect();
         for (k, (_, v)) in sound_keys.iter().zip(&self.sound_volumes) {
             ours.push((k.as_str(), v.to_string()));
@@ -316,6 +328,11 @@ impl Settings {
             .collect();
         out.extend(ours.iter().map(|(k, v)| format!("{k}:{v}")));
         let _ = std::fs::write(path, out.join("\n") + "\n");
+    }
+
+    /// A binding's key code (`KeyBinding.getKeyCode`).
+    pub fn key(&self, name: &str) -> i32 {
+        self.key_codes.get(name).copied().unwrap_or_else(|| crate::keys::BINDINGS.iter().find(|b| b.0 == name).map_or(0, |b| b.2))
     }
 
     /// `getSoundLevel`
