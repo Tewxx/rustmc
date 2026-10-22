@@ -620,6 +620,8 @@ mod tests {
         let missing: Vec<_> = c
             .items
             .iter()
+            // Farmland and lit furnaces have no item model in vanilla either (missing texture).
+            .filter(|i| !matches!(i.name.as_str(), "minecraft:farmland" | "minecraft:lit_furnace"))
             .filter(|i| {
                 i.icon
                     .iter()
