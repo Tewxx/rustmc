@@ -298,12 +298,12 @@ players, every living mob type, arrows, XP orbs, paintings, armour stands and th
 item frames, TNT, falling blocks, snowball/potion billboards and remote block-break overlays.
 All play-state packets are handled except particles (`S2A`) and server resource packs (`S48`);
 several handlers are state-only until their renderer exists (signs, skulls/banners, chests,
-maps, world border, lightning, fireballs, minecarts/boats). Chat completion is server-owned;
+maps, world border, lightning, minecarts/boats). Chat completion is server-owned;
 creative flight sends C13.
 
 Immediate order: (1) `S48` resource-pack prompt/download/status plus an asset-stack reload;
 (2) particles; (3) tile-entity renderers (signs, skulls, banners, chests, beacons); (4) maps,
-world border, lightning/fireballs, minecart/boat, armour layers on stands, TNT flash;
+world border, lightning, minecart/boat, armour layers on stands, TNT flash;
 (5) serverbound EnchantItem/SteerVehicle/Spectate/UpdateSignC; (6) movement/anti-cheat
 differential audit against `EntityPlayerSP`/`PlayerControllerMP`. Then return to the
 client-track segments below (S5 protocol stress, S7 physics replay, S8 streaming, S9 visuals,

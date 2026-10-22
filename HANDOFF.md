@@ -77,8 +77,8 @@ Commits cbf3425 … 5bc480a. New since the table above:
 3. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
    the sign editor (`S36`/C12).
 4. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
-   bolts; `RenderFireball`; minecart/boat models; wither skull; armour layers on stands; TNT
-   flash (`f2` alpha pass); leash rendering.
+   bolts; minecart/boat models; wither skull; armour layers on stands; TNT flash (`f2` alpha
+   pass); leash rendering.
 5. Serverbound `EnchantItem`, `SteerVehicle` (boats/horses), `Spectate`, `UpdateSignC`.
 6. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
    `PlayerControllerMP` (rotation, onGround, sprint/sneak, flying) with loopback tests.
