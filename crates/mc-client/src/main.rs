@@ -2310,6 +2310,12 @@ impl ApplicationHandler for App {
                     KeyCode::KeyE => {
                         if self.entity.creative {
                             self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false)
+                        } else if self.net.is_some() {
+                            // ContainerPlayer is window 0; clicks go to the server like any window.
+                            let title = self.ui.lang.get("container.crafting");
+                            let w = Arc::new(std::sync::Mutex::new(container::Window::new(0, "player", title, 5)));
+                            self.open_window = Some(w.clone());
+                            self.open(Box::new(container::ContainerScreen::new(w, self.catalogue.clone())), false)
                         } else {
                             self.open(Box::new(survival::SurvivalInventory::new(self.catalogue.clone())), false)
                         }

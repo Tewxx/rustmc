@@ -48,6 +48,17 @@ impl Window {
 
     /// Window slot index → storage: container slots first, then main inventory, then hotbar.
     pub fn get<'a>(&'a mut self, ui: &'a mut Ui, i: usize) -> Option<&'a mut Option<ItemStack>> {
+        if self.kind == "player" {
+            // ContainerPlayer: 0 result, 1-4 crafting grid, 5-8 armor, 9-35 main, 36-44 hotbar.
+            return match i {
+                0 => self.slots.get_mut(0),
+                1..=4 => Some(&mut ui.crafting[i - 1]),
+                5..=8 => Some(&mut ui.armor[i - 5]),
+                9..=35 => Some(&mut ui.inventory[i]),
+                36..=44 => Some(&mut ui.inventory[i - 36]),
+                _ => None,
+            };
+        }
         let n = self.slots.len();
         if i < n {
             self.slots.get_mut(i)
@@ -61,6 +72,9 @@ impl Window {
     }
 
     pub fn total(&self) -> usize {
+        if self.kind == "player" {
+            return 45;
+        }
         self.slots.len() + 36
     }
 
@@ -76,6 +90,7 @@ impl Window {
         match self.kind.as_str() {
             "minecraft:crafting_table" => i == 0,
             "minecraft:furnace" => i == 2,
+            "player" => i == 0,
             _ => false,
         }
     }
@@ -109,6 +124,17 @@ impl ContainerScreen {
     fn layout(w: &Window) -> Layout {
         let n = w.slots.len() as i32;
         match w.kind.as_str() {
+            "player" => Layout {
+                texture: "textures/gui/container/inventory.png",
+                w: 176,
+                h: 166,
+                slots: std::iter::once((154, 28))
+                    .chain((0..4).map(|i| (98 + i % 2 * 18, 18 + i / 2 * 18)))
+                    .chain((0..4).map(|i| (8, 8 + i * 18)))
+                    .collect(),
+                inv: (8, 84),
+                rows: None,
+            },
             "minecraft:hopper" => Layout {
                 texture: "textures/gui/container/hopper.png",
                 w: 176,
@@ -243,6 +269,22 @@ impl ContainerScreen {
     /// back to front).
     fn transfer(&self, w: &mut Window, ui: &mut Ui, i: usize) {
         let Some(Some(s)) = w.get(ui, i).map(|x| *x) else { return };
+        if w.kind == "player" {
+            // ContainerPlayer.transferStackInSlot
+            const SUFFIX: [&str; 4] = ["_helmet", "_chestplate", "_leggings", "_boots"];
+            let name = self.catalogue.items[s.item].name.clone();
+            let armor = SUFFIX.iter().position(|x| name.ends_with(x)).map(|a| 5 + a).filter(|&a| w.get(ui, a).is_some_and(|x| x.is_none()));
+            let range: Vec<usize> = match (i, armor) {
+                (0, _) => (9..45).rev().collect(),
+                (1..=8, _) => (9..45).collect(),
+                (_, Some(a)) => vec![a],
+                (9..=35, _) => (36..45).collect(),
+                _ => (9..36).collect(),
+            };
+            let rest = self.merge(w, ui, s, range);
+            w.set(ui, i, rest);
+            return;
+        }
         let n = w.slots.len();
         let range: Vec<usize> = if i < n { (n..w.total()).rev().collect() } else { (0..n).filter(|&k| !w.output_slot(k)).collect() };
         let rest = self.merge(w, ui, s, range);
@@ -325,9 +367,14 @@ impl Screen for ContainerScreen {
             _ => 8,
         };
         let title = win.title.clone();
-        ui.font.draw(b, &title, (x + title_x) as f32, (y + 6) as f32, 0xff404040);
-        let inv = ui.lang.get("container.inventory");
-        ui.font.draw(b, &inv, (x + 8) as f32, (y + l.h - 96 + 2) as f32, 0xff404040);
+        if win.kind == "player" {
+            // GuiInventory: only "Crafting" above the grid.
+            ui.font.draw(b, &title, (x + 86) as f32, (y + 16) as f32, 0xff404040);
+        } else {
+            ui.font.draw(b, &title, (x + title_x) as f32, (y + 6) as f32, 0xff404040);
+            let inv = ui.lang.get("container.inventory");
+            ui.font.draw(b, &inv, (x + 8) as f32, (y + l.h - 96 + 2) as f32, 0xff404040);
+        }
         let cursor = win.cursor;
         drop(win);
         self.hover = self.at(&l, mx, my);
@@ -409,5 +456,24 @@ mod tests {
         assert!(w.lock().unwrap().slots[0].is_none());
         assert_eq!(ui.inventory[0].unwrap().count, 40);
         assert_eq!(w.lock().unwrap().clicks.len(), 3);
+    }
+
+    #[test]
+    fn player_window_maps_container_player_slots() {
+        let Some(jar) = crate::find_jar() else { return };
+        let mut assets = mc_assets::AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = mc_render::models::BlockModels::load(&assets);
+        let cat = Arc::new(Catalogue::load(&assets, &models));
+        let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
+        let helmet = cat.find("minecraft:iron_helmet", 0).unwrap();
+        ui.inventory[0] = Some(ItemStack { item: helmet, count: 1 });
+        let w = Arc::new(Mutex::new(Window::new(0, "player", "Crafting".into(), 5)));
+        let mut s = ContainerScreen::new(w.clone(), cat);
+        // Hotbar 0 is window slot 36; shift-click equips the helmet into slot 5.
+        s.click_slot(&mut ui, 36, 0, 1);
+        assert!(ui.inventory[0].is_none());
+        assert_eq!(ui.armor[0].map(|a| a.item), Some(helmet));
+        assert_eq!(w.lock().unwrap().clicks[0].slot, 36);
     }
 }
