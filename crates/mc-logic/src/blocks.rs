@@ -466,6 +466,7 @@ pub fn random_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
         ids::CACTUS => grow_column(l, pos, state, true),
         ids::WHEAT | ids::CARROTS | ids::POTATOES => crop_tick(l, pos, state),
         ids::FARMLAND => farmland_tick(l, pos, state),
+        ids::LEAVES | ids::LEAVES2 => leaves_tick(l, pos, state),
         _ => update_tick(l, pos, state, Rng::World),
     }
 }
@@ -600,5 +601,53 @@ fn farmland_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
         }
     } else if moisture < 7 {
         l.set_state(pos, state.set("moisture", "7"), flags::UPDATE);
+    }
+}
+
+/// `BlockLeaves.updateTick`: decays unless a log is within 4 leaf steps.
+fn leaves_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
+    if !(state.get_bool("check_decay") && state.get_bool("decayable")) {
+        return;
+    }
+    if !l.is_area_loaded(pos.offset(-5, -5, -5), pos.offset(5, 5, 5)) {
+        return;
+    }
+    let idx = |x: i32, y: i32, z: i32| ((x + 16) * 1024 + (y + 16) * 32 + z + 16) as usize;
+    let mut surr = vec![0i32; 32768];
+    for x in -4..=4 {
+        for y in -4..=4 {
+            for z in -4..=4 {
+                let b = l.state(pos.offset(x, y, z)).block();
+                surr[idx(x, y, z)] = if matches!(b.id, ids::LOG | ids::LOG2) {
+                    0
+                } else if b.material == Material::Leaves {
+                    -2
+                } else {
+                    -1
+                };
+            }
+        }
+    }
+    for i in 1..=4 {
+        for x in -4..=4 {
+            for y in -4..=4 {
+                for z in -4..=4 {
+                    if surr[idx(x, y, z)] == i - 1 {
+                        for (dx, dy, dz) in [(-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 0, -1), (0, 0, 1)] {
+                            let k = idx(x + dx, y + dy, z + dz);
+                            if surr[k] == -2 {
+                                surr[k] = i;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if surr[idx(0, 0, 0)] >= 0 {
+        l.set_state(pos, state.set_bool("check_decay", false), flags::NO_RERENDER);
+    } else {
+        l.drop_block_as_item(pos, state, 1.0, 0);
+        l.set_air(pos);
     }
 }

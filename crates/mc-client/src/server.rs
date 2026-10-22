@@ -246,4 +246,16 @@ mod tests {
         let grass = (-8..8).flat_map(|x| (-8..8).map(move |z| (x, z))).filter(|&(x, z)| lv.world.state_at(x, 10, z).block().id == ids::GRASS).count();
         assert!(grass > 16, "{grass}");
     }
+
+    #[test]
+    fn orphaned_leaves_decay() {
+        let (mut w, mut s) = (world(), Server::default());
+        let leaf = mc_logic::st(ids::LEAVES, 0).set_bool("check_decay", true);
+        w.set_block_state(BlockPos::new(0, 12, 0), leaf);
+        let mut fx = Effects::default();
+        let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules_daylight: true };
+        mc_logic::blocks::random_tick(&mut lv, BlockPos::new(0, 12, 0), leaf);
+        assert!(lv.state(BlockPos::new(0, 12, 0)).is_air());
+        assert_eq!(fx.drops.len(), 1);
+    }
 }
