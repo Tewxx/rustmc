@@ -397,8 +397,13 @@ impl Renderer {
         self.avatar.upload_skin(&self.queue, cell, rgba);
     }
 
-    pub fn upload_section(&mut self, cx: i32, sy: i32, cz: i32, mesh: &ChunkMesh) {
-        if mesh.indices.is_empty() {
+    /// Drops every uploaded chunk mesh. Used after a resource-pack reload, where all baked
+    /// atlas UVs change and the world must be remeshed.
+    pub fn clear_sections(&mut self) {
+        self.chunks.clear();
+    }
+
+    pub fn upload_section(&mut self, cx: i32, sy: i32, cz: i32, mesh: &ChunkMesh) {        if mesh.indices.is_empty() {
             self.chunks.remove(&(cx, sy, cz));
             return;
         }

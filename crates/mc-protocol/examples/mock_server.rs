@@ -288,6 +288,10 @@ fn handle(stream: TcpStream) {
                         // Another player's destroy-stage overlay on the grass block ahead.
                         play(PlayClientbound::BlockBreakAnim(BlockBreakAnim { breaker_id: 7, pos: BlockPos::new(8, 3, 12), stage: 6 }));
                     }
+                    if let Ok(url) = std::env::var("MOCK_RPACK") {
+                        let hash = std::env::var("MOCK_RPACK_HASH").unwrap_or_default();
+                        play(PlayClientbound::ResourcePackSend(ResourcePackSend { url, hash }));
+                    }
                     if std::env::var_os("MOCK_CHEST").is_some() {
                         play(PlayClientbound::OpenWindow(OpenWindow { window_id: 3, kind: "minecraft:chest".into(), title: r#"{"text":"Kit Selector","color":"dark_red"}"#.into(), slots: 27, entity_id: 0 }));
                         let mut items: Vec<Option<mc_protocol::Slot>> = vec![None; 63];

@@ -23,6 +23,8 @@ pub enum Action {
     /// A line for the chat log (several completion matches).
     PrintChat(String),
     Respawn,
+    /// `GuiYesNo` answer for the pending `S48PacketResourcePackSend`.
+    ResourcePackDecision(bool),
 }
 
 /// `GuiGameOver`
@@ -94,6 +96,54 @@ impl Screen for DeathScreen {
     }
     fn pauses(&self) -> bool {
         false
+    }
+}
+
+/// `GuiYesNo` shown by `NetHandlerPlayClient.handleResourcePack` when the server's pack is
+/// first offered (`ServerData.ServerResourceMode.PROMPT`).
+#[derive(Default)]
+pub struct ResourcePackPrompt {
+    buttons: Vec<Button>,
+}
+
+impl ResourcePackPrompt {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Screen for ResourcePackPrompt {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        // GuiYesNo: 150x20 buttons at w/2 - 155 and w/2 - 155 + 160, h/6 + 96.
+        self.buttons = vec![
+            Button::sized(0, w / 2 - 155, h / 6 + 96, 150, 20, ui.lang.get("gui.yes")),
+            Button::sized(1, w / 2 - 155 + 160, h / 6 + 96, 150, 20, ui.lang.get("gui.no")),
+        ];
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        // `GuiScreen.drawDefaultBackground` in a loaded world: the dark gradient.
+        b.gradient(0, 0, w, h, 0xC0101010, 0xD0101010);
+        ui.font.draw_centered(b, &ui.lang.get("multiplayer.texturePrompt.line1"), w / 2, 70, 0xffffffff);
+        ui.font.draw_centered(b, &ui.lang.get("multiplayer.texturePrompt.line2"), w / 2, 90, 0xffffffff);
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+    }
+
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        match click_buttons(&mut self.buttons, ui, mx, my) {
+            Some(0) => Action::ResourcePackDecision(true),
+            Some(1) => Action::ResourcePackDecision(false),
+            _ => Action::None,
+        }
+    }
+
+    /// `GuiScreen.keyTyped`'s Escape closes the screen without answering, like vanilla.
+    fn key(&mut self, _: &mut Ui, key: Key) -> Action {
+        if key == Key::Escape {
+            Action::Close
+        } else {
+            Action::None
+        }
     }
 }
 

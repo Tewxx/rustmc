@@ -12,6 +12,7 @@ mod chat;
 mod entities;
 mod music;
 mod net;
+mod pack;
 mod commands;
 mod container;
 mod icon;
@@ -66,6 +67,16 @@ struct Args {
     name: String,
     /// Sign in with a Microsoft account for online-mode servers.
     online: bool,
+    /// `ServerData.ServerResourceMode` override (`--pack-mode`); persisted per server otherwise.
+    pack_mode: Option<pack::Mode>,
+}
+
+/// `host:port` with the default port filled in, the key `server-packs.json` stores.
+fn normalize_server_key(addr: &str) -> String {
+    match addr.rsplit_once(':') {
+        Some((h, p)) if p.parse::<u16>().is_ok() => format!("{h}:{p}"),
+        _ => format!("{addr}:25565"),
+    }
 }
 
 fn parse_args() -> Args {
@@ -83,6 +94,7 @@ fn parse_args() -> Args {
         connect: None,
         name: "Player".into(),
         online: false,
+        pack_mode: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -96,6 +108,7 @@ fn parse_args() -> Args {
             "--bench" => a.bench = Some(it.next().and_then(|s| s.parse().ok()).unwrap_or(30.0)),
             "--seed" => a.seed = it.next().map(|s| s.parse().unwrap_or_else(|_| java_string_hash(&s) as i64)),
             "--online" => a.online = true,
+            "--pack-mode" => a.pack_mode = it.next().map(|s| pack::Mode::parse(&s)),
             "--connect" => a.connect = it.next(),
             "--name" => a.name = it.next().unwrap_or_else(|| "Player".into()),
             "--radius" => a.radius = it.next().and_then(|s| s.parse().ok()).unwrap_or(4),
@@ -492,6 +505,16 @@ struct App {
     camera_entity: Option<i32>,
     /// `GuiChat`'s pending tab completion: the text it was requested for and the matches.
     tab_complete: Option<(String, Vec<String>)>,
+    /// `ServerData.ServerResourceMode`, the pending prompt and the download in flight.
+    packs: pack::ResourcePacks,
+    /// Remembered per-server pack choices and cached packs (`server-packs.json`).
+    pack_store: pack::Store,
+    /// The `host:port` key for `pack_store`.
+    server_key: String,
+    /// The base pack stack (`--jar` and `--pack`), needed to rebuild `assets` when a server
+    /// pack replaces the previous one instead of stacking forever.
+    jar: PathBuf,
+    base_packs: Vec<PathBuf>,
 }
 
 impl App {
@@ -590,6 +613,11 @@ impl App {
             signs: Default::default(),
             camera_entity: None,
             tab_complete: None,
+            packs: pack::ResourcePacks::default(),
+            pack_store: pack::Store::default(),
+            server_key: String::new(),
+            jar: PathBuf::new(),
+            base_packs: Vec::new(),
         }
     }
     /// `KeyBinding.isKeyDown`: keyboard codes against held keys, negative codes against mouse buttons.
@@ -664,6 +692,7 @@ impl App {
                 self.open(Box::new(screens::MainMenu::default()), false);
             }
             Action::Quit => el.exit(),
+            Action::ResourcePackDecision(accept) => self.resource_pack_decision(accept),
             Action::TabComplete(prefix) => {
                 if self.net.is_some() {
                     // `GuiChat.sendAutocompleteRequest`: the server owns command completions.
@@ -1599,6 +1628,9 @@ impl App {
                 C::UpdateEntityNbt(_) => {
                     // Entity.clientUpdateEntityNBT is a no-op for every 1.8.9 entity.
                 }
+                C::ResourcePackSend(p) => {
+                    self.handle_resource_pack(p.url, p.hash);
+                }
                 C::SetCompression(_) => {
                     // A login-state packet; a play-state copy is ignored like vanilla's local
                     // channel check.
@@ -1618,6 +1650,7 @@ impl App {
             l.ticks += 1;
         }
         self.lightning.retain(|l| l.ticks < 4);
+        self.poll_resource_pack();
         self.refresh_edits(&edits);
         // Sections of newly arrived or unloaded chunks.
         self.refresh_edits(&[]);
@@ -1648,6 +1681,154 @@ impl App {
             // animation; the tile-entity renderer that reads it is not ported yet.
             _ => {}
         }
+    }
+
+    /// `NetHandlerPlayClient.handleResourcePack`: `level://` is a local save pack, otherwise
+    /// the per-server mode decides between prompt, accept and decline.
+    fn handle_resource_pack(&mut self, url: String, hash: String) {
+        use mc_protocol::packets::ResourcePackResult as R;
+        let req = pack::Request { url: url.clone(), hash: hash.clone() };
+        if url.starts_with("level://") {
+            match pack::level_pack_path(&url, Path::new("saves")) {
+                Some(path) => {
+                    self.send_pack_status(&hash, R::Accepted);
+                    self.finish_pack(&hash, Some(path));
+                }
+                None => self.send_pack_status(&hash, R::FailedDownload),
+            }
+            return;
+        }
+        match self.packs.mode {
+            pack::Mode::Enabled => {
+                self.send_pack_status(&hash, R::Accepted);
+                self.start_pack_download(req);
+            }
+            pack::Mode::Disabled => self.send_pack_status(&hash, R::Declined),
+            pack::Mode::Prompt => {
+                self.packs.pending = Some(req);
+                self.open(Box::new(screens::ResourcePackPrompt::new()), false);
+            }
+        }
+    }
+
+    fn send_pack_status(&mut self, hash: &str, result: mc_protocol::packets::ResourcePackResult) {
+        self.send(mc_protocol::packets::PlayServerbound::ResourcePackStatus(mc_protocol::packets::ResourcePackStatus {
+            hash: hash.to_string(),
+            result,
+        }));
+    }
+
+    /// Starts the background download and remembers that this server accepts packs, so a
+    /// later join can pre-apply the cached file during startup.
+    fn start_pack_download(&mut self, req: pack::Request) {
+        let hash = req.hash.clone();
+        // `ResourcePackRepository.downloadResourcePack`: a cache entry with the right hash is
+        // reused instead of fetched again.
+        if let Some(path) = pack::cached_pack(&hash) {
+            self.finish_pack(&hash, Some(path));
+            return;
+        }
+        if let Err(e) = self.packs.start_download(&req, pack::cache_dir()) {
+            self.hud.add_chat(format!("Resource pack: {e}"));
+            self.send_pack_status(&hash, mc_protocol::packets::ResourcePackResult::FailedDownload);
+            return;
+        }
+        self.pack_store.set(&self.server_key, pack::Mode::Enabled, &hash, None);
+        self.pack_store.save();
+    }
+
+    /// The `GuiYesNo` answer (`GuiYesNoCallback.confirmClicked`).
+    fn resource_pack_decision(&mut self, accept: bool) {
+        use mc_protocol::packets::ResourcePackResult as R;
+        let Some(req) = self.packs.pending.take() else { return };
+        self.packs.mode = if accept { pack::Mode::Enabled } else { pack::Mode::Disabled };
+        self.pack_store.set(&self.server_key, self.packs.mode, &req.hash, None);
+        self.pack_store.save();
+        self.close_screen();
+        if accept {
+            self.send_pack_status(&req.hash, R::Accepted);
+            self.start_pack_download(req);
+        } else {
+            self.send_pack_status(&req.hash, R::Declined);
+        }
+    }
+
+    fn poll_resource_pack(&mut self) {
+        use mc_protocol::packets::ResourcePackResult as R;
+        let Some((hash, result)) = self.packs.poll() else { return };
+        match result {
+            Ok(path) => {
+                self.pack_store.set(&self.server_key, pack::Mode::Enabled, &hash, Some(&path));
+                self.pack_store.save();
+                self.finish_pack(&hash, Some(path));
+            }
+            Err(e) => {
+                self.hud.add_chat(format!("Resource pack download failed: {e}"));
+                self.send_pack_status(&hash, R::FailedDownload);
+            }
+        }
+    }
+
+    /// `ResourcePackRepository.setResourcePack` + `Minecraft.refreshResources`: push the pack on
+    /// top of the stack, rebuild every atlas/model table, recreate the texture-bound renderer
+    /// and remesh the loaded world (baked atlas UVs live in the vertex data).
+    fn finish_pack(&mut self, hash: &str, path: Option<PathBuf>) {
+        use mc_protocol::packets::ResourcePackResult as R;
+        let Some(path) = path else {
+            self.send_pack_status(hash, R::FailedDownload);
+            return;
+        };
+        match self.apply_resource_pack(&path) {
+            Ok(()) => {
+                self.packs.applied = Some((hash.to_string(), path));
+                self.send_pack_status(hash, R::SuccessfullyLoaded);
+            }
+            Err(e) => {
+                self.hud.add_chat(format!("Resource pack could not be applied: {e}"));
+                self.send_pack_status(hash, R::FailedDownload);
+            }
+        }
+    }
+
+    fn apply_resource_pack(&mut self, path: &Path) -> Result<(), String> {
+        if self.packs.applied.as_ref().is_some_and(|(_, p)| p == path) {
+            return Ok(());
+        }
+        // Rebuild the stack instead of appending: `resourcePackRepository` has exactly one
+        // server pack, so resources that a new pack removes must disappear again.
+        let mut assets = AssetSource::new();
+        assets.push(&self.jar).map_err(|e| format!("{}: {e}", self.jar.display()))?;
+        for p in &self.base_packs {
+            if let Err(e) = assets.push(p) {
+                eprintln!("skipping pack {}: {e}", p.display());
+            }
+        }
+        assets.push(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.assets = assets;
+        let t = Instant::now();
+        self.models = BlockModels::load(&self.assets);
+        self.catalogue = Arc::new(inventory::Catalogue::load(&self.assets, &self.models));
+        self.ui.reload(&self.assets);
+        // The renderer owns every GPU texture and bind group built from the old stack.
+        if let Some(win) = self.window.clone() {
+            self.renderer = None;
+            let renderer = pollster::block_on(Renderer::new(win, &self.models, &self.assets));
+            for (cell, rgba) in self.skins.cells() {
+                renderer.upload_skin(cell, &rgba);
+            }
+            self.renderer = Some(renderer);
+        }
+        if let Some(r) = &mut self.renderer {
+            r.clear_sections();
+        }
+        for &(x, z) in self.world.chunks.keys() {
+            for sy in 0..16 {
+                self.world.dirty.insert((x, sy, z));
+            }
+        }
+        self.refresh_edits(&[]);
+        println!("resource pack applied in {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
+        Ok(())
     }
 
     /// `S44PacketWorldBorder.func_179788_a` for each action.
@@ -4165,6 +4346,21 @@ fn main() {
             eprintln!("skipping pack {}: {e}", p.display());
         }
     }
+    // `ServerData.ServerResourceMode` is remembered per server; an accepted pack from an
+    // earlier join is pushed on top of the stack before the atlases are baked.
+    let server_key = args.connect.as_deref().map(normalize_server_key).unwrap_or_default();
+    let pack_store = pack::Store::load();
+    let pack_mode = args.pack_mode.unwrap_or_else(|| pack_store.mode_for(&server_key));
+    let mut cached_applied = None;
+    if let Some(cached) = pack_store.cached_for(&server_key) {
+        if let Err(e) = assets.push(&cached) {
+            eprintln!("skipping cached server pack {}: {e}", cached.display());
+        } else {
+            println!("using cached server resource pack {}", cached.display());
+            let hash = pack_store.servers.get(&server_key).map(|s| s.hash.clone()).unwrap_or_default();
+            cached_applied = Some((hash, cached));
+        }
+    }
 
     let t = Instant::now();
     let models = BlockModels::load(&assets);
@@ -4231,6 +4427,12 @@ fn main() {
     }
     app.name = connection.as_ref().map_or(args.name.clone(), |c| c.1.clone());
     app.net = connection.map(|c| c.0);
+    app.packs = pack::ResourcePacks::new(pack_mode);
+    app.packs.applied = cached_applied;
+    app.pack_store = pack_store;
+    app.server_key = server_key;
+    app.jar = jar.clone();
+    app.base_packs = args.packs.clone();
     app.screenshot = args.screenshot.clone().map(|p| (p, args.screen.clone()));
     app.bench = args
         .bench

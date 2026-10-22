@@ -140,6 +140,14 @@ impl Ui {
         }
     }
 
+    /// `Minecraft.refreshResources`'s GUI half: re-read the font, language table and splash
+    /// from the (possibly changed) resource pack stack while keeping player state and settings.
+    pub fn reload(&mut self, assets: &AssetSource) {
+        self.font = FontRenderer::load(assets);
+        self.lang = Lang::load(assets, "en_US");
+        self.splash = random_splash(assets);
+    }
+
     /// `InventoryEffectRenderer.updateActivePotionEffects`: the container moves right to make room.
     pub fn effect_gui_left(&self, w: i32, x_size: i32) -> i32 {
         if self.effects.is_empty() {

@@ -58,33 +58,56 @@ Commits cbf3425 … 5bc480a. New since the table above:
   (merged with the local one), armour-stand/mob name tags (custom name, always-visible flag,
   rider rule, child/height offsets), spectator camera (`S43`), creative-flight C13,
   server-owned chat tab completion (C14 + S3A).
-- **Play packet coverage:** every clientbound packet in the `PlayClientbound` table is now
-  handled except `S2A Particles` and `S48 ResourcePackSend`; every serverbound packet except
-  `EnchantItem`, `UpdateSignC`, `SteerVehicle`, `Spectate`, `ResourcePackStatus` (and the
-  sub-packets of movement already sent by `net.rs`). Packet ids, fields and vanilla handler
-  behaviour are in `mc-client/src/main.rs::process_net`.
+- **Play packet coverage:** every clientbound packet in the `PlayClientbound` table is handled
+  except `S2A Particles`; every serverbound packet except `EnchantItem`, `UpdateSignC`,
+  `SteerVehicle`, `Spectate` (and the sub-packets of movement already sent by `net.rs`).
+  Packet ids, fields and vanilla handler behaviour are in `mc-client/src/main.rs::process_net`.
 - **State-only handlers** (collected but no renderer yet): world border, maps, signs, tile
   entities (`S35`), statistics, server brand, lightning (sound + lifetime only), beds.
 - Tests: art table, XP texture/colour thresholds, object sizes, TNT fuse, metadata accessors,
-  world-border lerp/contains. `MOCK_OBJECTS` and `MOCK_BREAK` scenarios with screenshots
-  `shots/objects3.png` and `shots/break.png`.
+  world-border lerp/contains, SHA-1 vectors, pack mode/store/cache and `level://` resolution.
+  `MOCK_OBJECTS` and `MOCK_BREAK` scenarios with screenshots `shots/objects3.png` and
+  `shots/break.png`.
+- **Server resource packs (`S48`, next log entry below):** prompt/download/status/apply is in
+  place and verified.
 
 **Next for multiplayer, in order:**
-1. `S48 ResourcePackSend`: prompt, download with SHA-1 check, `ResourcePackStatus`, and a real
-   asset-stack reload (models/atlas/GUI/sounds) so server packs apply. Needed by Hypixel.
-2. `S2A Particles`: `EnumParticleTypes`, `EntityFX` physics and the 4 render layers (crit,
+1. `S2A Particles`: `EnumParticleTypes`, `EntityFX` physics and the 4 render layers (crit,
    flame, potion, redstone, hearts, explosions…). Without it PvP/potion feedback is missing.
-3. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
+2. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
    the sign editor (`S36`/C12).
-4. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
+3. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
    bolts; minecart/boat models; wither skull; armour layers on stands; TNT flash (`f2` alpha
    pass); leash rendering.
-5. Serverbound `EnchantItem`, `SteerVehicle` (boats/horses), `Spectate`, `UpdateSignC`.
-6. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
+4. Serverbound `EnchantItem`, `SteerVehicle` (boats/horses), `Spectate`, `UpdateSignC`.
+5. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
    `PlayerControllerMP` (rotation, onGround, sprint/sneak, flying) with loopback tests.
 
-Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_FX=1`, `MOCK_SCORE=1`)
+Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_FX=1`, `MOCK_SCORE=1`, `MOCK_RPACK=<url>` + `MOCK_RPACK_HASH=<sha1>`)
 then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
+
+## Session log — server resource packs (Oct 2026)
+
+`S48PacketResourcePackSend` is handled end to end:
+
+- **Mode:** `ServerData.ServerResourceMode` (`prompt`/`enabled`/`disabled`) per `host:port`, in
+  `server-packs.json` next to `options.txt`; `--pack-mode` is the session override used by tests.
+- **Prompt:** `GuiYesNo` equivalent (`screens::ResourcePackPrompt`): the two
+  `multiplayer.texturePrompt.line*` strings at y 70/90 and 150×20 Yes/No buttons at
+  `h/6 + 96`, dark `drawDefaultBackground` gradient. Escape closes without answering.
+- **Download:** background thread, HTTP(S), 64 MiB cap, SHA-1 verification (pure-Rust SHA-1 in
+  `pack.rs`), atomic `.part` rename into `server-resource-packs/<hash>.zip`; a cached file whose
+  hash still matches is reused without refetching (`shots/pack_prompt.png`).
+- **Status:** ACCEPTED → SUCCESSFULLY_LOADED / FAILED_DOWNLOAD, DECLINED on No (C19), matching
+  `NetHandlerPlayClient`.
+- **Apply / reload:** `AssetSource` is rebuilt as jar + `--pack`s + the one server pack (vanilla
+  has a single server pack), then block/item models, every atlas, `Catalogue`, font/lang/splash
+  and the GPU renderer are recreated, player skins re-uploaded, all section meshes dropped and
+  the loaded world remeshed. Measured ~0.6 s for the mock world. A pack that replaces a font
+  and `grass_top` recolours both (`shots/pack2.png`, `shots/pack_blocks.png`); a cached pack is
+  pre-applied during startup on the next join.
+- **Still missing:** sounds are read from `.minecraft/assets`, not the pack stack, so pack sound
+  overrides are ignored; the pack list UI (`options.resourcepack`) is not ported.
 
 ## User priority: playable game (latest steering)
 

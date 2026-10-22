@@ -17,6 +17,9 @@ pub struct Skins {
     rx: Receiver<Skin>,
     /// Atlas cell and model per player with a downloaded skin.
     pub loaded: HashMap<Uuid, (u32, bool)>,
+    /// Retained pixels per player, for re-uploading after a resource-pack reload recreates
+    /// the GPU textures.
+    rgba: HashMap<Uuid, Vec<u8>>,
     requested: HashMap<Uuid, String>,
     next_cell: u32,
 }
@@ -24,7 +27,7 @@ pub struct Skins {
 impl Default for Skins {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
-        Skins { tx, rx, loaded: HashMap::new(), requested: HashMap::new(), next_cell: 0 }
+        Skins { tx, rx, loaded: HashMap::new(), rgba: HashMap::new(), requested: HashMap::new(), next_cell: 0 }
     }
 }
 
@@ -164,9 +167,18 @@ impl Skins {
                 }
             };
             self.loaded.insert(s.uuid, (cell, s.slim));
+            self.rgba.insert(s.uuid, s.rgba.clone());
             up.push((cell, s.rgba));
         }
         up
+    }
+
+    /// Every decoded skin, for re-upload after the renderer is recreated.
+    pub fn cells(&self) -> Vec<(u32, Vec<u8>)> {
+        self.loaded
+            .iter()
+            .filter_map(|(uuid, (cell, _))| self.rgba.get(uuid).map(|rgba| (*cell, rgba.clone())))
+            .collect()
     }
 }
 

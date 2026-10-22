@@ -296,15 +296,15 @@ Current position (Oct 2026): the client is a working multiplayer 1.8.9 client. I
 protocol-47 servers (`--connect`/`--online`), streams chunks, predicts movement, renders
 players, every living mob type, arrows, XP orbs, paintings, armour stands and their name tags,
 item frames, TNT, falling blocks, snowball/potion billboards and remote block-break overlays.
-All play-state packets are handled except particles (`S2A`) and server resource packs (`S48`);
+All play-state packets are handled except particles (`S2A`);
 several handlers are state-only until their renderer exists (signs, skulls/banners, chests,
 maps, world border, lightning, minecarts/boats). Chat completion is server-owned;
-creative flight sends C13.
+creative flight sends C13. Server resource packs (`S48`) prompt, download with SHA-1,
+verify, apply with a full model/atlas/font/GUI reload and world remesh, and cache per server.
 
-Immediate order: (1) `S48` resource-pack prompt/download/status plus an asset-stack reload;
-(2) particles; (3) tile-entity renderers (signs, skulls, banners, chests, beacons); (4) maps,
-world border, lightning, minecart/boat, armour layers on stands, TNT flash;
-(5) serverbound EnchantItem/SteerVehicle/Spectate/UpdateSignC; (6) movement/anti-cheat
+Immediate order: (1) particles; (2) tile-entity renderers (signs, skulls, banners, chests,
+beacons); (3) maps, world border, lightning, minecart/boat, armour layers on stands, TNT
+flash; (4) serverbound EnchantItem/SteerVehicle/Spectate/UpdateSignC; (5) movement/anti-cheat
 differential audit against `EntityPlayerSP`/`PlayerControllerMP`. Then return to the
 client-track segments below (S5 protocol stress, S7 physics replay, S8 streaming, S9 visuals,
 S12 performance).

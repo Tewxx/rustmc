@@ -25,10 +25,13 @@ Commands execute locally in singleplayer: `/help`, `/gamemode creative`, `/gamem
 Only loaded chunks and height 0–255 can be edited. `/kill` opens the death/respawn screen.
 
 Multiplayer is the current focus. The client handles every play-state packet except particles
-(`S2A`) and server resource packs (`S48`); see `HANDOFF.md` for the remaining renderers
-(signs, skulls, chests, maps, world border, lightning, fireballs) and the movement/anti-cheat
-audit. Server resource packs are not applied yet, so Hypixel-style custom textures will show
-as vanilla textures until that lands.
+(`S2A`); see `HANDOFF.md` for the remaining renderers (signs, skulls, chests, maps, world
+border, lightning, minecarts/boats) and the movement/anti-cheat audit. Server resource packs
+work: the first offer shows the vanilla Yes/No prompt, accepted packs download with SHA-1
+verification, apply immediately (models, atlases, font, GUI and a full world remesh), and are
+cached and re-applied on later joins. `--pack-mode enabled|disabled|prompt` overrides the
+remembered per-server choice. Pack sound overrides are not loaded yet (sounds come from
+`.minecraft/assets`).
 
 This is not full 1.8.9 parity. World edits and inventory are session-only in singleplayer.
 The integrated server has scheduled/random block ticks and fluids but no mobs or full
