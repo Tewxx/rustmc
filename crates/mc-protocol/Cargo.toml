@@ -6,3 +6,5 @@ edition.workspace = true
 [dependencies]
 mc-core = { path = "../mc-core" }
 flate2 = "1"
+aes = "0.8"
+num-bigint = "0.4"
