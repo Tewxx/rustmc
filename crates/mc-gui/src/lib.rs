@@ -14,17 +14,39 @@ pub mod widgets;
 
 /// A client `ItemStack`. `item` is the catalogue entry that draws it; `damage` is the stack's own
 /// metadata (`itemDamage`) and `tag` its NBT, both sent on the wire as they are.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// `obj` stands in for Java object identity: copies made with `..stack` (vanilla mutating the
+/// same object, e.g. `--stackSize`) keep it, new stacks get a fresh one. Equality ignores it.
+#[derive(Clone, Copy, Debug)]
 pub struct ItemStack {
     pub item: usize,
     pub count: u8,
     pub damage: i16,
     pub tag: Option<mc_core::nbt::Interned>,
+    pub obj: u32,
 }
+
+impl PartialEq for ItemStack {
+    fn eq(&self, o: &Self) -> bool {
+        self.item == o.item && self.count == o.count && self.damage == o.damage && self.tag == o.tag
+    }
+}
+impl Eq for ItemStack {}
 
 impl ItemStack {
     pub fn new(item: usize, count: u8, damage: i16) -> Self {
-        Self { item, count, damage, tag: None }
+        Self { item, count, damage, tag: None, obj: Self::fresh_obj() }
+    }
+
+    /// A new object identity.
+    pub fn fresh_obj() -> u32 {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Java `==`: the same object.
+    pub fn same_object(&self, o: &ItemStack) -> bool {
+        self.obj == o.obj
     }
 
     /// `areItemsEqual && areItemStackTagsEqual`: may share a slot.

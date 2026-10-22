@@ -42,6 +42,11 @@ pub struct Remote {
     pub swing: f32,
     pub sneaking: bool,
     pub sprinting: bool,
+    /// Data watcher flag 4 (`isEating`: eating, drinking, blocking or drawing a bow).
+    pub eating: bool,
+    /// `EntityOtherPlayerMP.isItemInUse` and `itemInUseCount`.
+    pub in_use: bool,
+    pub use_count: i32,
     pub on_ground: bool,
     /// Held item (`EntityEquipment` slot 0) as (catalogue index, count).
     pub held: Option<(usize, u8)>,
@@ -105,6 +110,9 @@ impl Remote {
             swing: 0.,
             sneaking: false,
             sprinting: false,
+            eating: false,
+            in_use: false,
+            use_count: 0,
             on_ground: false,
             held: None,
             width: w,

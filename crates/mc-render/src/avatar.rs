@@ -36,6 +36,17 @@ pub struct DamageQuad {
     pub uv: [[f32; 2]; 4],
 }
 
+/// An item being used (`getItemInUseCount() > 0`).
+#[derive(Clone, Copy, Debug)]
+pub struct UseAnim {
+    /// `EnumAction` ordinal: 0 none, 1 eat, 2 drink, 3 block, 4 bow.
+    pub action: u8,
+    /// `getItemInUseCount() - partialTicks + 1`
+    pub left: f32,
+    /// `getMaxItemUseDuration()`
+    pub max: f32,
+}
+
 #[derive(Default)]
 pub struct AvatarFrame {
     pub damage: Vec<DamageQuad>,
@@ -75,6 +86,8 @@ pub struct AvatarFrame {
     pub others: Vec<AvatarFrame>,
     /// `GuiInventory.drawEntityOnScreen` for the local player.
     pub gui_player: Option<GuiPlayer>,
+    /// The item in use: first-person use animations, third-person block/bow poses.
+    pub use_anim: Option<UseAnim>,
 }
 
 /// Physical-pixel placement of an inventory player preview.
@@ -455,7 +468,16 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let model = if f.slim { &mut self.alex } else { &mut self.steve };
         model.swing = f.swing;
         model.sneak = f.sneaking;
-        model.held_right = if f.held.is_some() { 1 } else { 0 };
+        // RenderPlayer.setModelVisibilities
+        let action = f.use_anim.map_or(0, |u| u.action);
+        model.held_right = if f.held.is_none() {
+            0
+        } else if action == 3 {
+            3
+        } else {
+            1
+        };
+        model.aimed_bow = f.held.is_some() && action == 4;
         model.set_angles(Pose {
             limb_swing: f.limb_swing,
             limb_amount: f.limb_amount.min(1.),
@@ -511,22 +533,74 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let light = f.hand_light;
         match &f.hand_item {
             Some(item) => {
-                // doItemUsedTransformations + transformFirstPersonItem
-                m *= Mat4::from_translation(Vec3::new(
-                    -0.4 * sin(sqrt(swing) * PI),
-                    0.2 * sin(sqrt(swing) * PI * 2.),
-                    -0.2 * sin(swing * PI),
-                ));
-                m *= Mat4::from_translation(Vec3::new(0.56, -0.52, -0.71999997))
-                    * Mat4::from_translation(Vec3::new(0., equip * -0.6, 0.))
-                    * Mat4::from_rotation_y(45f32.to_radians());
-                let a = sin(swing * swing * PI);
-                let b = sin(sqrt(swing) * PI);
-                m = m
-                    * Mat4::from_rotation_y((a * -20.).to_radians())
-                    * Mat4::from_rotation_z((b * -20.).to_radians())
-                    * Mat4::from_rotation_x((b * -80.).to_radians())
-                    * Mat4::from_scale(Vec3::splat(0.4));
+                // transformFirstPersonItem
+                let transform = |m: Mat4, swing: f32| {
+                    let a = sin(swing * swing * PI);
+                    let b = sin(sqrt(swing) * PI);
+                    m * Mat4::from_translation(Vec3::new(0.56, -0.52, -0.71999997))
+                        * Mat4::from_translation(Vec3::new(0., equip * -0.6, 0.))
+                        * Mat4::from_rotation_y(45f32.to_radians())
+                        * Mat4::from_rotation_y((a * -20.).to_radians())
+                        * Mat4::from_rotation_z((b * -20.).to_radians())
+                        * Mat4::from_rotation_x((b * -80.).to_radians())
+                        * Mat4::from_scale(Vec3::splat(0.4))
+                };
+                match f.use_anim {
+                    Some(u) if u.action == 1 || u.action == 2 => {
+                        // performDrinking
+                        let f0 = u.left;
+                        let f1 = f0 / u.max;
+                        let mut f2 = (mc_core::math::cos(f0 / 4.0 * PI) * 0.1).abs();
+                        if f1 >= 0.8 {
+                            f2 = 0.0;
+                        }
+                        m *= Mat4::from_translation(Vec3::new(0., f2, 0.));
+                        let f3 = 1.0 - (f1 as f64).powf(27.0) as f32;
+                        m = m
+                            * Mat4::from_translation(Vec3::new(f3 * 0.6, f3 * -0.5, f3 * 0.0))
+                            * Mat4::from_rotation_y((f3 * 90.0).to_radians())
+                            * Mat4::from_rotation_x((f3 * 10.0).to_radians())
+                            * Mat4::from_rotation_z((f3 * 30.0).to_radians());
+                        m = transform(m, 0.);
+                    }
+                    Some(u) if u.action == 3 => {
+                        // doBlockTransformations
+                        m = transform(m, 0.)
+                            * Mat4::from_translation(Vec3::new(-0.5, 0.2, 0.0))
+                            * Mat4::from_rotation_y(30f32.to_radians())
+                            * Mat4::from_rotation_x((-80f32).to_radians())
+                            * Mat4::from_rotation_y(60f32.to_radians());
+                    }
+                    Some(u) if u.action == 4 => {
+                        // doBowTransformations
+                        m = transform(m, 0.)
+                            * Mat4::from_rotation_z((-18f32).to_radians())
+                            * Mat4::from_rotation_y((-12f32).to_radians())
+                            * Mat4::from_rotation_x((-8f32).to_radians())
+                            * Mat4::from_translation(Vec3::new(-0.9, 0.2, 0.0));
+                        let f0 = u.max - u.left;
+                        let mut f1 = f0 / 20.0;
+                        f1 = (f1 * f1 + f1 * 2.0) / 3.0;
+                        if f1 > 1.0 {
+                            f1 = 1.0;
+                        }
+                        if f1 > 0.1 {
+                            let f4 = sin((f0 - 0.1) * 1.3) * (f1 - 0.1);
+                            m *= Mat4::from_translation(Vec3::new(f4 * 0.0, f4 * 0.01, f4 * 0.0));
+                        }
+                        m = m * Mat4::from_translation(Vec3::new(f1 * 0.0, f1 * 0.0, f1 * 0.1)) * Mat4::from_scale(Vec3::new(1.0, 1.0, 1.0 + f1 * 0.2));
+                    }
+                    Some(_) => m = transform(m, 0.),
+                    None => {
+                        // doItemUsedTransformations
+                        m *= Mat4::from_translation(Vec3::new(
+                            -0.4 * sin(sqrt(swing) * PI),
+                            0.2 * sin(sqrt(swing) * PI * 2.),
+                            -0.2 * sin(swing * PI),
+                        ));
+                        m = transform(m, swing);
+                    }
+                }
                 render_item(out, proj, m, item, TransformType::FirstPerson, lights, light);
             }
             None => {
