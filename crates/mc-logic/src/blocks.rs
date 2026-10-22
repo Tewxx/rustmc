@@ -467,6 +467,7 @@ pub fn random_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
         ids::WHEAT | ids::CARROTS | ids::POTATOES => crop_tick(l, pos, state),
         ids::FARMLAND => farmland_tick(l, pos, state),
         ids::LEAVES | ids::LEAVES2 => leaves_tick(l, pos, state),
+        ids::VINE => vine_tick(l, pos, state),
         _ => update_tick(l, pos, state, Rng::World),
     }
 }
@@ -649,5 +650,93 @@ fn leaves_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
     } else {
         l.drop_block_as_item(pos, state, 1.0, 0);
         l.set_air(pos);
+    }
+}
+
+/// `BlockVine.updateTick`
+fn vine_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
+    if l.rng(Rng::World).next_int_bounded(4) != 0 {
+        return;
+    }
+    let mut j = 5;
+    let mut crowded = false;
+    'scan: for x in -4..=4 {
+        for z in -4..=4 {
+            for y in -1..=1 {
+                if l.state(pos.offset(x, y, z)).block().id == ids::VINE {
+                    j -= 1;
+                    if j <= 0 {
+                        crowded = true;
+                        break 'scan;
+                    }
+                }
+            }
+        }
+    }
+    let f = Facing::ALL[l.rng(Rng::World).next_int_bounded(6) as usize];
+    let up = pos.up();
+    let horizontal = !matches!(f, Facing::Up | Facing::Down);
+    if f == Facing::Up && pos.y < 255 && l.is_air(up) {
+        if !crowded {
+            let mut st = state;
+            for h in Facing::PLANE_HORIZONTAL {
+                let drop = l.rng(Rng::World).next_boolean();
+                if drop || !vine_can_place_on(l.state(up.offset_facing(h)).block()) {
+                    st = st.set_bool(vine_prop(h), false);
+                }
+            }
+            if Facing::PLANE_HORIZONTAL.iter().any(|&h| st.get_bool(vine_prop(h))) {
+                l.set_state(up, st, flags::UPDATE);
+            }
+        }
+    } else if horizontal && !state.get_bool(vine_prop(f)) {
+        if !crowded {
+            let p3 = pos.offset_facing(f);
+            let b1 = l.state(p3).block();
+            let def = state.block().default_state;
+            if b1.material == Material::Air {
+                let (f1, f2) = (f.rotate_y(), f.rotate_y_ccw());
+                let (fl1, fl2) = (state.get_bool(vine_prop(f1)), state.get_bool(vine_prop(f2)));
+                let (p4, p5) = (p3.offset_facing(f1), p3.offset_facing(f2));
+                let can = |l: &mut dyn Level, p: BlockPos| vine_can_place_on(l.state(p).block());
+                if fl1 && can(l, p4) {
+                    l.set_state(p3, def.set_bool(vine_prop(f1), true), flags::UPDATE);
+                } else if fl2 && can(l, p5) {
+                    l.set_state(p3, def.set_bool(vine_prop(f2), true), flags::UPDATE);
+                } else if fl1 && l.is_air(p4) && can(l, pos.offset_facing(f1)) {
+                    l.set_state(p4, def.set_bool(vine_prop(f.opposite()), true), flags::UPDATE);
+                } else if fl2 && l.is_air(p5) && can(l, pos.offset_facing(f2)) {
+                    l.set_state(p5, def.set_bool(vine_prop(f.opposite()), true), flags::UPDATE);
+                } else if can(l, p3.up()) {
+                    l.set_state(p3, def, flags::UPDATE);
+                }
+            } else if b1.material.props().opaque && b1.full_cube {
+                l.set_state(pos, state.set_bool(vine_prop(f), true), flags::UPDATE);
+            }
+        }
+    } else if pos.y > 1 {
+        let p2 = pos.down();
+        let s2 = l.state(p2);
+        if s2.block().material == Material::Air {
+            let mut st = state;
+            for h in Facing::PLANE_HORIZONTAL {
+                if l.rng(Rng::World).next_boolean() {
+                    st = st.set_bool(vine_prop(h), false);
+                }
+            }
+            if Facing::PLANE_HORIZONTAL.iter().any(|&h| st.get_bool(vine_prop(h))) {
+                l.set_state(p2, st, flags::UPDATE);
+            }
+        } else if s2.block().id == ids::VINE {
+            let mut st = s2;
+            for h in Facing::PLANE_HORIZONTAL {
+                if l.rng(Rng::World).next_boolean() && state.get_bool(vine_prop(h)) {
+                    st = st.set_bool(vine_prop(h), true);
+                }
+            }
+            if st != s2 {
+                l.set_state(p2, st, flags::UPDATE);
+            }
+        }
     }
 }
