@@ -69,6 +69,8 @@ pub struct AvatarFrame {
     /// `ItemRenderer.itemToRender` (lags behind the selected slot during the equip animation).
     pub hand_item: Option<HeldItem>,
     pub slim: bool,
+    /// Other players (only the body fields are used).
+    pub others: Vec<AvatarFrame>,
 }
 
 #[repr(C)]
@@ -282,6 +284,9 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         if !hand_stage {
             if frame.perspective != 0 {
                 self.body(&mut verts, frame, world_vp, cam.pos);
+            }
+            for o in &frame.others {
+                self.body(&mut verts, o, world_vp, cam.pos);
             }
             for d in &frame.dropped {
                 dropped_item(&mut verts, world_vp, cam.pos, d);

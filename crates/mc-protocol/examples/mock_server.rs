@@ -73,11 +73,37 @@ fn handle(stream: TcpStream) {
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"Welcome to the ","color":"yellow","extra":[{"text":"mock server","bold":true}]}"#.into(), position: 0 }));
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"action bar"}"#.into(), position: 2 }));
                     play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(10, 4, 8), state: 57 }));
+                    // A second player 3 blocks ahead, holding a sword, walking and swinging.
+                    play(PlayClientbound::SpawnPlayer(SpawnPlayer {
+                        entity_id: 7,
+                        uuid: Default::default(),
+                        x: (8.5 * 32.0) as i32,
+                        y: 4 * 32,
+                        z: (11.5 * 32.0) as i32,
+                        yaw: -128,
+                        pitch: 0,
+                        current_item: 276,
+                        metadata: vec![(0, mc_protocol::MetaValue::Byte(0))],
+                    }));
+                    play(PlayClientbound::SpawnObject(SpawnObject { entity_id: 8, kind: 2, x: (7.5 * 32.0) as i32, y: 4 * 32, z: (10.5 * 32.0) as i32, pitch: 0, yaw: 0, data: 1, velocity: (0, 0, 0) }));
+                    play(PlayClientbound::EntityMetadata(EntityMetadata {
+                        entity_id: 8,
+                        metadata: vec![(10, mc_protocol::MetaValue::Item(Some(mc_protocol::Slot { id: 264, count: 3, damage: 0, nbt: None })))],
+                    }));
                     let w2 = w.clone();
                     std::thread::spawn(move || {
                         let mut k = 0;
                         loop {
-                            std::thread::sleep(Duration::from_secs(1));
+                            for t in 0..20 {
+                                std::thread::sleep(Duration::from_millis(50));
+                                let dx = if (k / 2) % 2 == 0 { 2 } else { -2 };
+                                let _ = t;
+                                send(&w2, threshold, &PlayClientbound::EntityRelMove(EntityRelMove { entity_id: 7, dx, dy: 0, dz: 0, on_ground: true }).to_bytes());
+                                send(&w2, threshold, &PlayClientbound::EntityHeadLook(EntityHeadLook { entity_id: 7, yaw: -128 + 20 }).to_bytes());
+                                if t % 6 == 0 {
+                                    send(&w2, threshold, &PlayClientbound::AnimationS(AnimationS { entity_id: 7, animation: 0 }).to_bytes());
+                                }
+                            }
                             k += 1;
                             send(&w2, threshold, &PlayClientbound::KeepAliveS(KeepAliveS { key: k }).to_bytes());
                         }

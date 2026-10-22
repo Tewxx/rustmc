@@ -8,6 +8,7 @@
 
 mod bench;
 mod chat;
+mod entities;
 mod net;
 mod commands;
 mod icon;
@@ -126,6 +127,16 @@ fn read_spawn(world: &Path) -> Option<(i32, i32)> {
 }
 
 /// `String.hashCode`, used for non-numeric seeds like vanilla's world creation screen.
+/// Entity flags (index 0): sneaking 0x02, sprinting 0x08.
+fn apply_meta(r: &mut entities::Remote, meta: &mc_protocol::Metadata) {
+    for (i, v) in meta {
+        if let (0, mc_protocol::MetaValue::Byte(b)) = (i, v) {
+            r.sneaking = b & 2 != 0;
+            r.sprinting = b & 8 != 0;
+        }
+    }
+}
+
 fn java_string_hash(s: &str) -> i32 {
     s.encode_utf16().fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(c as i32))
 }
@@ -308,6 +319,11 @@ struct App {
     /// The server connection when playing multiplayer.
     net: Option<net::Net>,
     name: String,
+    remote: entities::Entities,
+    /// `objectMouseOver` when it is an entity.
+    pointed_entity: Option<i32>,
+    /// Item entities announced by `SpawnObject`, waiting for their stack: (pos, velocity).
+    pending_items: std::collections::HashMap<i32, (mc_core::Vec3, mc_core::Vec3)>,
 }
 
 impl App {
@@ -374,6 +390,9 @@ impl App {
             bench: None,
             net: None,
             name: "Player".into(),
+            remote: entities::Entities::default(),
+            pointed_entity: None,
+            pending_items: Default::default(),
         }
     }
     fn scaled(&self) -> Scaled {
@@ -574,7 +593,12 @@ impl App {
             if let Some(s) = self.ui.inventory[slot] {
                 let n = if whole { s.count } else { 1 };
                 self.ui.inventory[slot] = (s.count > n).then_some(mc_gui::ItemStack { count: s.count - n, ..s });
-                self.throw_stack(mc_gui::ItemStack { count: n, ..s });
+                if self.net.is_some() {
+                    let status = if whole { mc_protocol::packets::DiggingStatus::DropAllItems } else { mc_protocol::packets::DiggingStatus::DropItem };
+                    self.send_dig(status, BlockPos::new(0, 0, 0), Facing::Down);
+                } else {
+                    self.throw_stack(mc_gui::ItemStack { count: n, ..s });
+                }
             }
         }
         for s in std::mem::take(&mut self.ui.drops) {
@@ -603,6 +627,7 @@ impl App {
             }
         }
         self.tick_items();
+        self.remote.tick();
         if self.net.is_none() && self.entity.pos.y < -64. {
             self.entity.teleport(self.spawn);
         }
@@ -713,6 +738,109 @@ impl App {
                     }
                 }
                 C::SpawnPosition(sp) => self.info.spawn = sp.pos,
+                C::SpawnPlayer(sp) => {
+                    let mut r = entities::Remote::new(sp.entity_id, entities::Kind::Player, sp.x, sp.y, sp.z, sp.yaw, sp.pitch);
+                    r.held = (sp.current_item > 0).then(|| self.catalogue.index_of(sp.current_item as u16, 0)).flatten().map(|i| (i, 1));
+                    apply_meta(&mut r, &sp.metadata);
+                    self.remote.map.insert(sp.entity_id, r);
+                }
+                C::SpawnMob(m) => {
+                    let mut r = entities::Remote::new(m.entity_id, entities::Kind::Mob(m.kind), m.x, m.y, m.z, m.yaw, m.pitch);
+                    r.head_yaw = entities::angle(m.head_pitch);
+                    self.remote.map.insert(m.entity_id, r);
+                }
+                C::SpawnObject(o) => {
+                    let r = entities::Remote::new(o.entity_id, entities::Kind::Object(o.kind), o.x, o.y, o.z, o.yaw, o.pitch);
+                    if o.kind == 2 {
+                        let v = mc_core::Vec3::new(o.velocity.0 as f64 / 8000., o.velocity.1 as f64 / 8000., o.velocity.2 as f64 / 8000.);
+                        self.pending_items.insert(o.entity_id, (r.pos, v));
+                    }
+                    self.remote.map.insert(o.entity_id, r);
+                }
+                C::EntityMetadata(m) => {
+                    if let Some((pos, v)) = self.pending_items.remove(&m.entity_id) {
+                        let stack = m.metadata.iter().find_map(|(i, v)| match (i, v) {
+                            (10, mc_protocol::MetaValue::Item(s)) => net::slot_stack(&self.catalogue, s),
+                            _ => None,
+                        });
+                        if let Some(s) = stack {
+                            let mut it = mc_entity::item::ItemEntity::new(m.entity_id as u32, pos, (s.item, s.count), &mut self.rand);
+                            it.motion = v;
+                            it.pickup_delay = 32767;
+                            self.items.push(it);
+                        } else {
+                            self.pending_items.insert(m.entity_id, (pos, v));
+                        }
+                    }
+                    if let Some(r) = self.remote.map.get_mut(&m.entity_id) {
+                        apply_meta(r, &m.metadata);
+                    }
+                }
+                C::EntityEquipment(e) => {
+                    if e.slot == 0 {
+                        let held = net::slot_stack(&self.catalogue, &e.item).map(|s| (s.item, s.count));
+                        if let Some(r) = self.remote.map.get_mut(&e.entity_id) {
+                            r.held = held;
+                        }
+                    }
+                }
+                C::EntityVelocity(v) => {
+                    let m = mc_core::Vec3::new(v.vx as f64 / 8000., v.vy as f64 / 8000., v.vz as f64 / 8000.);
+                    if v.entity_id == n.entity_id {
+                        // Knockback: Entity.setVelocity.
+                        self.entity.motion = m;
+                    } else if let Some(it) = self.items.iter_mut().find(|i| i.id == v.entity_id as u32) {
+                        it.motion = m;
+                    }
+                }
+                C::Explosion(x) => {
+                    let (a, b, c) = x.player_motion;
+                    self.entity.motion.x += a as f64;
+                    self.entity.motion.y += b as f64;
+                    self.entity.motion.z += c as f64;
+                    let base = BlockPos::new(x.x as i32, x.y as i32, x.z as i32);
+                    for (dx, dy, dz) in x.records {
+                        let p = BlockPos::new(base.x + dx as i32, base.y + dy as i32, base.z + dz as i32);
+                        self.world.set_block_state(p, mc_data::StateId::AIR);
+                        edits.push(p);
+                    }
+                }
+                C::DestroyEntities(d) => {
+                    for id in d.ids {
+                        self.remote.map.remove(&id);
+                        self.pending_items.remove(&id);
+                        self.items.retain(|i| i.id != id as u32);
+                    }
+                }
+                C::CollectItem(c) => {
+                    self.items.retain(|i| i.id != c.collected_id as u32);
+                    self.remote.map.remove(&c.collected_id);
+                }
+                C::EntityRelMove(m) => self.remote_move(m.entity_id, (m.dx as i32, m.dy as i32, m.dz as i32), None, Some(m.on_ground), true),
+                C::EntityLookMove(m) => self.remote_move(m.entity_id, (m.dx as i32, m.dy as i32, m.dz as i32), Some((m.yaw, m.pitch)), Some(m.on_ground), true),
+                C::EntityLook(m) => self.remote_move(m.entity_id, (0, 0, 0), Some((m.yaw, m.pitch)), Some(m.on_ground), true),
+                C::EntityTeleport(t) => self.remote_move(t.entity_id, (t.x, t.y, t.z), Some((t.yaw, t.pitch)), Some(t.on_ground), false),
+                C::EntityHeadLook(h) => {
+                    if let Some(r) = self.remote.map.get_mut(&h.entity_id) {
+                        r.head_yaw = entities::angle(h.yaw);
+                    }
+                }
+                C::AnimationS(a) => {
+                    if let Some(r) = self.remote.map.get_mut(&a.entity_id) {
+                        match a.animation {
+                            0 => r.swing_arm(),
+                            1 => r.hurt_time = 10,
+                            _ => {}
+                        }
+                    }
+                }
+                C::EntityStatus(s) => {
+                    if s.status == 2 {
+                        if let Some(r) = self.remote.map.get_mut(&s.entity_id) {
+                            r.hurt_time = 10;
+                        }
+                    }
+                }
                 C::SetExperience(x) => {
                     self.player.experience = x.bar;
                     self.player.level = x.level;
@@ -800,6 +928,24 @@ impl App {
         self.refresh_edits(&[]);
     }
 
+    /// `handleEntityMovement` / `handleEntityTeleport`: relative (×32 fixed point) or absolute.
+    fn remote_move(&mut self, id: i32, d: (i32, i32, i32), look: Option<(i8, i8)>, on_ground: Option<bool>, relative: bool) {
+        if let Some(it) = self.items.iter_mut().find(|i| i.id == id as u32) {
+            // Entity.setPositionAndRotation2 for items: snap to the server position.
+            let base = self.remote.map.get(&id).map(|r| r.server).unwrap_or((0, 0, 0));
+            let s = if relative { (base.0 + d.0, base.1 + d.1, base.2 + d.2) } else { d };
+            it.pos = mc_core::Vec3::new(s.0 as f64 / 32., s.1 as f64 / 32., s.2 as f64 / 32.);
+            it.bb = mc_core::Aabb::new(it.pos.x - 0.125, it.pos.y, it.pos.z - 0.125, it.pos.x + 0.125, it.pos.y + 0.25, it.pos.z + 0.125);
+        }
+        let Some(r) = self.remote.map.get_mut(&id) else { return };
+        r.server = if relative { (r.server.0 + d.0, r.server.1 + d.1, r.server.2 + d.2) } else { d };
+        let (yaw, pitch) = look.map_or((r.yaw, r.pitch), |(y, p)| (entities::angle(y), entities::angle(p)));
+        r.move_to(yaw, pitch);
+        if let Some(g) = on_ground {
+            r.on_ground = g;
+        }
+    }
+
     /// `ContainerPlayer` slot numbers to the client inventory.
     fn set_container_slot(&mut self, slot: usize, stack: Option<mc_gui::ItemStack>) {
         match slot {
@@ -867,6 +1013,26 @@ impl App {
         }
     }
 
+    /// `PlayerControllerMP.attackEntity` and the client half of
+    /// `EntityPlayer.attackTargetEntityWithCurrentItem`.
+    fn attack_entity(&mut self, id: i32) {
+        let sel = self.player.selected_slot as i32;
+        if let Some(n) = &mut self.net {
+            n.sync_current_item(sel);
+        }
+        self.send(mc_protocol::packets::PlayServerbound::UseEntity(mc_protocol::packets::UseEntity { entity_id: id, action: mc_protocol::packets::UseEntityAction::Attack, hit: None }));
+        if self.entity.game_type == level::GameType::Spectator {
+            return;
+        }
+        // EntityOtherPlayerMP.attackEntityFrom returns true, so a sprint hit's knockback slows us
+        // and ends the sprint; other living entities return false on the client.
+        if self.remote.map.get(&id).is_some_and(|e| e.kind == entities::Kind::Player) && self.entity.sprinting {
+            self.entity.motion.x *= 0.6;
+            self.entity.motion.z *= 0.6;
+            self.entity.set_sprinting(false);
+        }
+    }
+
     /// `EntityPlayerSP.swingItem`: every call also sends C0A.
     fn swing(&mut self) {
         self.entity.swing_item();
@@ -928,7 +1094,7 @@ impl App {
         }
         let reach = self.entity.bb.expand(1.0, 0.5, 1.0);
         for it in &mut items {
-            if !it.dead && !self.entity.dead && it.pickup_delay == 0 && reach.intersects_with(&it.bb) {
+            if self.net.is_none() && !it.dead && !self.entity.dead && it.pickup_delay == 0 && reach.intersects_with(&it.bb) {
                 let left = self.add_to_inventory(it.stack.0, it.stack.1);
                 if left == 0 {
                     it.dead = true;
@@ -1147,6 +1313,20 @@ impl App {
             dir,
             if self.entity.creative { 5. } else { 4.5 },
         );
+        // getMouseOver: entities within 3 blocks (6 in creative) closer than the block hit.
+        self.pointed_entity = None;
+        if self.net.is_some() {
+            let e = mc_core::Vec3::new(eye.x as f64, eye.y as f64, eye.z as f64);
+            let reach = if self.entity.creative { 6.0 } else { 3.0 };
+            let block_d = self.target.map_or(reach, |t| ((t.hit.x - e.x).powi(2) + (t.hit.y - e.y).powi(2) + (t.hit.z - e.z).powi(2)).sqrt());
+            let look = mc_core::Vec3::new(dir.x as f64, dir.y as f64, dir.z as f64);
+            if let Some((id, d)) = self.remote.ray(e, look, reach) {
+                if d < block_d || self.target.is_none() {
+                    self.pointed_entity = Some(id);
+                    self.target = None;
+                }
+            }
+        }
     }
 
     /// Lightmap color at the player's eyes (`getBrightnessForRender`).
@@ -1305,12 +1485,53 @@ impl App {
             slim: false,
             dropped,
             damage: self.damage_quads(),
+            others: self.other_players(pt),
         };
         if let Some(r) = &mut self.renderer {
             r.sky = sky;
             r.avatar_frame = Some(frame);
         }
     }
+    fn other_players(&self, pt: f32) -> Vec<mc_render::avatar::AvatarFrame> {
+        let cam = self.entity.interpolated(pt);
+        self.remote
+            .map
+            .values()
+            .filter(|r| r.kind == entities::Kind::Player)
+            .filter_map(|r| {
+                let p = r.interpolated(pt);
+                let d2 = (p.x - cam.x as f64).powi(2) + (p.z - cam.z as f64).powi(2);
+                if d2 > 64.0 * 64.0 * 4.0 {
+                    return None;
+                }
+                let (sky, block) = self.world.light(p.x.floor() as i32, (p.y + 1.62).floor() as i32, p.z.floor() as i32);
+                let lerp = |a: f32, b: f32| a + (b - a) * pt;
+                let swing = {
+                    let mut f = r.swing - r.prev_swing;
+                    if f < 0. {
+                        f += 1.;
+                    }
+                    r.prev_swing + f * pt
+                };
+                Some(mc_render::avatar::AvatarFrame {
+                    pos: Vec3::new(p.x as f32, p.y as f32, p.z as f32),
+                    body_yaw: lerp(r.prev_body_yaw, r.body_yaw),
+                    head_yaw: lerp(r.prev_head_yaw, r.head_yaw),
+                    pitch: lerp(r.prev_pitch, r.pitch),
+                    limb_swing: r.limb_swing - r.limb_amount * (1. - pt),
+                    limb_amount: lerp(r.prev_limb_amount, r.limb_amount).min(1.),
+                    age: r.ticks_existed as f32 + pt,
+                    swing,
+                    sneaking: r.sneaking,
+                    perspective: 1,
+                    held: r.held.and_then(|(i, _)| self.held_item(i)),
+                    light: self.lightmap_color(sky, block),
+                    ..Default::default()
+                })
+            })
+            .collect()
+    }
+
     fn interact(&mut self, button: MouseButton) {
         if self.entity.dead {
             return;
@@ -1321,6 +1542,10 @@ impl App {
                 return;
             }
             self.swing();
+            if let Some(id) = self.pointed_entity {
+                self.attack_entity(id);
+                return;
+            }
             match self.target {
                 None => {
                     if !self.entity.creative {

@@ -283,7 +283,7 @@ impl PlayerEntity {
         is_material_in_bb(w, &self.bb.expand(-0.10000000149011612, -0.4000000059604645, -0.10000000149011612), Material::Lava)
     }
 
-    fn set_sprinting(&mut self, v: bool) {
+    pub fn set_sprinting(&mut self, v: bool) {
         self.sprinting = v;
     }
 
