@@ -204,6 +204,24 @@ fn load_world(args: &Args) -> (World, (i32, i32), i64) {
     (world, center, seed)
 }
 
+/// Builds section meshes on all cores (`ChunkRenderDispatcher`'s worker threads), each worker
+/// with its own geometry scratch; results come back in job order.
+fn mesh_parallel(world: &World, models: &mc_render::models::BlockModels, jobs: &[(i32, i32, i32)], smooth: bool, fancy: bool) -> Vec<((i32, i32, i32), mesh::ChunkMesh)> {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(jobs.len().max(1));
+    let build = |part: &[(i32, i32, i32)]| {
+        let mut g = BlockGeometry::new();
+        part.iter().map(|&(x, sy, z)| ((x, sy, z), mesh::build_section(world, models, x, sy, z, smooth, fancy, &mut g))).collect::<Vec<_>>()
+    };
+    if threads <= 1 {
+        return build(jobs);
+    }
+    let size = jobs.len().div_ceil(threads);
+    std::thread::scope(|sc| {
+        let handles: Vec<_> = jobs.chunks(size).map(|part| sc.spawn(move || build(part))).collect();
+        handles.into_iter().flat_map(|h| h.join().unwrap()).collect()
+    })
+}
+
 fn find_player_spawn(world: &World, center: (i32, i32)) -> mc_core::Vec3 {
     let mut candidates = Vec::new();
     for x in center.0 - 16..=center.0 + 16 {
@@ -543,14 +561,11 @@ impl App {
     fn remesh(&mut self, smooth: bool) {
         let Some(r) = &mut self.renderer else { return };
         let t = Instant::now();
-        let keys: Vec<_> = self.world.chunks.keys().copied().collect();
+        let jobs: Vec<_> = self.world.chunks.keys().flat_map(|&(cx, cz)| (0..16).map(move |sy| (cx, sy, cz))).collect();
         let mut quads = 0;
-        for (cx, cz) in keys {
-            for sy in 0..16 {
-                let m = mesh::build_section(&self.world, &self.models, cx, sy, cz, smooth, self.ui.settings.fancy_graphics, &mut self.geometry);
-                quads += m.indices.len() / 6;
-                r.upload_section(cx, sy, cz, &m);
-            }
+        for ((cx, sy, cz), m) in mesh_parallel(&self.world, &self.models, &jobs, smooth, self.ui.settings.fancy_graphics) {
+            quads += m.indices.len() / 6;
+            r.upload_section(cx, sy, cz, &m);
         }
         println!(
             "meshed {} chunks ({quads} quads) in {:.1} ms",
@@ -1576,20 +1591,10 @@ impl App {
         let Some(r) = &mut self.renderer else {
             return;
         };
-        for (x, sy, z) in dirty {
-            if self.world.chunks.contains_key(&(x, z)) && (0..16).contains(&sy) {
-                let m = mesh::build_section(
-                    &self.world,
-                    &self.models,
-                    x,
-                    sy,
-                    z,
-                    self.ui.settings.ambient_occlusion != 0,
-                    self.ui.settings.fancy_graphics,
-                    &mut self.geometry,
-                );
-                r.upload_section(x, sy, z, &m);
-            }
+        let jobs: Vec<_> = dirty.into_iter().filter(|&(x, sy, z)| self.world.chunks.contains_key(&(x, z)) && (0..16).contains(&sy)).collect();
+        let smooth = self.ui.settings.ambient_occlusion != 0;
+        for ((x, sy, z), m) in mesh_parallel(&self.world, &self.models, &jobs, smooth, self.ui.settings.fancy_graphics) {
+            r.upload_section(x, sy, z, &m);
         }
         if std::env::var_os("RUSTMC_TIMING").is_some() {
             eprintln!("edit: light {:?}, mesh {n} sections {:?}", t1 - t0, t1.elapsed());
