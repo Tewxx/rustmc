@@ -24,9 +24,10 @@ Commands execute locally in singleplayer: `/help`, `/gamemode creative`, `/gamem
 `/setblock ~ ~-1 ~ stone`, `/fill x1 y1 z1 x2 y2 z2 stone`, `/clear`, `/kill`.
 Only loaded chunks and height 0–255 can be edited. `/kill` opens the death/respawn screen.
 
-Multiplayer is the current focus. The client handles every play-state packet except particles
-(`S2A`); see `HANDOFF.md` for the remaining renderers (signs, skulls, chests, maps, world
-border, lightning, minecarts/boats) and the movement/anti-cheat audit. Server resource packs
+Multiplayer is the current focus. Every play-state packet is handled: particles (`S2A`)
+simulate the vanilla `EntityFX` types, and see `HANDOFF.md` for the remaining renderers
+(signs, skulls, chests, maps, world border, lightning, minecarts/boats) and the
+movement/anti-cheat audit. Server resource packs
 work: the first offer shows the vanilla Yes/No prompt, accepted packs download with SHA-1
 verification, apply immediately (models, atlases, font, GUI and a full world remesh), and are
 cached and re-applied on later joins. `--pack-mode enabled|disabled|prompt` overrides the

@@ -288,6 +288,68 @@ fn handle(stream: TcpStream) {
                         // Another player's destroy-stage overlay on the grass block ahead.
                         play(PlayClientbound::BlockBreakAnim(BlockBreakAnim { breaker_id: 7, pos: BlockPos::new(8, 3, 12), stage: 6 }));
                     }
+                    if std::env::var_os("MOCK_PARTICLES").is_some() {
+                        play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 5.2, z: 11.5, yaw: 0.0, pitch: 2.0, flags: 0 }));
+                        // Keep a representative particle of every ported type alive for the
+                        // screenshot: the client's 40-tick joining loop would outlive the short
+                        // ones, so a background thread keeps re-emitting the batch.
+                        let w3 = w.clone();
+                        std::thread::spawn(move || loop {
+                            let fx: [(i32, f32, f32, f32, Vec<i32>); 35] = [
+                                (0, 4.5, 6.0, 13.5, vec![]),
+                                (1, 6.0, 6.0, 13.5, vec![]),
+                                (2, 7.5, 6.0, 13.5, vec![]),
+                                (9, 9.0, 6.0, 13.5, vec![]),
+                                (10, 10.5, 6.0, 13.5, vec![]),
+                                (11, 12.0, 6.0, 13.5, vec![]),
+                                (12, 4.5, 7.5, 13.5, vec![]),
+                                (13, 6.0, 7.5, 13.5, vec![]),
+                                (14, 7.5, 7.5, 13.5, vec![]),
+                                (15, 9.0, 7.5, 13.5, vec![1, 0, 0]),
+                                (17, 10.5, 7.5, 13.5, vec![]),
+                                (26, 12.0, 7.5, 13.5, vec![]),
+                                (27, 4.5, 5.0, 15.0, vec![]),
+                                (30, 6.0, 5.0, 15.0, vec![]),
+                                (34, 7.5, 5.0, 15.0, vec![]),
+                                (20, 9.0, 5.0, 15.0, vec![]),
+                                (21, 10.5, 5.0, 15.0, vec![]),
+                                (22, 12.0, 5.0, 15.0, vec![]),
+                                (23, 4.5, 6.5, 15.0, vec![]),
+                                (24, 6.0, 6.5, 15.0, vec![]),
+                                (25, 7.5, 6.5, 15.0, vec![]),
+                                (3, 9.0, 6.5, 15.0, vec![]),
+                                (4, 10.5, 6.5, 15.0, vec![]),
+                                (5, 12.0, 6.5, 15.0, vec![]),
+                                (29, 6.0, 7.5, 16.5, vec![]),
+                                (39, 7.5, 7.5, 16.5, vec![]),
+                                (6, 4.5, 8.0, 14.5, vec![]),
+                                (7, 6.0, 8.0, 14.5, vec![]),
+                                (8, 7.5, 8.0, 14.5, vec![]),
+                                (18, 9.0, 8.0, 14.5, vec![]),
+                                (19, 10.5, 8.0, 14.5, vec![]),
+                                (31, 12.0, 8.0, 14.5, vec![]),
+                                (32, 4.5, 8.0, 16.0, vec![]),
+                                (33, 6.0, 8.0, 16.0, vec![]),
+                                (35, 7.5, 8.0, 16.0, vec![]),
+                            ];
+                            for (id, x, y, z, args) in fx {
+                                let p = PlayClientbound::Particles(Particles {
+                                    particle_id: id,
+                                    long_distance: true,
+                                    pos: (x, y, z),
+                                    offset: (0.2, 0.2, 0.2),
+                                    speed: 0.02,
+                                    count: 6,
+                                    args,
+                                });
+                                send(&w3, threshold, &p.to_bytes());
+                            }
+                            // Large explosion's scale argument arrives through `speed * offset.x`.
+                            let p = PlayClientbound::Particles(Particles { particle_id: 1, long_distance: true, pos: (10.5, 7.0, 15.0), offset: (1.0, 0.0, 0.0), speed: 0.1, count: 0, args: vec![] });
+                            send(&w3, threshold, &p.to_bytes());
+                            std::thread::sleep(Duration::from_millis(250));
+                        });
+                    }
                     if let Ok(url) = std::env::var("MOCK_RPACK") {
                         let hash = std::env::var("MOCK_RPACK_HASH").unwrap_or_default();
                         play(PlayClientbound::ResourcePackSend(ResourcePackSend { url, hash }));

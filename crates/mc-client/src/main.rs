@@ -13,6 +13,7 @@ mod entities;
 mod music;
 mod net;
 mod pack;
+mod particles;
 mod commands;
 mod container;
 mod icon;
@@ -407,6 +408,10 @@ struct App {
     items: Vec<mc_entity::item::ItemEntity>,
     next_entity_id: u32,
     rand: mc_core::random::JavaRandom,
+    /// `WorldClient.effectRenderer`: server particles (`S2APacketParticles`).
+    particles: particles::Particles,
+    /// `NetHandlerPlayClient.avRandomizer`, separate from `world.rand` like vanilla.
+    av_rand: mc_core::random::JavaRandom,
     /// Integrated server tick state (singleplayer).
     server: server::Server,
     /// Q presses since the last tick (with Ctrl held: whole stack).
@@ -542,6 +547,8 @@ impl App {
             items: Vec::new(),
             next_entity_id: 1,
             rand: mc_core::random::JavaRandom::new(0x5DEECE66D),
+            particles: particles::Particles::default(),
+            av_rand: mc_core::random::JavaRandom::new(0x2545F4914F6CDD1D),
             server: server::Server::default(),
             drop_presses: Vec::new(),
             info: level::WorldInfo::new(0, BlockPos::new(spawn.x.floor() as i32, spawn.y.floor() as i32, spawn.z.floor() as i32)),
@@ -916,6 +923,8 @@ impl App {
         if self.net.is_none() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
             self.tick_item_in_use();
             self.entity.tick(&self.world, &mut self.geometry, keys);
+            let player = Vec3::new(self.entity.pos.x as f32, self.entity.pos.y as f32, self.entity.pos.z as f32);
+            self.particles.tick(&self.world, &mut self.geometry, &mut self.rand, player);
             // EntityLivingBase.heal from regeneration (the server corrects it with S06).
             // onDeathUpdate: deathTime stops at 20 when the dead player leaves the entity list.
             if self.player.health <= 0. && self.net.is_some() {
@@ -1029,6 +1038,7 @@ impl App {
                 C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
+                    self.particles.clear();
                     // A new WorldClient brings a fresh Scoreboard; the player info map stays.
                     let players = std::mem::take(&mut self.scoreboard.players);
                     self.scoreboard = scoreboard::Scoreboard { players, ..Default::default() };
@@ -1631,6 +1641,7 @@ impl App {
                 C::ResourcePackSend(p) => {
                     self.handle_resource_pack(p.url, p.hash);
                 }
+                C::Particles(p) => self.spawn_particles(p),
                 C::SetCompression(_) => {
                     // A login-state packet; a play-state copy is ignored like vanilla's local
                     // channel check.
@@ -1788,6 +1799,41 @@ impl App {
                 self.send_pack_status(hash, R::FailedDownload);
             }
         }
+    }
+
+    /// `NetHandlerPlayClient.handleParticles`: a single particle with the packet velocity, or
+    /// `count` particles scattered with Gaussian offsets and speeds (`avRandomizer`).
+    fn spawn_particles(&mut self, p: mc_protocol::packets::Particles) {
+        let (x, y, z) = (p.pos.0 as f64, p.pos.1 as f64, p.pos.2 as f64);
+        let (ox, oy, oz) = (p.offset.0 as f64, p.offset.1 as f64, p.offset.2 as f64);
+        let speed = p.speed as f64;
+        if p.count == 0 {
+            let d0 = speed * ox;
+            let d2 = speed * oy;
+            let d4 = speed * oz;
+            self.particles.spawn(p.particle_id, x, y, z, d0, d2, d4, &p.args, &mut self.rand, &self.models);
+            return;
+        }
+        for _ in 0..p.count {
+            let d1 = self.av_rand.next_gaussian() * ox;
+            let d3 = self.av_rand.next_gaussian() * oy;
+            let d5 = self.av_rand.next_gaussian() * oz;
+            let d6 = self.av_rand.next_gaussian() * speed;
+            let d7 = self.av_rand.next_gaussian() * speed;
+            let d8 = self.av_rand.next_gaussian() * speed;
+            self.particles.spawn(p.particle_id, x + d1, y + d3, z + d5, d6, d7, d8, &p.args, &mut self.rand, &self.models);
+        }
+    }
+
+    /// `EffectRenderer.renderParticles`: camera-facing quads for the current frame.
+    fn particle_quads(&mut self, pt: f32) -> Vec<mc_render::avatar::ParticleQuad> {
+        let (pos, yaw, pitch) = (self.camera.pos, self.camera.yaw, self.camera.pitch);
+        let table = &self.lightmap;
+        let color = |sky: u8, block: u8| {
+            let i = (sky as usize * 16 + block as usize) * 4;
+            [table[i] as f32 / 255., table[i + 1] as f32 / 255., table[i + 2] as f32 / 255.]
+        };
+        self.particles.quads(pos, yaw, pitch, pt, &self.world, color)
     }
 
     fn apply_resource_pack(&mut self, path: &Path) -> Result<(), String> {
@@ -2827,6 +2873,7 @@ impl App {
             billboards: self.billboards(pt),
             fixed_items,
             world_quads,
+            particles: self.particle_quads(pt),
             armor: std::array::from_fn(|i| self.ui.armor[3 - i].and_then(|s| tooltip::armor_piece(&self.catalogue, &s))),
             use_anim: self.item_in_use.filter(|_| self.item_in_use_count > 0).map(|s| {
                 let (a, max) = item_use::action(self.catalogue.items[s.item].id);

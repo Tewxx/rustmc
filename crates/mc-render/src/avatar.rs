@@ -75,6 +75,29 @@ pub struct FixedItem {
     pub light: [f32; 3],
 }
 
+/// Which atlas a [`ParticleQuad`] samples.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParticleTex {
+    /// `particles.png` cells (`EffectRenderer` layer 0).
+    Misc,
+    /// `textures/entity/explosion.png` frames (`EntityLargeExplodeFX`).
+    Explosion,
+    /// The block/item atlas (breaking particles, barrier), UVs already in atlas space.
+    Block,
+}
+
+/// One `EntityFX.renderParticle` quad: world-space corners, source-space UVs, tint and
+/// lightmap colour. The client sorts these back-to-front before uploading.
+#[derive(Clone, Copy, Debug)]
+pub struct ParticleQuad {
+    pub pos: [Vec3; 4],
+    /// `Misc`/`Explosion` UVs are 0–1 of their own texture; `Block` UVs are atlas space.
+    pub uv: [[f32; 2]; 4],
+    pub color: [f32; 4],
+    pub light: [f32; 3],
+    pub tex: ParticleTex,
+}
+
 /// An item being used (`getItemInUseCount() > 0`).
 #[derive(Clone, Copy, Debug)]
 pub struct UseAnim {
@@ -139,6 +162,8 @@ pub struct AvatarFrame {
     pub fixed_items: Vec<FixedItem>,
     /// Block-model quads in world space (TNT, falling blocks, item frames).
     pub world_quads: Vec<WorldQuad>,
+    /// `EffectRenderer.renderParticles` billboards.
+    pub particles: Vec<ParticleQuad>,
 }
 
 /// Physical-pixel placement of an inventory player preview.
@@ -248,9 +273,11 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(v.kind==7u){{c*=textureSampleLevel(glint,samp,fract(v.uv),0.0);}}
  if(v.kind==8u){{c*=textureSampleLevel(mobs,samp,v.uv,0.0);}}
  if(v.kind==9u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);}}
+ if(v.kind==10u){{c*=textureSampleLevel(mobs,samp,v.uv,0.0);}}
  c=vec4<f32>(mix(c.rgb,v.overlay.rgb,v.overlay.a),c.a);
  if(v.kind==4u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);c=vec4<f32>(min(c.rgb*2.0,vec3<f32>(1.0)),c.a);}}
- if(v.kind!=3u && c.a<=0.1){{discard;}}
+ if(v.kind!=3u && v.kind!=10u && c.a<=0.1){{discard;}}
+ if(v.kind==10u && c.a<=0.003921569){{discard;}}
  if(SRGB){{c=vec4<f32>(select(c.rgb/12.92,pow((c.rgb+vec3<f32>(0.055))/1.055,vec3<f32>(2.4)),c.rgb>vec3<f32>(0.04045)),c.a);}}
  return c;
 }}
@@ -574,6 +601,26 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 let clip = q.pos.map(|p| world_vp * (p - cam.pos).extend(1.));
                 for i in [0, 1, 2, 0, 2, 3] {
                     verts.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: [q.color[0], q.color[1], q.color[2], 1.], kind: 9., overlay: [0.; 4] });
+                }
+            }
+            for q in &frame.particles {
+                let (kind, uv) = match q.tex {
+                    ParticleTex::Block => (9., q.uv),
+                    ParticleTex::Misc | ParticleTex::Explosion => {
+                        let key = if q.tex == ParticleTex::Misc { "particles" } else { "explosion" };
+                        let r = self.mob_atlas.get(key).copied().unwrap_or([0., 0., 0., 0.]);
+                        (10., q.uv.map(|u| [r[0] + u[0] * r[2], r[1] + u[1] * r[3]]))
+                    }
+                };
+                let clip = q.pos.map(|p| world_vp * (p - cam.pos).extend(1.));
+                for i in [0, 1, 2, 0, 2, 3] {
+                    verts.push(Vertex {
+                        clip: clip[i].to_array(),
+                        uv: uv[i],
+                        color: [q.color[0] * q.light[0], q.color[1] * q.light[1], q.color[2] * q.light[2], q.color[3]],
+                        kind,
+                        overlay: [0.; 4],
+                    });
                 }
             }
             for d in &frame.dropped {

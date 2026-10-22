@@ -58,33 +58,59 @@ Commits cbf3425 … 5bc480a. New since the table above:
   (merged with the local one), armour-stand/mob name tags (custom name, always-visible flag,
   rider rule, child/height offsets), spectator camera (`S43`), creative-flight C13,
   server-owned chat tab completion (C14 + S3A).
-- **Play packet coverage:** every clientbound packet in the `PlayClientbound` table is handled
-  except `S2A Particles`; every serverbound packet except `EnchantItem`, `UpdateSignC`,
-  `SteerVehicle`, `Spectate` (and the sub-packets of movement already sent by `net.rs`).
+- **Play packet coverage:** every packet in the `PlayClientbound` table is handled (particles
+  below); every serverbound packet except `EnchantItem`, `UpdateSignC`, `SteerVehicle`,
+  `Spectate` (and the sub-packets of movement already sent by `net.rs`).
   Packet ids, fields and vanilla handler behaviour are in `mc-client/src/main.rs::process_net`.
 - **State-only handlers** (collected but no renderer yet): world border, maps, signs, tile
   entities (`S35`), statistics, server brand, lightning (sound + lifetime only), beds.
 - Tests: art table, XP texture/colour thresholds, object sizes, TNT fuse, metadata accessors,
-  world-border lerp/contains, SHA-1 vectors, pack mode/store/cache and `level://` resolution.
-  `MOCK_OBJECTS` and `MOCK_BREAK` scenarios with screenshots `shots/objects3.png` and
-  `shots/break.png`.
-- **Server resource packs (`S48`, next log entry below):** prompt/download/status/apply is in
-  place and verified.
+  world-border lerp/contains, SHA-1 vectors, pack mode/store/cache and `level://` resolution,
+  particle camera basis/UVs, smoke animation, large-explosion frames and loud-explosion
+  spawning. `MOCK_OBJECTS`, `MOCK_BREAK` and `MOCK_PARTICLES` scenarios with screenshots
+  `shots/objects3.png`, `shots/break.png`, `shots/particles3.png`.
+- **Server resource packs (`S48`)** and **particles (`S2A`)** are in place and verified.
 
 **Next for multiplayer, in order:**
-1. `S2A Particles`: `EnumParticleTypes`, `EntityFX` physics and the 4 render layers (crit,
-   flame, potion, redstone, hearts, explosions…). Without it PvP/potion feedback is missing.
-2. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
+1. Tile-entity rendering: signs (`S33`), skulls/banners/beacons (`S35`), chests (`S24`), and
    the sign editor (`S36`/C12).
-3. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
+2. Maps (`S34`) with item-frame and held-map rendering; world-border forcefield; lightning
    bolts; minecart/boat models; wither skull; armour layers on stands; TNT flash (`f2` alpha
    pass); leash rendering.
+3. Remaining particle types: footstep (28), item crack (36), block crack/dust (37/38), mob
+   appearance (41). Item take (40) has no factory in 1.8 and is correctly ignored.
 4. Serverbound `EnchantItem`, `SteerVehicle` (boats/horses), `Spectate`, `UpdateSignC`.
 5. Movement/anti-cheat audit: diff `net.rs` movement packets against `EntityPlayerSP` and
    `PlayerControllerMP` (rotation, onGround, sprint/sneak, flying) with loopback tests.
 
-Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_FX=1`, `MOCK_SCORE=1`, `MOCK_RPACK=<url>` + `MOCK_RPACK_HASH=<sha1>`)
+Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_SCORE=1`, `MOCK_PARTICLES=1`, `MOCK_RPACK=<url>` + `MOCK_RPACK_HASH=<sha1>`)
 then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
+
+## Session log — particles (Oct 2026)
+
+`S2APacketParticles` now spawns real `EntityFX` instances (`mc-client/src/particles.rs`):
+
+- **Packet path:** `NetHandlerPlayClient.handleParticles` (single particle using `speed*offset`
+  as velocity, or `count` Gaussian-scattered particles from `avRandomizer`).
+- **Simulation:** exact `EntityFX` constructor random order, double-precision motion, AABB
+  collision through `EntityWorld`/`colliding_boxes`, `onUpdate` per class (smoke/spell texture
+  animations, flame/lava/portal scale curves, crit colour decay, heart/note bounce, cloud
+  attraction, drip bob timer and splash on landing, rain top-surface death, suspended/bubble
+  water checks, huge-explosion 6×large spawns, lava's smoke puffs).
+- **Rendering:** `EntityFX.renderParticle`'s camera basis (right = (cos yaw, 0, sin yaw),
+  up = (-sin yaw·sin pitch, cos pitch, cos yaw·sin pitch)), the `0.0624375` cell constant,
+  atlas sprites with the per-particle 1/4 jitter for snowball/slime, barrier's 0.5 quad, the
+  4×4 `explosion.png` animation, and the block/atlas lightmap bumps (flame/portal/enchant/
+  lava/firework). Quads are sorted back-to-front and drawn with a 1/255 alpha cutoff
+  (`kind 10` in the avatar shader).
+- **Ported types (36):** explosion normal/large/huge, firework spark, bubble, splash, wake,
+  suspended, suspended-depth, crit, magic crit, smoke normal/large, spell/instant/mob/
+  ambient/witch, drip water/lava, angry/happy villager, town aura, note, portal, enchantment,
+  flame, lava, cloud, redstone, snowball, snow shovel, slime, heart, barrier, water drop.
+  Deferred: footstep (28), item crack (36), block crack/dust (37/38), mob appearance (41).
+- **Verified:** `MOCK_PARTICLES=1` keeps a batch of every type alive while the screenshot is
+  taken (`shots/particles2.png`, `shots/particles3.png`); unit tests cover the camera basis,
+  UV order, smoke animation/death, large-explosion frames and huge-explosion children.
 
 ## Session log — server resource packs (Oct 2026)
 

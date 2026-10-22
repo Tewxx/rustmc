@@ -14,7 +14,12 @@ use glam::{Mat4, Vec3};
 pub const TEXTURES: &[&str] = &["arrow", "experience_orb", "armorstand/wood"];
 
 /// Extra atlas entries that do not live under `textures/entity/`: `(key, path)`.
-pub const EXTRA_TEXTURES: &[(&str, &str)] = &[("painting", "textures/painting/paintings_kristoffer_zetterstrand.png")];
+pub const EXTRA_TEXTURES: &[(&str, &str)] = &[
+    ("painting", "textures/painting/paintings_kristoffer_zetterstrand.png"),
+    // `EffectRenderer.particleTextures` and `EntityLargeExplodeFX`'s own sheet.
+    ("particles", "textures/particle/particles.png"),
+    ("explosion", "textures/entity/explosion.png"),
+];
 
 /// `EntityPainting.EnumArt`: title, size in 16-pixel units, texture offset in the 256x256 sheet.
 pub struct Art {
