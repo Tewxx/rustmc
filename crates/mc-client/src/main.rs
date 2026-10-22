@@ -1498,6 +1498,10 @@ impl App {
     }
 
     fn destroy_block(&mut self, pos: BlockPos) {
+        // PlayerControllerMP.onPlayerDestroyBlock: a creative sword never breaks blocks.
+        if self.entity.creative && self.held_registry_item().is_some_and(|i| i.is_a("ItemSword")) {
+            return;
+        }
         let state = self.world.state_at(pos.x, pos.y, pos.z);
         let removed = if self.net.is_none() {
             self.with_level(|lv| mc_logic::Level::set_state(lv, pos, mc_data::StateId::AIR, mc_logic::flags::DEFAULT))
@@ -1518,6 +1522,26 @@ impl App {
             }
             self.refresh_edits(&[pos]);
         }
+        // ItemStack.onBlockDestroyed for the held tool (survival only).
+        if !self.entity.creative {
+            if let Some(item) = self.held_registry_item() {
+                let block = state.block();
+                let amount = if item.is_a("ItemSword") {
+                    if block.hardness != 0. { 2 } else { 0 }
+                } else if item.is_a("ItemTool") {
+                    if block.hardness != 0. { 1 } else { 0 }
+                } else if item.is_a("ItemShears") {
+                    let shearable = block.material == mc_data::Material::Leaves
+                        || matches!(block.name, "minecraft:web" | "minecraft:tallgrass" | "minecraft:vine" | "minecraft:tripwire" | "minecraft:wool");
+                    if shearable { 1 } else { 0 }
+                } else {
+                    0
+                };
+                if amount > 0 {
+                    self.damage_item(self.player.selected_slot, amount);
+                }
+            }
+        }
     }
 
     /// `PlayerControllerMP.attackEntity` and the client half of
@@ -1531,12 +1555,70 @@ impl App {
         if self.entity.game_type == level::GameType::Spectator {
             return;
         }
-        // EntityOtherPlayerMP.attackEntityFrom returns true, so a sprint hit's knockback slows us
-        // and ends the sprint; other living entities return false on the client.
-        if self.remote.map.get(&id).is_some_and(|e| e.kind == entities::Kind::Player) && self.entity.sprinting {
+        // EntityPlayer.attackTargetEntityWithCurrentItem. The client's attack damage attribute is
+        // never synced (base 1), so the hit always goes through; only EntityOtherPlayerMP's
+        // attackEntityFrom returns true on the client, other living entities return false.
+        if !self.remote.map.get(&id).is_some_and(|e| e.kind == entities::Kind::Player) {
+            return;
+        }
+        let sel = self.player.selected_slot;
+        let held = self.ui.inventory[sel];
+        let mut i = tooltip::enchantment_level(held.as_ref(), 19);
+        if self.entity.sprinting {
+            i += 1;
+        }
+        if i > 0 {
             self.entity.motion.x *= 0.6;
             self.entity.motion.z *= 0.6;
             self.entity.set_sprinting(false);
+        }
+        // ItemStack.hitEntity: swords take 1 damage, tools 2.
+        if let Some(h) = held {
+            let item = mc_data::item::Item::by_id(self.catalogue.items[h.item].id);
+            let amount = if item.is_some_and(|i| i.is_a("ItemSword")) {
+                1
+            } else if item.is_some_and(|i| i.is_a("ItemTool")) {
+                2
+            } else {
+                0
+            };
+            if amount > 0 {
+                self.damage_item(sel, amount);
+            }
+        }
+    }
+
+    /// `ItemStack.damageItem(amount, player)` on an inventory slot (Unbreaking rolls use the
+    /// client's own random, as vanilla's prediction does; the server's SetSlot corrects it).
+    fn damage_item(&mut self, slot: usize, amount: i32) {
+        if self.entity.creative {
+            return;
+        }
+        let Some(stack) = self.ui.inventory[slot] else { return };
+        if !tooltip::damageable(&self.catalogue, &stack) {
+            return;
+        }
+        let def = mc_data::item::Item::by_id(self.catalogue.items[stack.item].id);
+        let mut amount = amount;
+        // attemptDamageItem / EnchantmentDurability.negateDamage
+        let level = tooltip::enchantment_level(Some(&stack), 34);
+        if amount > 0 && level > 0 {
+            let armor = def.is_some_and(|i| i.is_a("ItemArmor"));
+            let k = (0..amount).filter(|_| !(armor && self.rand.next_float() < 0.6) && self.rand.next_int_bounded(level + 1) > 0).count() as i32;
+            amount -= k;
+            if amount <= 0 {
+                return;
+            }
+        }
+        let max = def.map_or(0, |i| i.max_damage) as i32;
+        let damage = stack.damage as i32 + amount;
+        if damage > max {
+            // renderBrokenItemStack
+            let p = self.entity.pos;
+            self.play_sound("random.break", Some(p), 0.8, 0.8 + rand_f64() as f32 * 0.4);
+            self.ui.inventory[slot] = (stack.count > 1).then_some(mc_gui::ItemStack { count: stack.count - 1, damage: 0, ..stack });
+        } else {
+            self.ui.inventory[slot] = Some(mc_gui::ItemStack { damage: damage as i16, ..stack });
         }
     }
 
@@ -2552,15 +2634,9 @@ impl App {
         if (f as f64) < 0.1 {
             return;
         }
-        // ItemStack.damageItem(1): Unbreaking skips with chance 1/(level+1)... decided by the server's
-        // random, so the client only predicts the plain case.
         let sel = self.player.selected_slot;
-        if !self.entity.creative && tooltip::damageable(&self.catalogue, &bow) && tooltip::enchantment_level(Some(&bow), 34) == 0 {
-            if let Some(cur) = self.ui.inventory[sel].filter(|c| c.same_object(&bow)) {
-                let max = mc_data::item::Item::by_id(self.catalogue.items[cur.item].id).map_or(0, |i| i.max_damage) as i16;
-                let damaged = mc_gui::ItemStack { damage: cur.damage + 1, ..cur };
-                self.ui.inventory[sel] = (damaged.damage <= max).then_some(damaged);
-            }
+        if self.ui.inventory[sel].is_some_and(|c| c.same_object(&bow)) {
+            self.damage_item(sel, 1);
         }
         if !infinite {
             if let Some(a) = arrow_slot {
