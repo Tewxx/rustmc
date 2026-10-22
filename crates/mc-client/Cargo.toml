@@ -12,6 +12,7 @@ mc-core = { path = "../mc-core" }
 mc-data = { path = "../mc-data" }
 mc-assets = { path = "../mc-assets" }
 mc-world = { path = "../mc-world" }
+mc-logic = { path = "../mc-logic" }
 mc-gen = { path = "../mc-gen" }
 mc-render = { path = "../mc-render" }
 mc-gui = { path = "../mc-gui" }

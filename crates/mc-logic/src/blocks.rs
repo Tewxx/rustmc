@@ -433,3 +433,93 @@ pub fn check_for_surrounding_chests(l: &mut dyn Level, pos: BlockPos, state: Sta
     l.set_state(pos, state, flags::DEFAULT);
     state
 }
+
+/// `Block.randomTick` for the blocks whose random tick does something.
+pub fn random_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
+    let id = state.block().id;
+    match id {
+        ids::GRASS | ids::MYCELIUM => spread_tick(l, pos, id),
+        // BlockIce: melts when block light > 11 - lightOpacity(3)
+        ids::ICE => {
+            if l.light_for(false, pos) > 11 - state.block().light_opacity as i32 {
+                if l.water_vaporizes() {
+                    l.set_air(pos);
+                } else {
+                    l.drop_block_as_item(pos, state, 1.0, 0);
+                    l.set(pos, st(ids::WATER, 0));
+                }
+            }
+        }
+        // BlockSnow
+        ids::SNOW_LAYER => {
+            if l.light_for(false, pos) > 11 {
+                l.drop_block_as_item(pos, state, 1.0, 0);
+                l.set_air(pos);
+            }
+        }
+        ids::REEDS => {
+            let below = l.state(pos.down()).block().id;
+            if below == ids::REEDS || check_for_drop(l, pos, state) {
+                grow_column(l, pos, state, false);
+            }
+        }
+        ids::CACTUS => grow_column(l, pos, state, true),
+        _ => update_tick(l, pos, state, Rng::World),
+    }
+}
+
+/// `BlockReed.checkForDrop`
+fn check_for_drop(l: &mut dyn Level, pos: BlockPos, state: StateId) -> bool {
+    if reeds_can_place_at(l, pos) {
+        return true;
+    }
+    l.drop_block_as_item(pos, state, 1.0, 0);
+    l.set_air(pos);
+    false
+}
+
+/// `BlockReed.updateTick` / `BlockCactus.updateTick`: up to three tall, `age` 0..15.
+fn grow_column(l: &mut dyn Level, pos: BlockPos, state: StateId, cactus: bool) {
+    let up = pos.up();
+    if !l.is_air(up) {
+        return;
+    }
+    let id = state.block().id;
+    let mut i = 1;
+    while l.state(pos.offset(0, -i, 0)).block().id == id {
+        i += 1;
+    }
+    if i < 3 {
+        let age = state.get_int("age");
+        if age == 15 {
+            let top = state.block().default_state;
+            l.set(up, top);
+            let reset = state.set("age", "0");
+            l.set_state(pos, reset, flags::NO_RERENDER);
+            if cactus {
+                on_neighbor_block_change(l, up, top, id);
+            }
+        } else {
+            l.set_state(pos, state.set("age", &(age + 1).to_string()), flags::NO_RERENDER);
+        }
+    }
+}
+
+/// `BlockGrass.updateTick` / `BlockMycelium.updateTick`
+fn spread_tick(l: &mut dyn Level, pos: BlockPos, id: u16) {
+    let up = pos.up();
+    if l.light(up) < 4 && l.state(up).block().light_opacity > 2 {
+        l.set(pos, st(ids::DIRT, 0));
+    } else if l.light(up) >= 9 {
+        for _ in 0..4 {
+            let r = l.rng(Rng::World);
+            let (dx, dy, dz) = (r.next_int_bounded(3) - 1, r.next_int_bounded(5) - 3, r.next_int_bounded(3) - 1);
+            let p = pos.offset(dx, dy, dz);
+            let above = l.state(p.up()).block();
+            let s = l.state(p);
+            if s == st(ids::DIRT, 0) && l.light(p.up()) >= 4 && above.light_opacity <= 2 {
+                l.set(p, st(id, 0));
+            }
+        }
+    }
+}

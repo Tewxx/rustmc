@@ -17,6 +17,7 @@ mod container;
 mod icon;
 mod inventory;
 mod player;
+mod server;
 mod skins;
 mod level;
 mod survival;
@@ -289,6 +290,8 @@ struct App {
     items: Vec<mc_entity::item::ItemEntity>,
     next_entity_id: u32,
     rand: mc_core::random::JavaRandom,
+    /// Integrated server tick state (singleplayer).
+    server: server::Server,
     /// Q presses since the last tick (with Ctrl held: whole stack).
     drop_presses: Vec<bool>,
     info: level::WorldInfo,
@@ -370,6 +373,7 @@ impl App {
             items: Vec::new(),
             next_entity_id: 1,
             rand: mc_core::random::JavaRandom::new(0x5DEECE66D),
+            server: server::Server::default(),
             drop_presses: Vec::new(),
             info: level::WorldInfo::new(0, BlockPos::new(spawn.x.floor() as i32, spawn.y.floor() as i32, spawn.z.floor() as i32)),
             weather: level::Weather::default(),
@@ -697,6 +701,16 @@ impl App {
             self.weather.tick_remote(&self.info);
         } else {
             self.weather.tick(&mut self.info, &mut self.rand);
+        }
+        if self.net.is_none() {
+            // WorldServer.tick: tickUpdates, then updateBlocks' random ticks (chunks within 7).
+            let (cx, cz) = (px >> 4, pz >> 4);
+            let chunks: Vec<(i32, i32)> = (-7..=7).flat_map(|x| (-7..=7).map(move |z| (cx + x, cz + z))).filter(|&(x, z)| self.world.is_chunk_loaded(x, z)).collect();
+            let speed = self.info.rules.get_int("randomTickSpeed");
+            self.with_level(|lv| {
+                lv.tick_updates();
+                lv.random_ticks(&chunks, speed);
+            });
         }
         self.info.total_time += 1;
         if self.info.rules.get_bool("doDaylightCycle") {
@@ -1191,9 +1205,43 @@ impl App {
         speed / block.hardness / if harvest { 30. } else { 100. }
     }
 
+    /// Runs world logic through the integrated server and applies what it produced.
+    fn with_level<R>(&mut self, f: impl FnOnce(&mut server::Lv) -> R) -> R {
+        let mut fx = server::Effects::default();
+        let r = f(&mut server::Lv {
+            world: &mut self.world,
+            server: &mut self.server,
+            fx: &mut fx,
+            total_time: self.info.total_time,
+            rules_daylight: self.info.rules.get_bool("doDaylightCycle"),
+        });
+        for (pos, state, chance, _fortune) in fx.drops {
+            // Block.dropBlockAsItemWithChance
+            for (id, meta, count) in tools::drops(state, &mut self.rand) {
+                if self.rand.next_float() <= chance {
+                    if let Some(i) = self.catalogue.index_of(id, meta) {
+                        let id = self.alloc_entity_id();
+                        let e = mc_entity::item::ItemEntity::from_block(id, pos, (i, count), &mut self.rand);
+                        self.items.push(e);
+                    }
+                }
+            }
+        }
+        for (p, name, vol, pitch) in fx.sounds {
+            self.play_sound(&name, Some(mc_core::Vec3::new(p[0], p[1], p[2])), vol, pitch);
+        }
+        self.refresh_edits(&fx.edits);
+        r
+    }
+
     fn destroy_block(&mut self, pos: BlockPos) {
         let state = self.world.state_at(pos.x, pos.y, pos.z);
-        if self.world.set_block(pos, 0, 0) {
+        let removed = if self.net.is_none() {
+            self.with_level(|lv| mc_logic::Level::set_state(lv, pos, mc_data::StateId::AIR, mc_logic::flags::DEFAULT))
+        } else {
+            self.world.set_block(pos, 0, 0)
+        };
+        if removed {
             self.block_break_sound(state, pos);
             if self.net.is_none() && !self.entity.creative && tools::can_harvest(self.held_registry_item(), state.block()) {
                 for (id, meta, count) in tools::drops(state, &mut self.rand) {
@@ -1912,7 +1960,12 @@ impl App {
             if !boxes.is_empty() {
                 return;
             }
-            if self.world.set_block(p, block.id, meta) {
+            let placed = if self.net.is_none() {
+                self.with_level(|lv| mc_logic::Level::set_state(lv, p, state, mc_logic::flags::DEFAULT))
+            } else {
+                self.world.set_block(p, block.id, meta)
+            };
+            if placed {
                 if !self.entity.creative {
                     self.ui.inventory[self.player.selected_slot] = if stack.count > 1 {
                         Some(mc_gui::ItemStack {
