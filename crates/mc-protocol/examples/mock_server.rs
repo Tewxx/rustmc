@@ -74,9 +74,14 @@ fn handle(stream: TcpStream) {
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"action bar"}"#.into(), position: 2 }));
                     play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(10, 4, 8), state: 57 }));
                     // A second player 3 blocks ahead, holding a sword, walking and swinging.
+                    let uuid = mc_protocol::Uuid(7, 7);
+                    play(PlayClientbound::PlayerListItem(PlayerListItem {
+                        action: PlayerListAction::AddPlayer,
+                        entries: vec![PlayerListEntry { uuid, name: "Notch".into(), ..Default::default() }],
+                    }));
                     play(PlayClientbound::SpawnPlayer(SpawnPlayer {
                         entity_id: 7,
-                        uuid: Default::default(),
+                        uuid,
                         x: (8.5 * 32.0) as i32,
                         y: 4 * 32,
                         z: (11.5 * 32.0) as i32,

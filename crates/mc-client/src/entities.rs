@@ -48,6 +48,8 @@ pub struct Remote {
     pub width: f64,
     pub height: f64,
     pub hurt_time: i32,
+    /// Profile name (players), from the tab list.
+    pub name: String,
 }
 
 fn wrap(mut a: f32) -> f32 {
@@ -107,6 +109,7 @@ impl Remote {
             width: w,
             height: h,
             hurt_time: 0,
+            name: String::new(),
         }
     }
 

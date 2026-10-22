@@ -325,6 +325,8 @@ struct App {
     net: Option<net::Net>,
     name: String,
     remote: entities::Entities,
+    /// Tab list names by profile UUID (`playerInfoMap`).
+    player_names: std::collections::HashMap<mc_protocol::Uuid, String>,
     sound: Option<mc_sound::SoundManager>,
     /// `PlayerControllerMP.stepSoundTickCounter`
     step_sound_counter: f32,
@@ -399,6 +401,7 @@ impl App {
             net: None,
             name: "Player".into(),
             remote: entities::Entities::default(),
+            player_names: Default::default(),
             sound: None,
             step_sound_counter: 0.,
             pointed_entity: None,
@@ -752,6 +755,19 @@ impl App {
                     }
                 }
                 C::SpawnPosition(sp) => self.info.spawn = sp.pos,
+                C::PlayerListItem(pl) => {
+                    for e in pl.entries {
+                        match pl.action {
+                            PlayerListAction::AddPlayer => {
+                                self.player_names.insert(e.uuid, e.name);
+                            }
+                            PlayerListAction::RemovePlayer => {
+                                self.player_names.remove(&e.uuid);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 C::SoundEffect(se) => {
                     let p = mc_core::Vec3::new(se.x as f64 / 8., se.y as f64 / 8., se.z as f64 / 8.);
                     self.play_sound(&se.name, Some(p), se.volume, se.pitch as f32 / 63.);
@@ -782,6 +798,7 @@ impl App {
                 }
                 C::SpawnPlayer(sp) => {
                     let mut r = entities::Remote::new(sp.entity_id, entities::Kind::Player, sp.x, sp.y, sp.z, sp.yaw, sp.pitch);
+                    r.name = self.player_names.get(&sp.uuid).cloned().unwrap_or_default();
                     r.held = (sp.current_item > 0).then(|| self.catalogue.index_of(sp.current_item as u16, 0)).flatten().map(|i| (i, 1));
                     apply_meta(&mut r, &sp.metadata);
                     self.remote.map.insert(sp.entity_id, r);
@@ -1821,10 +1838,56 @@ impl App {
                 }
             }
         }
+        if hud_visible && !self.ui.settings.hide_gui {
+            self.name_tags(sr);
+        }
         if let Some(s) = &mut self.screen {
             s.draw(&mut self.ui, &mut self.batch, sr.width, sr.height, mx, my);
         }
         sr
+    }
+
+    /// `RendererLivingEntity.renderName` / `renderLivingLabel`, projected into the GUI pass:
+    /// a 0.25-alpha backing and the name at 1/60 × 1.6 blocks per text pixel, 0.5 above the
+    /// head. Normal tags show through walls (vanilla's see-through pass); sneaking ones are faint.
+    fn name_tags(&mut self, sr: Scaled) {
+        let pt = self.tick_accum.clamp(0., 1.);
+        let Some(win) = &self.window else { return };
+        let size = win.inner_size();
+        let aspect = size.width as f32 / size.height.max(1) as f32;
+        let vp = self.camera.view_proj(aspect, self.ui.settings.render_distance as f32 * 16.);
+        let tan = (self.camera.fov_deg.to_radians() / 2.).tan();
+        let mut tags: Vec<(f32, f32, f32, String, bool)> = Vec::new();
+        for r in self.remote.map.values() {
+            if r.kind != entities::Kind::Player || r.name.is_empty() {
+                continue;
+            }
+            let p = r.interpolated(pt);
+            let rel = Vec3::new(p.x as f32, p.y as f32 + 1.8 + 0.5, p.z as f32) - self.camera.pos;
+            let max = if r.sneaking { 32. } else { 64. };
+            if rel.length() >= max {
+                continue;
+            }
+            let clip = vp * rel.extend(1.);
+            if clip.w <= 0.05 {
+                continue;
+            }
+            let (nx, ny) = (clip.x / clip.w, clip.y / clip.w);
+            let x = (nx * 0.5 + 0.5) * sr.width_f as f32;
+            let y = (0.5 - ny * 0.5) * sr.height_f as f32;
+            tags.push((clip.w, x, y, r.name.clone(), r.sneaking));
+        }
+        // Far tags first so near ones draw on top.
+        tags.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for (w, x, y, name, sneaking) in tags {
+            let scale = 0.026666668 * (sr.height_f as f32 / 2.) / (tan * w);
+            self.batch.transform = Some((scale, [x, y]));
+            let half = self.ui.font.width(&name) / 2;
+            self.batch.rect(-half - 1, -1, half + 1, 8, 0x40000000);
+            let color = if sneaking { 0x20FFFFFF } else { 0xFFFFFFFF };
+            self.ui.font.draw(&mut self.batch, &name, -half as f32, 0., color);
+            self.batch.transform = None;
+        }
     }
 
     fn draw_frame(&mut self) {

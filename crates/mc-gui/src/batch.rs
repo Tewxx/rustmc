@@ -48,6 +48,8 @@ pub struct GuiBatch {
     /// `GlStateManager.color`, multiplied into textured draws.
     pub color: [f32; 4],
     pub blend: Blend,
+    /// Scale then offset applied to every vertex (a `glScale`/`glTranslate` for overlays).
+    pub transform: Option<(f32, [f32; 2])>,
 }
 
 impl Default for Blend {
@@ -62,13 +64,14 @@ pub fn argb(c: u32) -> [u8; 4] {
 
 impl GuiBatch {
     pub fn new() -> Self {
-        Self { items: Vec::new(), color: [1.0; 4], blend: Blend::Alpha }
+        Self { items: Vec::new(), color: [1.0; 4], blend: Blend::Alpha, transform: None }
     }
 
     pub fn clear(&mut self) {
         self.items.clear();
         self.color = [1.0; 4];
         self.blend = Blend::Alpha;
+        self.transform = None;
     }
 
     pub fn special(&mut self, s: Special) {
@@ -80,6 +83,14 @@ impl GuiBatch {
     }
 
     fn quads(&mut self, texture: Option<&str>, alpha_test: bool, linear: bool, verts: &[GuiVertex]) {
+        let moved: Vec<GuiVertex>;
+        let verts = match self.transform {
+            Some((s, o)) => {
+                moved = verts.iter().map(|v| GuiVertex { pos: [v.pos[0] * s + o[0], v.pos[1] * s + o[1]], ..*v }).collect();
+                &moved[..]
+            }
+            None => verts,
+        };
         let blend = self.blend;
         if let Some(Item::Draw(last)) = self.items.last_mut() {
             if last.texture.as_deref() == texture && last.blend == blend && last.alpha_test == alpha_test && last.linear == linear {
