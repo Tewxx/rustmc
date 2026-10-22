@@ -1786,6 +1786,11 @@ impl App {
             dropped,
             damage: self.damage_quads(),
             others: self.other_players(pt),
+            gui_player: self.screen.as_ref().and_then(|s| s.entity_preview()).map(|(x, y, scale)| {
+                let f = self.scaled().factor as f32;
+                let (mx, my) = (self.mouse_px.0 as f32 / f, self.mouse_px.1 as f32 / f);
+                mc_render::avatar::GuiPlayer { x: x as f32 * f, y: y as f32 * f, scale: scale as f32 * f, mouse_x: x as f32 - mx, mouse_y: (y - 50) as f32 - my }
+            }),
         };
         if let Some(r) = &mut self.renderer {
             r.sky = sky;
@@ -2291,6 +2296,7 @@ impl App {
         self.player.experience = 0.4;
         self.player.selected_slot = 0;
         self.fps = 0;
+        self.sync_view();
         let sr = self.build_gui();
         let cam = self.in_game.then_some(&self.camera);
         let r = self.renderer.as_mut().unwrap();

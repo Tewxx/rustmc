@@ -309,6 +309,9 @@ impl Creative {
     }
 }
 impl Screen for Creative {
+    fn entity_preview(&self) -> Option<(i32, i32, i32)> {
+        (self.tab == 11).then_some((self.left + 43, self.top + 45, 20))
+    }
     fn init(&mut self, _: &Ui, w: i32, h: i32) {
         self.left = (w - 195) / 2;
         self.top = (h - 136) / 2;

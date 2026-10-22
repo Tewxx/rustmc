@@ -171,6 +171,9 @@ impl SurvivalInventory {
 }
 
 impl Screen for SurvivalInventory {
+    fn entity_preview(&self) -> Option<(i32, i32, i32)> {
+        Some((self.left + 51, self.top + 75, 30))
+    }
     fn init(&mut self, _: &Ui, w: i32, h: i32) {
         self.left = (w - 176) / 2;
         self.top = (h - 166) / 2;

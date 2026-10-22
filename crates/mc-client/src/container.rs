@@ -330,6 +330,10 @@ impl ContainerScreen {
 }
 
 impl Screen for ContainerScreen {
+    fn entity_preview(&self) -> Option<(i32, i32, i32)> {
+        let l = Self::layout(&self.window.lock().unwrap());
+        (l.texture == "textures/gui/container/inventory.png").then_some((self.left + 51, self.top + 75, 30))
+    }
     fn init(&mut self, _: &Ui, w: i32, h: i32) {
         let l = Self::layout(&self.window.lock().unwrap());
         self.left = (w - l.w) / 2;

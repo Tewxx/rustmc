@@ -134,6 +134,10 @@ pub trait Screen {
     fn scroll(&mut self, _delta: i32) {}
     /// `updateScreen`, once per client tick.
     fn tick(&mut self) {}
+    /// `GuiInventory.drawEntityOnScreen(posX, posY, scale, ...)` for the local player.
+    fn entity_preview(&self) -> Option<(i32, i32, i32)> {
+        None
+    }
     /// `doesGuiPauseGame`
     fn pauses(&self) -> bool {
         true

@@ -495,6 +495,9 @@ impl Renderer {
         if let Some((batch, sr)) = gui {
             let srgb = self.config.format.is_srgb();
             self.gui.encode(&self.device, &self.queue, &mut enc, &view, srgb, batch, sr, assets);
+            if let Some(frame) = &self.avatar_frame {
+                self.avatar.encode_gui(&self.queue, &mut enc, &view, &self.depth, self.config.width as f32, self.config.height as f32, frame);
+            }
         }
         self.queue.submit([enc.finish()]);
         frame.present();
@@ -548,6 +551,9 @@ impl Renderer {
         if let Some((batch, sr)) = gui {
             let srgb = self.config.format.is_srgb();
             self.gui.encode(&self.device, &self.queue, &mut enc, &view, srgb, batch, sr, assets);
+            if let Some(frame) = &self.avatar_frame {
+                self.avatar.encode_gui(&self.queue, &mut enc, &view, &depth, w as f32, h as f32, frame);
+            }
         }
         let row = (w * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let buf = self.device.create_buffer(&wgpu::BufferDescriptor {

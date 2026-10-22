@@ -73,6 +73,20 @@ pub struct AvatarFrame {
     pub skin: Option<u32>,
     /// Other players (only the body fields are used).
     pub others: Vec<AvatarFrame>,
+    /// `GuiInventory.drawEntityOnScreen` for the local player.
+    pub gui_player: Option<GuiPlayer>,
+}
+
+/// Physical-pixel placement of an inventory player preview.
+#[derive(Clone, Copy, Debug)]
+pub struct GuiPlayer {
+    pub x: f32,
+    pub y: f32,
+    /// `scale` × GUI scale.
+    pub scale: f32,
+    /// `posX - mouseX`, `posY - 50 - mouseY` in GUI units.
+    pub mouse_x: f32,
+    pub mouse_y: f32,
 }
 
 #[repr(C)]
@@ -87,7 +101,7 @@ struct Vertex {
 pub struct AvatarRenderer {
     pipeline: wgpu::RenderPipeline,
     damage_pipeline: wgpu::RenderPipeline,
-    vertices: [wgpu::Buffer; 2],
+    vertices: [wgpu::Buffer; 3],
     bind_group: wgpu::BindGroup,
     steve: PlayerModel,
     alex: PlayerModel,
@@ -377,6 +391,65 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         pass.draw(split.min(end)..end, 0..1);
     }
 
+    /// `GuiInventory.drawEntityOnScreen`: the player in the inventory, drawn over the GUI
+    /// with its own depth clear.
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_gui(&mut self, queue: &wgpu::Queue, enc: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, depth: &wgpu::TextureView, w: f32, h: f32, frame: &AvatarFrame) {
+        let Some(g) = frame.gui_player else { return };
+        let ortho = Mat4::from_cols(
+            Vec4::new(2. / w, 0., 0., 0.),
+            Vec4::new(0., -2. / h, 0., 0.),
+            Vec4::new(0., 0., -1. / 2000., 0.),
+            Vec4::new(-1., 1., 0.5, 1.),
+        );
+        let yaw = (g.mouse_x / 40.).atan() * 20.;
+        let pitch = -(g.mouse_y / 40.).atan() * 20.;
+        let mut f = AvatarFrame {
+            body_yaw: yaw,
+            head_yaw: (g.mouse_x / 40.).atan() * 40.,
+            pitch,
+            age: frame.age,
+            sneaking: frame.sneaking,
+            held: frame.held.clone(),
+            light: [1.; 3],
+            slim: frame.slim,
+            skin: frame.skin,
+            ..Default::default()
+        };
+        f.head_yaw = f.head_yaw.clamp(f.body_yaw - 75., f.body_yaw + 75.);
+        let base = Mat4::from_translation(Vec3::new(g.x, g.y, 50.))
+            * Mat4::from_scale(Vec3::new(-g.scale, g.scale, g.scale))
+            * Mat4::from_rotation_z(180f32.to_radians());
+        let lights = lights_in(Mat3::from_mat4(Mat4::from_scale(Vec3::new(-1., 1., 1.)) * Mat4::from_rotation_z(180f32.to_radians()) * Mat4::from_rotation_y(135f32.to_radians())));
+        let m = base * Mat4::from_rotation_x(pitch.to_radians());
+        let mut verts = Vec::new();
+        self.body_at(&mut verts, &f, ortho, m, lights);
+        if verts.is_empty() {
+            return;
+        }
+        let buf = &self.vertices[2];
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(65536)]));
+        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("gui player"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth,
+                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.), store: wgpu::StoreOp::Store }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, buf.slice(..));
+        pass.set_pipeline(&self.pipeline);
+        pass.draw(0..verts.len().min(65536) as u32, 0..1);
+    }
+
     /// `RendererLivingEntity.doRender` for the local player, plus `LayerHeldItem`.
     fn body(&mut self, out: &mut Vec<Vertex>, f: &AvatarFrame, vp: Mat4, cam: Vec3) {
         let model = if f.slim { &mut self.alex } else { &mut self.steve };
@@ -391,12 +464,16 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             head_pitch: f.pitch,
         });
         // World-space model matrix (the view is applied separately so normals stay in world space).
-        let m = Mat4::from_translation(f.pos - cam)
+        self.body_at(out, f, vp, Mat4::from_translation(f.pos - cam), lights_in(Mat3::IDENTITY));
+    }
+
+    fn body_at(&mut self, out: &mut Vec<Vertex>, f: &AvatarFrame, vp: Mat4, at: Mat4, lights: [Vec3; 2]) {
+        let model = if f.slim { &mut self.alex } else { &mut self.steve };
+        let m = at
             * Mat4::from_rotation_y((180. - f.body_yaw).to_radians())
             * Mat4::from_scale(Vec3::new(-1., -1., 1.))
             * Mat4::from_scale(Vec3::splat(0.9375))
             * Mat4::from_translation(Vec3::new(0., -1.5078125, 0.));
-        let lights = lights_in(Mat3::IDENTITY);
         let kind = if f.slim { 2. } else { SKIN };
         let light = f.light;
         let start = out.len();
