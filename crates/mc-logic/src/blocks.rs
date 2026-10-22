@@ -464,6 +464,8 @@ pub fn random_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
             }
         }
         ids::CACTUS => grow_column(l, pos, state, true),
+        ids::WHEAT | ids::CARROTS | ids::POTATOES => crop_tick(l, pos, state),
+        ids::FARMLAND => farmland_tick(l, pos, state),
         _ => update_tick(l, pos, state, Rng::World),
     }
 }
@@ -521,5 +523,82 @@ fn spread_tick(l: &mut dyn Level, pos: BlockPos, id: u16) {
                 l.set(p, st(id, 0));
             }
         }
+    }
+}
+
+/// `BlockCrops.updateTick` (after `BlockBush.checkAndDropBlock`).
+fn crop_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
+    if !can_block_stay(l, pos, state) {
+        l.drop_block_as_item(pos, state, 1.0, 0);
+        l.set_state(pos, StateId::AIR, flags::DEFAULT);
+        return;
+    }
+    if l.light(pos.up()) >= 9 {
+        let age = state.get_int("age");
+        if age < 7 {
+            let f = growth_chance(l, pos, state.block().id);
+            if l.rng(Rng::World).next_int_bounded((25.0 / f) as i32 + 1) == 0 {
+                l.set_state(pos, state.set("age", &(age + 1).to_string()), flags::UPDATE);
+            }
+        }
+    }
+}
+
+/// `BlockCrops.getGrowthChance`
+fn growth_chance(l: &mut dyn Level, pos: BlockPos, id: u16) -> f32 {
+    let mut f = 1.0f32;
+    let down = pos.down();
+    for i in -1..=1 {
+        for j in -1..=1 {
+            let s = l.state(down.offset(i, 0, j));
+            let mut f1 = 0.0;
+            if s.block().id == ids::FARMLAND {
+                f1 = 1.0;
+                if s.get_int("moisture") > 0 {
+                    f1 = 3.0;
+                }
+            }
+            if i != 0 || j != 0 {
+                f1 /= 4.0;
+            }
+            f += f1;
+        }
+    }
+    let mut is = |dx: i32, dz: i32| l.state(pos.offset(dx, 0, dz)).block().id == id;
+    let ew = is(-1, 0) || is(1, 0);
+    let ns = is(0, -1) || is(0, 1);
+    if ew && ns {
+        f /= 2.0;
+    } else if is(-1, -1) || is(1, -1) || is(1, 1) || is(-1, 1) {
+        f /= 2.0;
+    }
+    f
+}
+
+/// `BlockFarmland.updateTick` (rain on the farmland is not modelled: no weather in `Level`).
+fn farmland_tick(l: &mut dyn Level, pos: BlockPos, state: StateId) {
+    let moisture = state.get_int("moisture");
+    let mut water = false;
+    'w: for x in -4..=4 {
+        for y in 0..=1 {
+            for z in -4..=4 {
+                if l.state(pos.offset(x, y, z)).block().material == Material::Water {
+                    water = true;
+                    break 'w;
+                }
+            }
+        }
+    }
+    if !water {
+        if moisture > 0 {
+            l.set_state(pos, state.set("moisture", &(moisture - 1).to_string()), flags::UPDATE);
+        } else {
+            let up = l.state(pos.up()).block().id;
+            if !matches!(up, ids::WHEAT | ids::CARROTS | ids::POTATOES | ids::PUMPKIN_STEM | ids::MELON_STEM) {
+                l.set(pos, st(ids::DIRT, 0));
+            }
+        }
+    } else if moisture < 7 {
+        l.set_state(pos, state.set("moisture", "7"), flags::UPDATE);
     }
 }

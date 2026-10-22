@@ -231,13 +231,19 @@ mod tests {
                 w.set_block(BlockPos::new(x, 10, z), ids::DIRT, 0);
             }
         }
-        w.set_block(BlockPos::new(0, 10, 0), ids::GRASS, 0);
+        // The updateLCG cycle only visits some cells, so seed grass widely.
+        for x in (-8..8).step_by(4) {
+            for z in (-8..8).step_by(4) {
+                w.set_block(BlockPos::new(x, 10, z), ids::GRASS, 0);
+            }
+        }
+        s.update_lcg = 12345;
         let mut fx = Effects::default();
         let mut lv = Lv { world: &mut w, server: &mut s, fx: &mut fx, total_time: 0, rules_daylight: true };
         for _ in 0..3000 {
             lv.random_ticks(&[(0, 0), (-1, 0), (0, -1), (-1, -1)], 3);
         }
         let grass = (-8..8).flat_map(|x| (-8..8).map(move |z| (x, z))).filter(|&(x, z)| lv.world.state_at(x, 10, z).block().id == ids::GRASS).count();
-        assert!(grass > 1, "{grass}");
+        assert!(grass > 16, "{grass}");
     }
 }
