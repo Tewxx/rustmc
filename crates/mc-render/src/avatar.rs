@@ -69,6 +69,8 @@ pub struct AvatarFrame {
     /// `ItemRenderer.itemToRender` (lags behind the selected slot during the equip animation).
     pub hand_item: Option<HeldItem>,
     pub slim: bool,
+    /// Cell in the downloaded-skin atlas ([`AvatarRenderer::upload_skin`]); `None` = default skin.
+    pub skin: Option<u32>,
     /// Other players (only the body fields are used).
     pub others: Vec<AvatarFrame>,
 }
@@ -89,7 +91,10 @@ pub struct AvatarRenderer {
     bind_group: wgpu::BindGroup,
     steve: PlayerModel,
     alex: PlayerModel,
+    skins: wgpu::Texture,
 }
+
+pub const SKIN_ATLAS: u32 = 2048;
 
 const SKIN: f32 = 0.;
 const ATLAS: f32 = 1.;
@@ -109,6 +114,7 @@ impl AvatarRenderer {
                 texture_entry(1),
                 texture_entry(2),
                 texture_entry(3),
+                texture_entry(4),
             ],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -121,6 +127,7 @@ const SRGB:bool={};
 @group(0) @binding(1) var skin:texture_2d<f32>;
 @group(0) @binding(2) var atlas:texture_2d<f32>;
 @group(0) @binding(3) var alex:texture_2d<f32>;
+@group(0) @binding(4) var skins:texture_2d<f32>;
 struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) color:vec4<f32>, @location(2) @interpolate(flat) kind:u32 }};
 @vertex fn vs(@location(0) p:vec4<f32>,@location(1) uv:vec2<f32>,@location(2) color:vec4<f32>,@location(3) kind:f32)->V {{
  var o:V;o.pos=p;o.uv=uv;o.color=color;o.kind=u32(kind);return o;
@@ -130,6 +137,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(v.kind==0u){{c*=textureSampleLevel(skin,samp,v.uv,0.0);}}
  if(v.kind==1u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);}}
  if(v.kind==2u){{c*=textureSampleLevel(alex,samp,v.uv,0.0);}}
+ if(v.kind==5u){{c*=textureSampleLevel(skins,samp,v.uv,0.0);}}
  if(v.kind==4u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);c=vec4<f32>(min(c.rgb*2.0,vec3<f32>(1.0)),c.a);}}
  if(v.kind!=3u && c.a<=0.1){{discard;}}
  if(SRGB){{c=vec4<f32>(select(c.rgb/12.92,pow((c.rgb+vec3<f32>(0.055))/1.055,vec3<f32>(2.4)),c.rgb>vec3<f32>(0.04045)),c.a);}}
@@ -235,6 +243,17 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let alex = load("textures/entity/alex.png");
         let skin = texture(device, queue, &steve).create_view(&Default::default());
         let alex_view = texture(device, queue, &alex).create_view(&Default::default());
+        let skins = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("skin atlas"),
+            size: wgpu::Extent3d { width: SKIN_ATLAS, height: SKIN_ATLAS, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let skins_view = skins.create_view(&Default::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
@@ -248,6 +267,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&skin) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&atlas) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&alex_view) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&skins_view) },
             ],
         });
         let vertices = std::array::from_fn(|_| {
@@ -258,7 +278,23 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 mapped_at_creation: false,
             })
         });
-        Self { pipeline, damage_pipeline, vertices, bind_group, steve: PlayerModel::new(false), alex: PlayerModel::new(true) }
+        Self { pipeline, damage_pipeline, vertices, bind_group, steve: PlayerModel::new(false), alex: PlayerModel::new(true), skins }
+    }
+
+    /// Stores a 64×64 RGBA skin in atlas cell `cell` (32×32 cells).
+    pub fn upload_skin(&self, queue: &wgpu::Queue, cell: u32, rgba: &[u8]) {
+        let per = SKIN_ATLAS / 64;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.skins,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: cell % per * 64, y: cell / per * 64, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(64 * 4), rows_per_image: Some(64) },
+            wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
+        );
     }
 
     /// `hand_stage` false: body + selection box (world pass); true: first-person hand after a depth clear.
@@ -363,7 +399,17 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let lights = lights_in(Mat3::IDENTITY);
         let kind = if f.slim { 2. } else { SKIN };
         let light = f.light;
+        let start = out.len();
         model.render(m, &mut |pm, q| model_quad(out, vp, pm, q, kind, lights, light, [1.; 3], false));
+        if let Some(cell) = f.skin {
+            // Retarget the body's skin UVs into the downloaded skin's atlas cell.
+            let per = (SKIN_ATLAS / 64) as f32;
+            let (cx, cy) = ((cell % (SKIN_ATLAS / 64)) as f32, (cell / (SKIN_ATLAS / 64)) as f32);
+            for v in &mut out[start..] {
+                v.kind = 5.;
+                v.uv = [(cx + v.uv[0]) / per, (cy + v.uv[1]) / per];
+            }
+        }
         if let Some(item) = &f.held {
             let mut im = m * model.right_arm.post_render() * Mat4::from_translation(Vec3::new(-0.0625, 0.4375, 0.0625));
             if item.entity_block {

@@ -77,7 +77,12 @@ fn handle(stream: TcpStream) {
                     let uuid = mc_protocol::Uuid(7, 7);
                     play(PlayClientbound::PlayerListItem(PlayerListItem {
                         action: PlayerListAction::AddPlayer,
-                        entries: vec![PlayerListEntry { uuid, name: "Notch".into(), ..Default::default() }],
+                        entries: vec![PlayerListEntry {
+                            uuid,
+                            name: "Notch".into(),
+                            properties: skin_property(),
+                            ..Default::default()
+                        }],
                     }));
                     play(PlayClientbound::SpawnPlayer(SpawnPlayer {
                         entity_id: 7,
@@ -156,6 +161,37 @@ fn serde_json_escape(s: &str) -> String {
     }
     o.push('"');
     o
+}
+
+/// `MOCK_SKIN=<png>`: a textures property pointing at a tiny HTTP server on port 25600.
+fn skin_property() -> Vec<mc_protocol::packets::ProfileProperty> {
+    let Some(path) = std::env::var_os("MOCK_SKIN") else { return vec![] };
+    let png = std::fs::read(path).unwrap();
+    std::thread::spawn(move || {
+        let l = TcpListener::bind("127.0.0.1:25600").unwrap();
+        for mut s in l.incoming().flatten() {
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf);
+            let head = format!("HTTP/1.1 200 OK
+Content-Type: image/png
+Content-Length: {}
+Connection: close
+
+", png.len());
+            let _ = s.write_all(head.as_bytes());
+            let _ = s.write_all(&png);
+        }
+    });
+    let json = r#"{"textures":{"SKIN":{"url":"http://127.0.0.1:25600/skin.png"}}}"#;
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut v = String::new();
+    for c in json.as_bytes().chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            v.push(if i <= c.len() { T[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+    vec![mc_protocol::packets::ProfileProperty { name: "textures".into(), value: v, signature: None }]
 }
 
 fn main() {

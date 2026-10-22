@@ -392,6 +392,11 @@ impl Renderer {
     }
 
     /// Uploads one render section's mesh (`sy` = section index 0..16).
+    /// A downloaded player skin into the avatar skin atlas.
+    pub fn upload_skin(&self, cell: u32, rgba: &[u8]) {
+        self.avatar.upload_skin(&self.queue, cell, rgba);
+    }
+
     pub fn upload_section(&mut self, cx: i32, sy: i32, cz: i32, mesh: &ChunkMesh) {
         if mesh.indices.is_empty() {
             self.chunks.remove(&(cx, sy, cz));

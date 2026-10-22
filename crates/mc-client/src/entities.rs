@@ -50,6 +50,7 @@ pub struct Remote {
     pub hurt_time: i32,
     /// Profile name (players), from the tab list.
     pub name: String,
+    pub uuid: Option<mc_protocol::Uuid>,
 }
 
 fn wrap(mut a: f32) -> f32 {
@@ -110,6 +111,7 @@ impl Remote {
             height: h,
             hurt_time: 0,
             name: String::new(),
+            uuid: None,
         }
     }
 

@@ -16,6 +16,7 @@ mod container;
 mod icon;
 mod inventory;
 mod player;
+mod skins;
 mod level;
 mod survival;
 mod tools;
@@ -326,6 +327,7 @@ struct App {
     net: Option<net::Net>,
     name: String,
     remote: entities::Entities,
+    skins: skins::Skins,
     /// Inventory as last synced, to send creative edits (C10) for what changed.
     creative_sync: Option<([Option<mc_gui::ItemStack>; 36], [Option<mc_gui::ItemStack>; 4])>,
     /// The open server window (`openContainer` other than the player's).
@@ -406,6 +408,7 @@ impl App {
             net: None,
             name: "Player".into(),
             remote: entities::Entities::default(),
+            skins: skins::Skins::default(),
             creative_sync: None,
             open_window: None,
             player_names: Default::default(),
@@ -568,6 +571,11 @@ impl App {
     fn update(&mut self, dt: f32) {
         self.process_net();
         self.flush_window();
+        for (cell, rgba) in self.skins.poll() {
+            if let Some(r) = &self.renderer {
+                r.upload_skin(cell, &rgba);
+            }
+        }
         self.sync_creative();
         if !self.ui.sounds.is_empty() {
             self.flush_sounds();
@@ -797,6 +805,9 @@ impl App {
                     for e in pl.entries {
                         match pl.action {
                             PlayerListAction::AddPlayer => {
+                                if let Some(t) = e.properties.iter().find(|p| p.name == "textures") {
+                                    self.skins.request(e.uuid, &t.value);
+                                }
                                 self.player_names.insert(e.uuid, e.name);
                             }
                             PlayerListAction::RemovePlayer => {
@@ -837,6 +848,7 @@ impl App {
                 C::SpawnPlayer(sp) => {
                     let mut r = entities::Remote::new(sp.entity_id, entities::Kind::Player, sp.x, sp.y, sp.z, sp.yaw, sp.pitch);
                     r.name = self.player_names.get(&sp.uuid).cloned().unwrap_or_default();
+                    r.uuid = Some(sp.uuid);
                     r.held = (sp.current_item > 0).then(|| self.catalogue.index_of(sp.current_item as u16, 0)).flatten().map(|i| (i, 1));
                     apply_meta(&mut r, &sp.metadata);
                     self.remote.map.insert(sp.entity_id, r);
@@ -1701,6 +1713,7 @@ impl App {
             hand_light: light,
             hand_item,
             slim: false,
+            skin: None,
             dropped,
             damage: self.damage_quads(),
             others: self.other_players(pt),
@@ -1744,6 +1757,8 @@ impl App {
                     perspective: 1,
                     held: r.held.and_then(|(i, _)| self.held_item(i)),
                     light: self.lightmap_color(sky, block),
+                    skin: r.uuid.and_then(|u| self.skins.loaded.get(&u)).map(|s| s.0),
+                    slim: r.uuid.is_some_and(|u| self.skins.loaded.get(&u).map_or(skins::default_slim(u), |s| s.1)),
                     ..Default::default()
                 })
             })
@@ -2027,8 +2042,13 @@ impl App {
                 self.run_tick();
                 self.hud.tick();
             }
-            std::thread::sleep(Duration::from_millis(200));
+            std::thread::sleep(Duration::from_millis(500));
             self.process_net();
+            for (cell, rgba) in self.skins.poll() {
+                if let Some(r) = &self.renderer {
+                    r.upload_skin(cell, &rgba);
+                }
+            }
         }
         for _ in 0..30 {
             self.entity.tick(&self.world, &mut self.geometry, player::Keys::default());
