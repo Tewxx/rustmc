@@ -44,13 +44,23 @@ pub fn build(world: &World, models: &BlockModels, cx: i32, cz: i32, smooth_light
 }
 
 pub fn build_with_geometry(world: &World, models: &BlockModels, cx: i32, cz: i32, smooth_lighting: bool, fancy_graphics: bool, geometry: &mut BlockGeometry) -> ChunkMesh {
+    build_sections(world, models, cx, cz, 0..16, smooth_lighting, fancy_graphics, geometry)
+}
+
+/// Meshes one 16³ render section (`RenderChunk`), the unit vanilla rebuilds after an edit.
+pub fn build_section(world: &World, models: &BlockModels, cx: i32, sy: i32, cz: i32, smooth_lighting: bool, fancy_graphics: bool, geometry: &mut BlockGeometry) -> ChunkMesh {
+    build_sections(world, models, cx, cz, sy as usize..sy as usize + 1, smooth_lighting, fancy_graphics, geometry)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: std::ops::Range<usize>, smooth_lighting: bool, fancy_graphics: bool, geometry: &mut BlockGeometry) -> ChunkMesh {
     let mut mesh = ChunkMesh::default();
     let Some(chunk) = world.chunks.get(&(cx, cz)) else { return mesh };
     let is_opaque = |p: (i32, i32, i32)| {
         world.state_at(p.0, p.1, p.2).block().is_opaque_cube(fancy_graphics)
     };
     for (sy, section) in chunk.sections.iter().enumerate() {
-        if section.is_none() {
+        if section.is_none() || !range.contains(&sy) {
             continue;
         }
         for ly in 0..16 {

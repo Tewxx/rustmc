@@ -46,6 +46,12 @@ impl Scaled {
 pub struct Ui {
     /// Slots 0..9 are the hotbar; 9..36 are the main player inventory.
     pub inventory: [Option<ItemStack>; 36],
+    /// Helmet, chestplate, leggings, boots (`ContainerPlayer` slots 5..9).
+    pub armor: [Option<ItemStack>; 4],
+    /// The 2×2 crafting grid of the survival inventory.
+    pub crafting: [Option<ItemStack>; 4],
+    /// Stacks thrown by the player (Q, clicking outside a container); the client spawns them.
+    pub drops: Vec<ItemStack>,
     pub selected_slot: usize,
     pub shift_down: bool,
     pub font: FontRenderer,
@@ -61,7 +67,7 @@ pub struct Ui {
 impl Ui {
     pub fn new(assets: &AssetSource, settings: Settings) -> Self {
         Self {
-            inventory: [None; 36], selected_slot: 0, shift_down: false,
+            inventory: [None; 36], armor: [None; 4], crafting: [None; 4], drops: Vec::new(), selected_slot: 0, shift_down: false,
             font: FontRenderer::load(assets),
             lang: Lang::load(assets, "en_US"),
             settings,

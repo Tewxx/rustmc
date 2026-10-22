@@ -192,6 +192,11 @@ impl Atlas {
         self.sprites.get(name).or_else(|| self.sprites.get(MISSING)).copied().unwrap()
     }
 
+    /// The sprite whose UV rectangle contains `(u, v)`.
+    pub fn sprite_at(&self, u: f32, v: f32) -> Option<Sprite> {
+        self.sprites.values().find(|s| (s.min_u..=s.max_u).contains(&u) && (s.min_v..=s.max_v).contains(&v)).copied()
+    }
+
     pub fn has(&self, name: &str) -> bool {
         self.sprites.contains_key(name)
     }

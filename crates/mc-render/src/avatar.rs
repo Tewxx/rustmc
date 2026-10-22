@@ -18,8 +18,28 @@ pub struct HeldItem {
     pub entity_block: bool,
 }
 
+/// An `EntityItem` to draw this frame.
+pub struct DroppedItem {
+    /// Interpolated position.
+    pub pos: Vec3,
+    /// `getAge() + partialTicks`
+    pub age: f32,
+    pub hover_start: f32,
+    pub count: u8,
+    pub item: HeldItem,
+    pub light: [f32; 3],
+}
+
+/// One face of the block being broken, retextured with the destroy stage (`BreakingFour`).
+pub struct DamageQuad {
+    pub pos: [Vec3; 4],
+    pub uv: [[f32; 2]; 4],
+}
+
 #[derive(Default)]
 pub struct AvatarFrame {
+    pub damage: Vec<DamageQuad>,
+    pub dropped: Vec<DroppedItem>,
     /// Interpolated feet position.
     pub pos: Vec3,
     pub body_yaw: f32,
@@ -62,6 +82,7 @@ struct Vertex {
 
 pub struct AvatarRenderer {
     pipeline: wgpu::RenderPipeline,
+    damage_pipeline: wgpu::RenderPipeline,
     vertices: [wgpu::Buffer; 2],
     bind_group: wgpu::BindGroup,
     steve: PlayerModel,
@@ -107,6 +128,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(v.kind==0u){{c*=textureSampleLevel(skin,samp,v.uv,0.0);}}
  if(v.kind==1u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);}}
  if(v.kind==2u){{c*=textureSampleLevel(alex,samp,v.uv,0.0);}}
+ if(v.kind==4u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);c=vec4<f32>(min(c.rgb*2.0,vec3<f32>(1.0)),c.a);}}
  if(v.kind!=3u && c.a<=0.1){{discard;}}
  if(SRGB){{c=vec4<f32>(select(c.rgb/12.92,pow((c.rgb+vec3<f32>(0.055))/1.055,vec3<f32>(2.4)),c.rgb>vec3<f32>(0.04045)),c.a);}}
  return c;
@@ -157,6 +179,49 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             multiview: None,
             cache: None,
         });
+        // drawBlockDamageTexture: blend (DST_COLOR, SRC_COLOR), polygon offset -3, no depth writes.
+        let damage_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("block damage"),
+            layout: Some(&pl),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32],
+                }],
+            },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState { constant: -3, slope_scale: -3.0, clamp: 0.0 },
+            }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::Dst,
+                            dst_factor: wgpu::BlendFactor::Zero,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent::OVER,
+                    }),
+                    write_mask: wgpu::ColorWrites::COLOR,
+                })],
+            }),
+            multiview: None,
+            cache: None,
+        });
         let load = |path: &str| {
             assets
                 .read(path)
@@ -191,7 +256,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 mapped_at_creation: false,
             })
         });
-        Self { pipeline, vertices, bind_group, steve: PlayerModel::new(false), alex: PlayerModel::new(true) }
+        Self { pipeline, damage_pipeline, vertices, bind_group, steve: PlayerModel::new(false), alex: PlayerModel::new(true) }
     }
 
     /// `hand_stage` false: body + selection box (world pass); true: first-person hand after a depth clear.
@@ -212,10 +277,20 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         hand_stage: bool,
     ) {
         let mut verts = Vec::new();
+        let mut damage = Vec::new();
         let world_vp = cam.view_proj(aspect, far);
         if !hand_stage {
             if frame.perspective != 0 {
                 self.body(&mut verts, frame, world_vp, cam.pos);
+            }
+            for d in &frame.dropped {
+                dropped_item(&mut verts, world_vp, cam.pos, d);
+            }
+            for q in &frame.damage {
+                for i in [0, 1, 2, 0, 2, 3] {
+                    let clip = world_vp * (q.pos[i] - cam.pos).extend(1.);
+                    damage.push(Vertex { clip: clip.to_array(), uv: q.uv[i], color: [1., 1., 1., 0.5], kind: 4. });
+                }
             }
             if let Some(bb) = frame.outline {
                 outline(&mut verts, world_vp, cam.pos, bb.expand(0.002, 0.002, 0.002), height * aspect, height);
@@ -223,6 +298,10 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         } else if frame.perspective == 0 && !frame.hide_hand {
             self.hand(&mut verts, frame, aspect, far);
         }
+        // The crack overlay draws right after the terrain, before entities.
+        let split = damage.len() as u32;
+        damage.extend(verts);
+        let verts = damage;
         if verts.is_empty() {
             return;
         }
@@ -246,10 +325,15 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, buf.slice(..));
-        pass.draw(0..verts.len().min(65536) as u32, 0..1);
+        let end = verts.len().min(65536) as u32;
+        if split > 0 {
+            pass.set_pipeline(&self.damage_pipeline);
+            pass.draw(0..split.min(end), 0..1);
+        }
+        pass.set_pipeline(&self.pipeline);
+        pass.draw(split.min(end)..end, 0..1);
     }
 
     /// `RendererLivingEntity.doRender` for the local player, plus `LayerHeldItem`.
@@ -375,6 +459,66 @@ fn render_item(out: &mut Vec<Vertex>, proj: Mat4, m: Mat4, item: &HeldItem, t: T
         ];
         let clip = q.pos.map(|p| proj * m * Vec3::from(p).extend(1.));
         if is_back_face(&clip) != flip {
+            continue;
+        }
+        for i in [0, 1, 2, 0, 2, 3] {
+            out.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: c, kind: ATLAS });
+        }
+    }
+}
+
+/// `RenderEntityItem.doRender`
+fn dropped_item(out: &mut Vec<Vertex>, vp: Mat4, cam: Vec3, d: &DroppedItem) {
+    let model = &d.item.model;
+    let ground = model.transform(TransformType::Ground);
+    let scale = Vec3::new(ground.x_axis.truncate().length(), ground.y_axis.truncate().length(), ground.z_axis.truncate().length());
+    let copies = match d.count {
+        49.. => 5,
+        33.. => 4,
+        17.. => 3,
+        2.. => 2,
+        _ => 1,
+    };
+    let bob = mc_core::math::sin(d.age / 10. + d.hover_start) * 0.1 + 0.1;
+    let mut m = Mat4::from_translation(d.pos - cam + Vec3::new(0., bob + 0.25 * scale.y, 0.))
+        * Mat4::from_rotation_y((d.age / 20. + d.hover_start) * (180. / std::f32::consts::PI) * std::f32::consts::PI / 180.);
+    if !model.gui3d {
+        m *= Mat4::from_translation(Vec3::new(0., 0., -0.046875 * (copies - 1) as f32 * 0.5));
+    }
+    let mut rand = mc_core::random::JavaRandom::new(187);
+    let lights = lights_in(Mat3::IDENTITY);
+    for j in 0..copies {
+        if model.gui3d {
+            let mut im = m;
+            if j > 0 {
+                let mut r = || (rand.next_float() * 2. - 1.) * 0.15;
+                im *= Mat4::from_translation(Vec3::new(r(), r(), r()));
+            }
+            im *= Mat4::from_scale(Vec3::splat(0.5)) * ground;
+            entity_item(out, vp, im, &d.item, lights, d.light);
+        } else {
+            entity_item(out, vp, m * ground, &d.item, lights, d.light);
+            m *= Mat4::from_translation(Vec3::new(0., 0., 0.046875 * scale.z));
+        }
+    }
+}
+
+/// `RenderItem.renderItem(stack, model)`: scale 0.5, centre, draw (both faces of flat items).
+fn entity_item(out: &mut Vec<Vertex>, vp: Mat4, m: Mat4, item: &HeldItem, lights: [Vec3; 2], light: [f32; 3]) {
+    let m = m * Mat4::from_scale(Vec3::splat(0.5)) * Mat4::from_translation(Vec3::splat(-0.5));
+    let normal_m = Mat3::from_mat4(m).inverse().transpose();
+    for q in &item.model.quads {
+        let (nx, ny, nz) = q.face.offset();
+        let shade = standard_lighting(normal_m * Vec3::new(nx as f32, ny as f32, nz as f32), lights);
+        let tint = if q.tint_index >= 0 { item.tints[(q.tint_index as usize).min(3)] } else { 0xFFFFFF };
+        let c = [
+            ((tint >> 16) & 255) as f32 / 255. * shade * light[0],
+            ((tint >> 8) & 255) as f32 / 255. * shade * light[1],
+            (tint & 255) as f32 / 255. * shade * light[2],
+            1.,
+        ];
+        let clip = q.pos.map(|p| vp * m * Vec3::from(p).extend(1.));
+        if is_back_face(&clip) {
             continue;
         }
         for i in [0, 1, 2, 0, 2, 3] {

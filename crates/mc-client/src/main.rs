@@ -11,6 +11,8 @@ mod commands;
 mod icon;
 mod inventory;
 mod player;
+mod survival;
+mod tools;
 
 use bench::Bench;
 use glam::Vec3;
@@ -224,6 +226,12 @@ struct App {
     hitting: Option<BlockPos>,
     block_damage: f32,
     block_hit_delay: u8,
+    /// Dropped item entities and the world's entity id counter.
+    items: Vec<mc_entity::item::ItemEntity>,
+    next_entity_id: u32,
+    rand: mc_core::random::JavaRandom,
+    /// Q presses since the last tick (with Ctrl held: whole stack).
+    drop_presses: Vec<bool>,
     assets: AssetSource,
     models: BlockModels,
     world: World,
@@ -275,6 +283,10 @@ impl App {
             hitting: None,
             block_damage: 0.,
             block_hit_delay: 0,
+            items: Vec::new(),
+            next_entity_id: 1,
+            rand: mc_core::random::JavaRandom::new(0x5DEECE66D),
+            drop_presses: Vec::new(),
             assets,
             models,
             world,
@@ -411,17 +423,11 @@ impl App {
         let keys: Vec<_> = self.world.chunks.keys().copied().collect();
         let mut quads = 0;
         for (cx, cz) in keys {
-            let m = mesh::build_with_geometry(
-                &self.world,
-                &self.models,
-                cx,
-                cz,
-                smooth,
-                self.ui.settings.fancy_graphics,
-                &mut self.geometry,
-            );
-            quads += m.indices.len() / 6;
-            r.upload_chunk(cx, cz, &m);
+            for sy in 0..16 {
+                let m = mesh::build_section(&self.world, &self.models, cx, sy, cz, smooth, self.ui.settings.fancy_graphics, &mut self.geometry);
+                quads += m.indices.len() / 6;
+                r.upload_section(cx, sy, cz, &m);
+            }
         }
         println!(
             "meshed {} chunks ({quads} quads) in {:.1} ms",
@@ -482,6 +488,18 @@ impl App {
         } else {
             self.clicks.clear();
         }
+        for whole in std::mem::take(&mut self.drop_presses) {
+            // EntityPlayerSP.dropOneItem
+            let slot = self.player.selected_slot;
+            if let Some(s) = self.ui.inventory[slot] {
+                let n = if whole { s.count } else { 1 };
+                self.ui.inventory[slot] = (s.count > n).then_some(mc_gui::ItemStack { count: s.count - n, ..s });
+                self.throw_stack(mc_gui::ItemStack { count: n, ..s });
+            }
+        }
+        for s in std::mem::take(&mut self.ui.drops) {
+            self.throw_stack(s);
+        }
         let current = self.ui.inventory[self.player.selected_slot].map(|s| (s.item, s.count));
         self.entity.update_equipped(current);
         let k = |c| self.screen.is_none() && self.keys.contains(&c);
@@ -496,32 +514,108 @@ impl App {
             using_item: false,
         };
         self.entity.tick(&self.world, &mut self.geometry, keys);
+        self.tick_items();
         if self.entity.pos.y < -64. {
             self.entity.teleport(self.spawn);
         }
     }
 
-    /// `getPlayerRelativeBlockHardness` with an empty hand.
+    /// The `Item` in the selected hotbar slot.
+    fn held_registry_item(&self) -> Option<&'static mc_data::item::Item> {
+        let s = self.ui.inventory[self.player.selected_slot]?;
+        mc_data::item::Item::by_id(self.catalogue.items[s.item].id)
+    }
+
+    /// `Block.getPlayerRelativeBlockHardness`
     fn relative_hardness(&self, pos: BlockPos) -> f32 {
         let block = self.world.state_at(pos.x, pos.y, pos.z).block();
         if block.hardness < 0. {
             return 0.;
         }
-        let mut speed = 1.0f32;
+        let held = self.held_registry_item();
+        let mut speed = tools::dig_speed(held, block);
         if self.entity.in_water {
             speed /= 5.;
         }
         if !self.entity.on_ground {
             speed /= 5.;
         }
-        let harvest = block.material.props().tool_not_required;
+        let harvest = tools::can_harvest(held, block);
         speed / block.hardness / if harvest { 30. } else { 100. }
     }
 
     fn destroy_block(&mut self, pos: BlockPos) {
+        let state = self.world.state_at(pos.x, pos.y, pos.z);
         if self.world.set_block(pos, 0, 0) {
+            if !self.entity.creative && tools::can_harvest(self.held_registry_item(), state.block()) {
+                for (id, meta, count) in tools::drops(state, &mut self.rand) {
+                    if let Some(i) = self.catalogue.index_of(id, meta) {
+                        let id = self.alloc_entity_id();
+                        let e = mc_entity::item::ItemEntity::from_block(id, pos, (i, count), &mut self.rand);
+                        self.items.push(e);
+                    }
+                }
+            }
             self.refresh_edits(&[pos]);
         }
+    }
+
+    fn alloc_entity_id(&mut self) -> u32 {
+        self.next_entity_id += 1;
+        self.next_entity_id
+    }
+
+    /// `EntityPlayer.dropItem(stack, false, true)`
+    fn throw_stack(&mut self, stack: mc_gui::ItemStack) {
+        let id = self.alloc_entity_id();
+        let e = &self.entity;
+        let item = mc_entity::item::ItemEntity::thrown(id, e.pos, e.eye_height(), e.yaw, e.pitch, (stack.item, stack.count), &mut self.rand);
+        self.items.push(item);
+    }
+
+    /// `InventoryPlayer.addItemStackToInventory`; returns what didn't fit.
+    fn add_to_inventory(&mut self, item: usize, mut count: u8) -> u8 {
+        let max = self.catalogue.items[item].max.max(1);
+        for slot in 0..36 {
+            if let Some(s) = &mut self.ui.inventory[slot] {
+                if s.item == item && s.count < max {
+                    let n = count.min(max - s.count);
+                    s.count += n;
+                    count -= n;
+                    if count == 0 {
+                        return 0;
+                    }
+                }
+            }
+        }
+        while count > 0 {
+            let Some(slot) = self.ui.inventory.iter().position(Option::is_none) else { break };
+            let n = count.min(max);
+            self.ui.inventory[slot] = Some(mc_gui::ItemStack { item, count: n });
+            count -= n;
+        }
+        count
+    }
+
+    /// Item entity ticks and `EntityItem.onCollideWithPlayer`.
+    fn tick_items(&mut self) {
+        let mut items = std::mem::take(&mut self.items);
+        for it in &mut items {
+            it.tick(&mut player::PhysWorld { world: &self.world, geometry: &mut self.geometry }, &mut self.rand);
+        }
+        let reach = self.entity.bb.expand(1.0, 0.5, 1.0);
+        for it in &mut items {
+            if !it.dead && !self.entity.dead && it.pickup_delay == 0 && reach.intersects_with(&it.bb) {
+                let left = self.add_to_inventory(it.stack.0, it.stack.1);
+                if left == 0 {
+                    it.dead = true;
+                } else {
+                    it.stack.1 = left;
+                }
+            }
+        }
+        items.retain(|i| !i.dead);
+        self.items = items;
     }
 
     /// `PlayerControllerMP.clickBlock`
@@ -573,6 +667,36 @@ impl App {
         self.entity.swing_item();
     }
 
+    /// `BlockRendererDispatcher.renderBlockDamage`: the block's model with every quad's UVs moved
+    /// from its own sprite onto `destroy_stage_N`.
+    fn damage_quads(&self) -> Vec<mc_render::avatar::DamageQuad> {
+        let Some((pos, stage)) = self.break_progress() else { return Vec::new() };
+        let atlas = &self.models.atlas;
+        let crack = atlas.sprite(&format!("blocks/destroy_stage_{}", stage.min(9)));
+        let stored = self.world.state_at(pos.x, pos.y, pos.z);
+        let actual = stored.actual_state(&self.world, pos);
+        let Some(entry) = self.models.get_state(actual) else { return Vec::new() };
+        if entry.models.is_empty() {
+            return Vec::new();
+        }
+        let model = &entry.models[mc_assets::model::pick_weighted(&entry.weights, pos.x, pos.y, pos.z)].1;
+        let origin = Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32);
+        model
+            .quads
+            .iter()
+            .filter_map(|q| {
+                let c = [0.25f32, 0.75].map(|t| q.uv[0][0] * t + q.uv[2][0] * (1. - t));
+                let own = atlas.sprite_at((c[0] + c[1]) / 2., (q.uv[0][1] + q.uv[2][1]) / 2.)?;
+                let uv = q.uv.map(|[u, v]| {
+                    let fu = (u - own.min_u) / (own.max_u - own.min_u);
+                    let fv = (v - own.min_v) / (own.max_v - own.min_v);
+                    [crack.min_u + fu * (crack.max_u - crack.min_u), crack.min_v + fv * (crack.max_v - crack.min_v)]
+                });
+                Some(mc_render::avatar::DamageQuad { pos: q.pos.map(|p| origin + Vec3::from(p)), uv })
+            })
+            .collect()
+    }
+
     /// Destroy stage shown on the block being hit (`sendBlockBreakProgress`).
     pub fn break_progress(&self) -> Option<(BlockPos, i32)> {
         self.hitting.map(|p| (p, (self.block_damage * 10.) as i32 - 1)).filter(|(_, s)| *s >= 0)
@@ -599,6 +723,7 @@ impl App {
         if edits.is_empty() {
             return;
         }
+        let t0 = Instant::now();
         // Light is updated incrementally by set_block_state; settle sky-light gaps nearby.
         for p in edits {
             for dx in -1..=1 {
@@ -608,26 +733,30 @@ impl App {
             }
         }
         // Remesh only the columns whose blocks or light actually changed.
-        let mut dirty = HashSet::new();
-        for (x, _, z) in self.world.take_dirty() {
-            dirty.insert((x, z));
-        }
+        let dirty = self.world.take_dirty();
+        let t1 = Instant::now();
+        let n = dirty.len();
+        let _ = &n;
         let Some(r) = &mut self.renderer else {
             return;
         };
-        for (x, z) in dirty {
-            if self.world.chunks.contains_key(&(x, z)) {
-                let m = mesh::build_with_geometry(
+        for (x, sy, z) in dirty {
+            if self.world.chunks.contains_key(&(x, z)) && (0..16).contains(&sy) {
+                let m = mesh::build_section(
                     &self.world,
                     &self.models,
                     x,
+                    sy,
                     z,
                     self.ui.settings.ambient_occlusion != 0,
                     self.ui.settings.fancy_graphics,
                     &mut self.geometry,
                 );
-                r.upload_chunk(x, z, &m);
+                r.upload_section(x, sy, z, &m);
             }
+        }
+        if std::env::var_os("RUSTMC_TIMING").is_some() {
+            eprintln!("edit: light {:?}, mesh {n} sections {:?}", t1 - t0, t1.elapsed());
         }
     }
     fn eye(&self, pt: f32) -> Vec3 {
@@ -655,6 +784,10 @@ impl App {
         let (x, y, z) = (e.pos.x.floor() as i32, (e.pos.y + e.eye_height() as f64).floor() as i32, e.pos.z.floor() as i32);
         let (sky, block) = self.world.light(x, y, z);
         let block = block.max(self.world.state_at(x, y, z).block().light_value);
+        self.lightmap_color(sky, block)
+    }
+
+    fn lightmap_color(&self, sky: u8, block: u8) -> [f32; 3] {
         let table = lightmap::build(lightmap::sun_brightness(0.0), 0.0, self.ui.settings.gamma);
         let i = (sky as usize * 16 + block as usize) * 4;
         [table[i] as f32 / 255., table[i + 1] as f32 / 255., table[i + 2] as f32 / 255.]
@@ -750,6 +883,22 @@ impl App {
         sky.ticks = self.ui.ticks;
         sky.fancy_clouds = self.ui.settings.fancy_graphics;
         let light = self.light_at_eyes();
+        let dropped = self
+            .items
+            .iter()
+            .filter_map(|it| {
+                let p = it.interpolated(pt);
+                let (sky, block) = self.world.light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+                Some(mc_render::avatar::DroppedItem {
+                    pos: Vec3::new(p.x as f32, p.y as f32, p.z as f32),
+                    age: it.age as f32 + pt,
+                    hover_start: it.hover_start,
+                    count: it.stack.1,
+                    item: self.held_item(it.stack.0)?,
+                    light: self.lightmap_color(sky, block),
+                })
+            })
+            .collect();
         let e = &self.entity;
         let frame = mc_render::avatar::AvatarFrame {
             pos,
@@ -774,6 +923,8 @@ impl App {
             hand_light: light,
             hand_item,
             slim: false,
+            dropped,
+            damage: self.damage_quads(),
         };
         if let Some(r) = &mut self.renderer {
             r.sky = sky;
@@ -910,7 +1061,7 @@ impl App {
         DebugInfo {
             fps: self.fps,
             chunk_updates: 0,
-            chunks_drawn: r.map_or(0, |r| r.drawn_chunks) * 16,
+            chunks_drawn: r.map_or(0, |r| r.drawn_chunks),
             chunks_total: self.world.chunks.len() * 16,
             render_distance: self.ui.settings.render_distance,
             pos: [p.x, p.y, p.z],
@@ -1030,7 +1181,45 @@ impl App {
                 self.sync_view();
             }
             "death" => self.send_chat("/kill"),
+            "breaking" => {
+                self.screen = None;
+                self.send_chat("/gamemode survival");
+                self.entity.pitch = 60.;
+                self.entity.prev_pitch = 60.;
+                self.grabbed = true;
+                self.buttons.insert(MouseButton::Left);
+                self.clicks.push(MouseButton::Left);
+                for _ in 0..13 {
+                    self.run_tick();
+                }
+                self.sync_view();
+            }
+            "drops" => {
+                self.screen = None;
+                self.send_chat("/give Player stone 64");
+                self.send_chat("/give Player diamond_sword 1");
+                self.send_chat("/give Player leaves 3");
+                self.entity.pitch = 30.;
+                for slot in 0..3 {
+                    self.player.selected_slot = slot;
+                    self.drop_presses.push(slot == 0);
+                    self.run_tick();
+                    for _ in 0..6 {
+                        self.run_tick();
+                    }
+                }
+                for _ in 0..10 {
+                    self.run_tick();
+                }
+                self.entity.pitch = 45.;
+                self.sync_view();
+            }
             "creative" => self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false),
+            "survival" => {
+                self.send_chat("/give Player stone 64");
+                self.send_chat("/give Player iron_helmet 1");
+                self.open(Box::new(survival::SurvivalInventory::new(self.catalogue.clone())), false)
+            }
             "body" | "body-back" => {
                 self.entity.perspective = if which == "body" { 2 } else { 1 };
                 self.entity.pitch = 10.;
@@ -1226,7 +1415,17 @@ impl ApplicationHandler for App {
                     return;
                 }
                 match code {
-                    KeyCode::KeyE => self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false),
+                    KeyCode::KeyE => {
+                        if self.entity.creative {
+                            self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false)
+                        } else {
+                            self.open(Box::new(survival::SurvivalInventory::new(self.catalogue.clone())), false)
+                        }
+                    }
+                    KeyCode::KeyQ => {
+                        let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+                        self.drop_presses.push(ctrl);
+                    }
                     KeyCode::F5 => {
                         self.entity.perspective = (self.entity.perspective + 1) % 3;
                         self.sync_view();

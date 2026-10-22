@@ -81,7 +81,7 @@ pub struct Renderer {
     depth: wgpu::TextureView,
     lightmap: wgpu::Texture,
     atlas: wgpu::Texture,
-    chunks: HashMap<(i32, i32), GpuChunk>,
+    chunks: HashMap<(i32, i32, i32), GpuChunk>,
     gui: GuiRenderer,
     uncapped_mode: wgpu::PresentMode,
     pub adapter_info: wgpu::AdapterInfo,
@@ -391,9 +391,10 @@ impl Renderer {
         self.depth = create_depth(&self.device, width, height);
     }
 
-    pub fn upload_chunk(&mut self, cx: i32, cz: i32, mesh: &ChunkMesh) {
+    /// Uploads one render section's mesh (`sy` = section index 0..16).
+    pub fn upload_section(&mut self, cx: i32, sy: i32, cz: i32, mesh: &ChunkMesh) {
         if mesh.indices.is_empty() {
-            self.chunks.remove(&(cx, cz));
+            self.chunks.remove(&(cx, sy, cz));
             return;
         }
         let vertices = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -445,7 +446,7 @@ impl Renderer {
         }
         let o = Vec3::new(origin[0], 0.0, origin[2]);
         self.chunks.insert(
-            (cx, cz),
+            (cx, sy, cz),
             GpuChunk {
                 vertices,
                 indices,
@@ -717,7 +718,7 @@ impl Renderer {
         translucent.sort_by(|a, b| b.1.total_cmp(&a.1));
         for &(key, _) in &translucent {
             let c = self.chunks.get_mut(&key).unwrap();
-            let relative = cam.pos - Vec3::new((key.0 * 16) as f32, 0., (key.1 * 16) as f32);
+            let relative = cam.pos - Vec3::new((key.0 * 16) as f32, 0., (key.2 * 16) as f32);
             c.transparent
                 .sort_by(|a, b| (b.1 - relative).length_squared().total_cmp(&(a.1 - relative).length_squared()));
             let indices: Vec<u32> = c.transparent.iter().flat_map(|(q, _)| q.iter().copied()).collect();

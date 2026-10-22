@@ -153,6 +153,10 @@ impl Catalogue {
         }
         Self { items }
     }
+    /// Catalogue entry for an item id and damage value.
+    pub fn index_of(&self, id: u16, meta: u16) -> Option<usize> {
+        self.items.iter().position(|i| i.id == id && i.meta == meta).or_else(|| self.items.iter().position(|i| i.id == id))
+    }
     pub fn find(&self, name: &str, meta: u16) -> Option<usize> {
         let name = name.strip_prefix("minecraft:").unwrap_or(name);
         self.items
