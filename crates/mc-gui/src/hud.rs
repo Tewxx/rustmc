@@ -201,11 +201,20 @@ impl Hud {
         }
     }
 
-    /// `GuiNewChat.drawChat` with default chat settings (width 320, opacity 1, scale 1).
+    /// `GuiNewChat.drawChat`: visibility, opacity, scale, width and line count from the chat options.
     fn draw_chat(&self, ui: &mut Ui, b: &mut GuiBatch, screen_h: i32, chat_open: bool) {
-        let max_lines = if chat_open { 20 } else { 10 };
-        let width = 320;
-        let (ox, oy) = (2, screen_h - 48 + 20);
+        let st = &ui.settings;
+        if st.chat_visibility == 2 {
+            return;
+        }
+        // calculateChatboxHeight / calculateChatboxWidth
+        let height = (if chat_open { st.chat_height_focused } else { st.chat_height_unfocused } * 160.0 + 20.0).floor() as i32;
+        let max_lines = (height / 9) as usize;
+        let opacity = st.chat_opacity * 0.9 + 0.1;
+        let scale = st.chat_scale;
+        let width = ((st.chat_width * 280.0 + 40.0).floor() as f32 / scale).ceil() as i32;
+        let saved = b.transform;
+        b.transform = Some((scale, [2.0, (screen_h - 48 + 20) as f32]));
         for (l1, line) in self.chat.iter().take(max_lines).enumerate() {
             let age = self.update_counter - line.tick;
             if age >= 200 && !chat_open {
@@ -220,12 +229,14 @@ impl Hud {
             if chat_open {
                 l2 = 255;
             }
+            l2 = (l2 as f32 * opacity) as i32;
             if l2 > 3 {
                 let i2 = -(l1 as i32) * 9;
-                b.rect(ox, oy + i2 - 9, ox + width + 4, oy + i2, ((l2 / 2) as u32) << 24);
-                ui.font.draw_shadow(b, &line.text, ox as f32, (oy + i2 - 8) as f32, 16777215 + ((l2 as u32) << 24));
+                b.rect(0, i2 - 9, width + 4, i2, ((l2 / 2) as u32) << 24);
+                ui.font.draw_shadow(b, &line.text, 0.0, (i2 - 8) as f32, 16777215 + ((l2 as u32) << 24));
             }
         }
+        b.transform = saved;
     }
 }
 

@@ -24,9 +24,23 @@ pub enum Opt {
     Vbo,
     EntityShadows,
     InvertMouse,
+    ChatVisibility,
+    ChatColors,
+    ChatLinks,
+    ChatOpacity,
+    ChatLinksPrompt,
+    ChatScale,
+    ChatWidth,
+    ChatHeightFocused,
+    ChatHeightUnfocused,
+    /// An `EnumPlayerModelParts` toggle, by index into [`MODEL_PARTS`].
+    ModelPart(u8),
     /// A `SoundCategory` volume, by index into [`SOUND_CATEGORIES`].
     SoundVolume(u8),
 }
+
+/// `EnumPlayerModelParts` names; bit `i` of the skin-parts mask.
+pub const MODEL_PARTS: [&str; 7] = ["cape", "jacket", "left_sleeve", "right_sleeve", "left_pants_leg", "right_pants_leg", "hat"];
 
 /// `SoundCategory.values()` names, in order.
 pub const SOUND_CATEGORIES: [&str; 9] = ["master", "music", "record", "weather", "block", "hostile", "neutral", "player", "ambient"];
@@ -53,6 +67,16 @@ impl Opt {
             Opt::Vbo => "options.vbo",
             Opt::EntityShadows => "options.entityShadows",
             Opt::InvertMouse => "options.invertMouse",
+            Opt::ChatVisibility => "options.chat.visibility",
+            Opt::ChatColors => "options.chat.color",
+            Opt::ChatLinks => "options.chat.links",
+            Opt::ChatOpacity => "options.chat.opacity",
+            Opt::ChatLinksPrompt => "options.chat.links.prompt",
+            Opt::ChatScale => "options.chat.scale",
+            Opt::ChatWidth => "options.chat.width",
+            Opt::ChatHeightFocused => "options.chat.height.focused",
+            Opt::ChatHeightUnfocused => "options.chat.height.unfocused",
+            Opt::ModelPart(i) => ["options.modelPart.cape", "options.modelPart.jacket", "options.modelPart.left_sleeve", "options.modelPart.right_sleeve", "options.modelPart.left_pants_leg", "options.modelPart.right_pants_leg", "options.modelPart.hat"][i as usize],
             Opt::SoundVolume(i) => ["soundCategory.master", "soundCategory.music", "soundCategory.record", "soundCategory.weather", "soundCategory.block", "soundCategory.hostile", "soundCategory.neutral", "soundCategory.player", "soundCategory.ambient"][i as usize],
         }
     }
@@ -62,6 +86,7 @@ impl Opt {
         Some(match self {
             Opt::Fov => (30.0, 110.0, 1.0),
             Opt::Sensitivity | Opt::Gamma | Opt::SoundVolume(_) => (0.0, 1.0, 0.0),
+            Opt::ChatOpacity | Opt::ChatScale | Opt::ChatWidth | Opt::ChatHeightFocused | Opt::ChatHeightUnfocused => (0.0, 1.0, 0.0),
             Opt::RenderDistance => (2.0, 16.0, 1.0),
             Opt::FramerateLimit => (10.0, 260.0, 10.0),
             Opt::MipmapLevels => (0.0, 4.0, 1.0),
@@ -110,6 +135,18 @@ pub struct Settings {
     pub use_vbo: bool,
     pub entity_shadows: bool,
     pub invert_mouse: bool,
+    /// `EnumChatVisibility`: 0 full, 1 commands only, 2 hidden.
+    pub chat_visibility: i32,
+    pub chat_colors: bool,
+    pub chat_links: bool,
+    pub chat_links_prompt: bool,
+    pub chat_opacity: f32,
+    pub chat_scale: f32,
+    pub chat_width: f32,
+    pub chat_height_focused: f32,
+    pub chat_height_unfocused: f32,
+    /// Skin-parts mask sent in `C15PacketClientSettings`.
+    pub model_parts: u8,
     pub show_debug: bool,
     pub hide_gui: bool,
     /// `soundCategory_<name>` volumes (missing = 1.0).
@@ -140,6 +177,16 @@ impl Default for Settings {
             use_vbo: false,
             entity_shadows: true,
             invert_mouse: false,
+            chat_visibility: 0,
+            chat_colors: true,
+            chat_links: true,
+            chat_links_prompt: true,
+            chat_opacity: 1.0,
+            chat_scale: 1.0,
+            chat_width: 1.0,
+            chat_height_focused: 1.0,
+            chat_height_unfocused: 0.44366196,
+            model_parts: 0x7f,
             show_debug: false,
             hide_gui: false,
             sound_volumes: Default::default(),
@@ -191,6 +238,24 @@ impl Settings {
                 "useVbo" => s.use_vbo = b,
                 "entityShadows" => s.entity_shadows = b,
                 "invertYMouse" => s.invert_mouse = b,
+                "chatVisibility" => s.chat_visibility = i.unwrap_or(s.chat_visibility),
+                "chatColors" => s.chat_colors = b,
+                "chatLinks" => s.chat_links = b,
+                "chatLinksPrompt" => s.chat_links_prompt = b,
+                "chatOpacity" => s.chat_opacity = f.unwrap_or(s.chat_opacity),
+                "chatScale" => s.chat_scale = f.unwrap_or(s.chat_scale),
+                "chatWidth" => s.chat_width = f.unwrap_or(s.chat_width),
+                "chatHeightFocused" => s.chat_height_focused = f.unwrap_or(s.chat_height_focused),
+                "chatHeightUnfocused" => s.chat_height_unfocused = f.unwrap_or(s.chat_height_unfocused),
+                _ if k.starts_with("modelPart_") => {
+                    if let Some(bit) = MODEL_PARTS.iter().position(|p| *p == &k["modelPart_".len()..]) {
+                        if b {
+                            s.model_parts |= 1 << bit;
+                        } else {
+                            s.model_parts &= !(1 << bit);
+                        }
+                    }
+                }
                 _ if k.starts_with("soundCategory_") => {
                     if let Some(f) = f {
                         s.sound_volumes.insert(k["soundCategory_".len()..].to_string(), f);
@@ -225,7 +290,20 @@ impl Settings {
             ("useVbo", self.use_vbo.to_string()),
             ("entityShadows", self.entity_shadows.to_string()),
             ("invertYMouse", self.invert_mouse.to_string()),
+            ("chatVisibility", self.chat_visibility.to_string()),
+            ("chatColors", self.chat_colors.to_string()),
+            ("chatLinks", self.chat_links.to_string()),
+            ("chatLinksPrompt", self.chat_links_prompt.to_string()),
+            ("chatOpacity", self.chat_opacity.to_string()),
+            ("chatScale", self.chat_scale.to_string()),
+            ("chatWidth", self.chat_width.to_string()),
+            ("chatHeightFocused", self.chat_height_focused.to_string()),
+            ("chatHeightUnfocused", self.chat_height_unfocused.to_string()),
         ];
+        let part_keys: Vec<String> = MODEL_PARTS.iter().map(|p| format!("modelPart_{p}")).collect();
+        for (i, k) in part_keys.iter().enumerate() {
+            ours.push((k.as_str(), (self.model_parts >> i & 1 != 0).to_string()));
+        }
         let sound_keys: Vec<String> = self.sound_volumes.keys().map(|k| format!("soundCategory_{k}")).collect();
         for (k, (_, v)) in sound_keys.iter().zip(&self.sound_volumes) {
             ours.push((k.as_str(), v.to_string()));
@@ -253,6 +331,11 @@ impl Settings {
             Opt::RenderDistance => self.render_distance as f32,
             Opt::FramerateLimit => self.limit_framerate as f32,
             Opt::MipmapLevels => self.mipmap_levels as f32,
+            Opt::ChatOpacity => self.chat_opacity,
+            Opt::ChatScale => self.chat_scale,
+            Opt::ChatWidth => self.chat_width,
+            Opt::ChatHeightFocused => self.chat_height_focused,
+            Opt::ChatHeightUnfocused => self.chat_height_unfocused,
             Opt::SoundVolume(i) => self.sound_volume(SOUND_CATEGORIES[i as usize]),
             _ => 0.0,
         }
@@ -266,6 +349,11 @@ impl Settings {
             Opt::RenderDistance => self.render_distance = v as i32,
             Opt::FramerateLimit => self.limit_framerate = v as i32,
             Opt::MipmapLevels => self.mipmap_levels = v as i32,
+            Opt::ChatOpacity => self.chat_opacity = v,
+            Opt::ChatScale => self.chat_scale = v,
+            Opt::ChatWidth => self.chat_width = v,
+            Opt::ChatHeightFocused => self.chat_height_focused = v,
+            Opt::ChatHeightUnfocused => self.chat_height_unfocused = v,
             Opt::SoundVolume(i) => {
                 self.sound_volumes.insert(SOUND_CATEGORIES[i as usize].to_string(), v);
             }
@@ -289,6 +377,11 @@ impl Settings {
             Opt::Vbo => self.use_vbo = !self.use_vbo,
             Opt::EntityShadows => self.entity_shadows = !self.entity_shadows,
             Opt::InvertMouse => self.invert_mouse = !self.invert_mouse,
+            Opt::ChatVisibility => self.chat_visibility = (self.chat_visibility + 1) % 3,
+            Opt::ChatColors => self.chat_colors = !self.chat_colors,
+            Opt::ChatLinks => self.chat_links = !self.chat_links,
+            Opt::ChatLinksPrompt => self.chat_links_prompt = !self.chat_links_prompt,
+            Opt::ModelPart(i) => self.model_parts ^= 1 << i,
             _ => {}
         }
     }
@@ -313,6 +406,11 @@ impl Settings {
                 Opt::Gamma if f == 1.0 => s + &t("options.gamma.max"),
                 Opt::Gamma => format!("{s}+{}%", (f * 100.0) as i32),
                 Opt::RenderDistance => format!("{s}{} chunks", f1 as i32),
+                // GuiNewChat.calculateChatboxWidth / calculateChatboxHeight
+                Opt::ChatOpacity => format!("{s}{}%", (f * 90.0 + 10.0) as i32),
+                Opt::ChatScale => format!("{s}{}%", (f * 100.0) as i32),
+                Opt::ChatWidth => format!("{s}{}px", (f * 280.0 + 40.0).floor() as i32),
+                Opt::ChatHeightFocused | Opt::ChatHeightUnfocused => format!("{s}{}px", (f * 160.0 + 20.0).floor() as i32),
                 Opt::MipmapLevels if f1 == 0.0 => s + &t("options.off"),
                 Opt::MipmapLevels => format!("{s}{}", f1 as i32),
                 // GuiScreenOptionsSounds.getSoundVolume
@@ -341,6 +439,11 @@ impl Settings {
             Opt::Vbo => s + &on_off(self.use_vbo),
             Opt::EntityShadows => s + &on_off(self.entity_shadows),
             Opt::InvertMouse => s + &on_off(self.invert_mouse),
+            Opt::ChatVisibility => s + &t(["options.chat.visibility.full", "options.chat.visibility.system", "options.chat.visibility.hidden"][self.chat_visibility.clamp(0, 2) as usize]),
+            Opt::ChatColors => s + &on_off(self.chat_colors),
+            Opt::ChatLinks => s + &on_off(self.chat_links),
+            Opt::ChatLinksPrompt => s + &on_off(self.chat_links_prompt),
+            Opt::ModelPart(i) => s + &on_off(self.model_parts >> i & 1 != 0),
             _ => s,
         }
     }

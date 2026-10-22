@@ -100,13 +100,18 @@ impl Net {
     }
 
     /// `NetHandlerPlayClient.handleJoinGame`'s replies: brand and client settings.
-    pub fn send_join_replies(&mut self, locale: &str, view_distance: i8, chat_colors: bool, skin_parts: u8) {
+    pub fn send_join_replies(&mut self, locale: &str, view_distance: i8, chat_mode: i8, chat_colors: bool, skin_parts: u8) {
         let mut brand = Vec::new();
         let b = b"vanilla";
         brand.push(b.len() as u8);
         brand.extend_from_slice(b);
         self.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: "MC|Brand".into(), data: brand }));
-        self.send(PlayServerbound::ClientSettings(ClientSettings { locale: locale.into(), view_distance, chat_mode: 0, chat_colors, skin_parts }));
+        self.send_settings(locale, view_distance, chat_mode, chat_colors, skin_parts);
+    }
+
+    /// `GameSettings.sendSettingsToServer` (C15).
+    pub fn send_settings(&mut self, locale: &str, view_distance: i8, chat_mode: i8, chat_colors: bool, skin_parts: u8) {
+        self.send(PlayServerbound::ClientSettings(ClientSettings { locale: locale.into(), view_distance, chat_mode, chat_colors, skin_parts }));
     }
 
     /// `handlePlayerPosLook`: applies the (possibly relative) position and answers with C06.

@@ -542,6 +542,13 @@ impl App {
         let Some(r) = &mut self.renderer else { return };
         r.render_distance_blocks = (s.render_distance * 16) as f32;
         r.set_vsync(s.vsync);
+        // GameSettings.sendSettingsToServer when a synced option changes.
+        let a = &self.applied;
+        if (s.chat_visibility, s.chat_colors, s.model_parts, s.render_distance) != (a.chat_visibility, a.chat_colors, a.model_parts, a.render_distance) {
+            if let Some(n) = &mut self.net {
+                n.send_settings("en_US", s.render_distance as i8, s.chat_visibility as i8, s.chat_colors, s.model_parts);
+            }
+        }
         if s.fullscreen != self.applied.fullscreen {
             if let Some(w) = &self.window {
                 w.set_fullscreen(s.fullscreen.then(|| winit::window::Fullscreen::Borderless(None)));
@@ -764,7 +771,7 @@ impl App {
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
                     let view = self.ui.settings.render_distance as i8;
-                    n.send_join_replies("en_US", view, true, 0x7f);
+                    n.send_join_replies("en_US", view, self.ui.settings.chat_visibility as i8, self.ui.settings.chat_colors, self.ui.settings.model_parts);
                     self.entity.set_game_type(level::GameType::by_id(j.game_mode as i32));
                     self.info.difficulty = j.difficulty;
                     self.player.max_health = 20.;
@@ -2284,6 +2291,8 @@ impl App {
             "pause" => self.open(Box::new(screens::PauseMenu::default()), false),
             "options" => self.open(Box::new(screens::Options::default()), false),
             "video" => self.open(Box::new(screens::VideoSettings::default()), false),
+            "chatopts" => self.open(Box::new(screens::OptionList::chat()), false),
+            "skinopts" => self.open(Box::new(screens::OptionList::skin()), false),
             "sounds" => self.open(Box::new(screens::SoundSettings::default()), false),
             "controls" => self.open(Box::new(screens::Controls::default()), false),
             "chat" => {

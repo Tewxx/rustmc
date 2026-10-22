@@ -321,14 +321,14 @@ impl Screen for Options {
         self.buttons = vec![
             Button::option(0, x0, y0, Opt::Fov, ui),
             second,
-            Button::sized(110, w / 2 - 155, h / 6 + 48 - 6, 150, 20, t("options.skinCustomisation")).disabled(),
+            Button::sized(110, w / 2 - 155, h / 6 + 48 - 6, 150, 20, t("options.skinCustomisation")),
             Button::sized(8675309, w / 2 + 5, h / 6 + 48 - 6, 150, 20, "Super Secret Settings...").disabled(),
             Button::sized(106, w / 2 - 155, h / 6 + 72 - 6, 150, 20, t("options.sounds")),
             Button::sized(107, w / 2 + 5, h / 6 + 72 - 6, 150, 20, t("options.stream")).disabled(),
             Button::sized(101, w / 2 - 155, h / 6 + 96 - 6, 150, 20, t("options.video")),
             Button::sized(100, w / 2 + 5, h / 6 + 96 - 6, 150, 20, t("options.controls")),
             Button::sized(102, w / 2 - 155, h / 6 + 120 - 6, 150, 20, t("options.language")).disabled(),
-            Button::sized(103, w / 2 + 5, h / 6 + 120 - 6, 150, 20, t("options.chat.title")).disabled(),
+            Button::sized(103, w / 2 + 5, h / 6 + 120 - 6, 150, 20, t("options.chat.title")),
             Button::sized(105, w / 2 - 155, h / 6 + 144 - 6, 150, 20, t("options.resourcepack")).disabled(),
             Button::sized(104, w / 2 + 5, h / 6 + 144 - 6, 150, 20, t("options.snooper.view")).disabled(),
             Button::new(200, w / 2 - 100, h / 6 + 168, t("gui.done")),
@@ -350,6 +350,8 @@ impl Screen for Options {
             }
             Some(101) => Action::Open(Box::new(VideoSettings::default())),
             Some(106) => Action::Open(Box::new(SoundSettings::default())),
+            Some(103) => Action::Open(Box::new(OptionList::chat())),
+            Some(110) => Action::Open(Box::new(OptionList::skin())),
             Some(100) => Action::Open(Box::new(Controls::default())),
             Some(_) => {
                 self.dirty = true;
@@ -379,6 +381,75 @@ impl Screen for Options {
 
     fn settings_dirty(&self) -> bool {
         self.dirty
+    }
+}
+
+// ---------------------------------------------------------------- chat / skin options
+
+/// `ScreenChatOptions` and `GuiCustomizeSkin`: two columns of options, then Done.
+pub struct OptionList {
+    title: &'static str,
+    opts: Vec<Opt>,
+    buttons: Vec<Button>,
+}
+
+impl OptionList {
+    pub fn chat() -> Self {
+        use Opt::*;
+        let opts = vec![ChatVisibility, ChatColors, ChatLinks, ChatOpacity, ChatLinksPrompt, ChatScale, ChatWidth, ChatHeightFocused, ChatHeightUnfocused];
+        OptionList { title: "options.chat.title", opts, buttons: Vec::new() }
+    }
+    pub fn skin() -> Self {
+        OptionList { title: "options.skinCustomisation.title", opts: (0..7).map(Opt::ModelPart).collect(), buttons: Vec::new() }
+    }
+}
+
+impl Screen for OptionList {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        self.buttons.clear();
+        let mut i = 0;
+        for &o in &self.opts {
+            self.buttons.push(Button::option(i, w / 2 - 155 + i % 2 * 160, h / 6 + 24 * (i >> 1), o, ui));
+            i += 1;
+        }
+        let done_y = if self.title == "options.chat.title" {
+            h / 6 + 120
+        } else {
+            if i % 2 == 1 {
+                i += 1;
+            }
+            h / 6 + 24 * (i >> 1)
+        };
+        self.buttons.push(Button::new(200, w / 2 - 100, done_y, ui.lang.get("gui.done")));
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        default_background(ui, b, w, h);
+        let title = ui.lang.get(self.title);
+        ui.font.draw_centered(b, &title, w / 2, 20, 16777215);
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+    }
+
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        if click_buttons(&mut self.buttons, ui, mx, my) == Some(200) {
+            ui.settings.save();
+            return Action::Close;
+        }
+        Action::None
+    }
+
+    fn release(&mut self, ui: &mut Ui) {
+        for b in &mut self.buttons {
+            b.release(ui);
+        }
+    }
+
+    fn key(&mut self, ui: &mut Ui, key: Key) -> Action {
+        if key == Key::Escape {
+            ui.settings.save();
+            return Action::Close;
+        }
+        Action::None
     }
 }
 
