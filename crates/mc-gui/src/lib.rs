@@ -64,6 +64,8 @@ pub struct Ui {
     pub in_world: bool,
     /// Client ticks (20/s) plus partial tick, for animations.
     pub ticks: f32,
+    /// Sound events GUI widgets played (`playPressSound`), drained by the client.
+    pub sounds: Vec<&'static str>,
 }
 
 impl Ui {
@@ -76,6 +78,7 @@ impl Ui {
             splash: random_splash(assets),
             in_world: false,
             ticks: 0.0,
+            sounds: Vec::new(),
         }
     }
 }

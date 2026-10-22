@@ -325,6 +325,9 @@ struct App {
     net: Option<net::Net>,
     name: String,
     remote: entities::Entities,
+    sound: Option<mc_sound::SoundManager>,
+    /// `PlayerControllerMP.stepSoundTickCounter`
+    step_sound_counter: f32,
     /// `objectMouseOver` when it is an entity.
     pointed_entity: Option<i32>,
     /// Item entities announced by `SpawnObject`, waiting for their stack: (pos, velocity).
@@ -396,6 +399,8 @@ impl App {
             net: None,
             name: "Player".into(),
             remote: entities::Entities::default(),
+            sound: None,
+            step_sound_counter: 0.,
             pointed_entity: None,
             pending_items: Default::default(),
         }
@@ -552,6 +557,9 @@ impl App {
 
     fn update(&mut self, dt: f32) {
         self.process_net();
+        if !self.ui.sounds.is_empty() {
+            self.flush_sounds();
+        }
         let paused = self.screen.as_ref().is_some_and(|s| s.pauses());
         self.tick_accum += dt * 20.0;
         while self.tick_accum >= 1.0 {
@@ -633,6 +641,7 @@ impl App {
         }
         self.tick_items();
         self.remote.tick();
+        self.flush_sounds();
         if self.net.is_none() && self.entity.pos.y < -64. {
             self.entity.teleport(self.spawn);
         }
@@ -743,6 +752,34 @@ impl App {
                     }
                 }
                 C::SpawnPosition(sp) => self.info.spawn = sp.pos,
+                C::SoundEffect(se) => {
+                    let p = mc_core::Vec3::new(se.x as f64 / 8., se.y as f64 / 8., se.z as f64 / 8.);
+                    self.play_sound(&se.name, Some(p), se.volume, se.pitch as f32 / 63.);
+                }
+                C::Effect(ef) => {
+                    let p = ef.pos;
+                    let c = mc_core::Vec3::new(p.x as f64 + 0.5, p.y as f64 + 0.5, p.z as f64 + 0.5);
+                    match ef.effect_id {
+                        // RenderGlobal.playAuxSFX
+                        1000 => self.play_sound("random.click", Some(c), 1.0, 1.0),
+                        1001 => self.play_sound("random.click", Some(c), 1.0, 1.2),
+                        1002 => self.play_sound("random.bow", Some(c), 1.0, 1.2),
+                        1003 => self.play_sound("random.door_open", Some(c), 1.0, rand_f64() as f32 * 0.1 + 0.9),
+                        1006 => self.play_sound("random.door_close", Some(c), 1.0, rand_f64() as f32 * 0.1 + 0.9),
+                        1007 | 1008 | 1009 => self.play_sound("mob.ghast.fireball", Some(c), 10.0, (rand_f64() as f32 - rand_f64() as f32) * 0.2 + 1.0),
+                        1020 => self.play_sound("random.anvil_break", Some(c), 1.0, rand_f64() as f32 * 0.1 + 0.9),
+                        1021 => self.play_sound("random.anvil_use", Some(c), 1.0, rand_f64() as f32 * 0.1 + 0.9),
+                        1022 => self.play_sound("random.anvil_land", Some(c), 0.3, rand_f64() as f32 * 0.1 + 0.9),
+                        2001 => {
+                            let st = mc_data::StateId::try_from_network(ef.data).unwrap_or(mc_data::StateId::AIR);
+                            if st.block().id != 0 {
+                                self.block_break_sound(st, p);
+                            }
+                        }
+                        2002 => self.play_sound("game.potion.smash", Some(c), 1.0, rand_f64() as f32 * 0.1 + 0.9),
+                        _ => {}
+                    }
+                }
                 C::SpawnPlayer(sp) => {
                     let mut r = entities::Remote::new(sp.entity_id, entities::Kind::Player, sp.x, sp.y, sp.z, sp.yaw, sp.pitch);
                     r.held = (sp.current_item > 0).then(|| self.catalogue.index_of(sp.current_item as u16, 0)).flatten().map(|i| (i, 1));
@@ -818,6 +855,11 @@ impl App {
                     }
                 }
                 C::CollectItem(c) => {
+                    // handleCollectItem
+                    if let Some(p) = self.items.iter().find(|i| i.id == c.collected_id as u32).map(|i| i.pos) {
+                        let pitch = ((rand_f64() as f32 - rand_f64() as f32) * 0.7 + 1.0) * 2.0;
+                        self.play_sound("random.pop", Some(p), 0.2, pitch);
+                    }
                     self.items.retain(|i| i.id != c.collected_id as u32);
                     self.remote.map.remove(&c.collected_id);
                 }
@@ -1005,6 +1047,7 @@ impl App {
     fn destroy_block(&mut self, pos: BlockPos) {
         let state = self.world.state_at(pos.x, pos.y, pos.z);
         if self.world.set_block(pos, 0, 0) {
+            self.block_break_sound(state, pos);
             if self.net.is_none() && !self.entity.creative && tools::can_harvest(self.held_registry_item(), state.block()) {
                 for (id, meta, count) in tools::drops(state, &mut self.rand) {
                     if let Some(i) = self.catalogue.index_of(id, meta) {
@@ -1035,6 +1078,41 @@ impl App {
             self.entity.motion.x *= 0.6;
             self.entity.motion.z *= 0.6;
             self.entity.set_sprinting(false);
+        }
+    }
+
+    /// `World.playSound` at a position (`None`: a GUI sound).
+    fn play_sound(&mut self, event: &str, pos: Option<mc_core::Vec3>, volume: f32, pitch: f32) {
+        if let Some(s) = &mut self.sound {
+            s.play(event, pos.map(|p| [p.x, p.y, p.z]), volume, pitch);
+        }
+    }
+
+    /// `playAuxSFX(2001)`: a block's break sound at its center.
+    fn block_break_sound(&mut self, state: mc_data::StateId, pos: BlockPos) {
+        let st = state.block().sound;
+        let c = mc_core::Vec3::new(pos.x as f64 + 0.5, pos.y as f64 + 0.5, pos.z as f64 + 0.5);
+        self.play_sound(st.break_sound, Some(c), (st.volume + 1.0) / 2.0, st.frequency * 0.8);
+    }
+
+    /// Drains sounds queued by the player entity and GUI widgets; updates the listener.
+    fn flush_sounds(&mut self) {
+        let pos = self.entity.pos;
+        for (ev, v, p) in std::mem::take(&mut self.entity.e.sounds) {
+            self.play_sound(ev, Some(pos), v, p);
+        }
+        for ev in std::mem::take(&mut self.ui.sounds) {
+            // PositionedSoundRecord.create(location, 1.0F)
+            self.play_sound(ev, None, 0.25, 1.0);
+        }
+        let eye = self.entity.pos;
+        let yaw = self.entity.yaw;
+        let h = self.entity.eye_height() as f64;
+        if let Some(s) = &mut self.sound {
+            s.set_listener([eye.x, eye.y + h, eye.z], yaw);
+            for c in mc_sound::Category::ALL {
+                s.volumes.insert(c, self.ui.settings.sound_volume(c.key()));
+            }
         }
     }
 
@@ -1100,6 +1178,11 @@ impl App {
         let reach = self.entity.bb.expand(1.0, 0.5, 1.0);
         for it in &mut items {
             if self.net.is_none() && !it.dead && !self.entity.dead && it.pickup_delay == 0 && reach.intersects_with(&it.bb) {
+                let pitch = ((rand_f64() as f32 - rand_f64() as f32) * 0.7 + 1.0) * 2.0;
+                let p = it.pos;
+                if let Some(s) = &mut self.sound {
+                    s.play("random.pop", Some([p.x, p.y, p.z]), 0.2, pitch);
+                }
                 let left = self.add_to_inventory(it.stack.0, it.stack.1);
                 if left == 0 {
                     it.dead = true;
@@ -1164,8 +1247,15 @@ impl App {
             self.destroy_block(t.pos);
         } else if self.hitting == Some(t.pos) {
             self.block_damage += self.relative_hardness(t.pos);
+            if self.step_sound_counter % 4.0 == 0.0 {
+                let st = self.world.state_at(t.pos.x, t.pos.y, t.pos.z).block().sound;
+                let c = mc_core::Vec3::new(t.pos.x as f64 + 0.5, t.pos.y as f64 + 0.5, t.pos.z as f64 + 0.5);
+                self.play_sound(st.step_sound, Some(c), (st.volume + 1.0) / 8.0, st.frequency * 0.5);
+            }
+            self.step_sound_counter += 1.0;
             if self.block_damage >= 1. {
                 self.hitting = None;
+                self.step_sound_counter = 0.;
                 self.send_dig(mc_protocol::packets::DiggingStatus::StopDestroyBlock, t.pos, t.face);
                 self.destroy_block(t.pos);
                 self.block_damage = 0.;
@@ -1674,6 +1764,9 @@ impl App {
                         None
                     };
                 }
+                let st = block.sound;
+                let c = mc_core::Vec3::new(p.x as f64 + 0.5, p.y as f64 + 0.5, p.z as f64 + 0.5);
+                self.play_sound(st.place_sound, Some(c), (st.volume + 1.0) / 2.0, st.frequency * 0.8);
                 self.swing();
                 self.entity.reset_equipped_progress();
                 self.refresh_edits(&[p]);
@@ -2246,6 +2339,16 @@ fn main() {
     let mut app = App::new(assets, models, world, center, settings);
     app.info.seed = seed;
     app.in_game = args.play || connection.is_some();
+    if args.screenshot.is_none() && std::env::var_os("RUSTMC_NO_SOUND").is_none() {
+        let dir = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(".minecraft").join("assets"));
+        if let Some(read) = dir.and_then(|d| mc_sound::manager::index_reader(&d, "1.8")) {
+            let s = mc_sound::SoundManager::new(Box::new(read));
+            println!("sound: {} events, output {}", s.event_count(), if s.mixer.available { "ok" } else { "unavailable" });
+            app.sound = Some(s);
+        } else {
+            eprintln!("sound: .minecraft/assets with the 1.8 index not found; running silent");
+        }
+    }
     app.name = connection.as_ref().map_or(args.name.clone(), |c| c.1.clone());
     app.net = connection.map(|c| c.0);
     app.screenshot = args.screenshot.clone().map(|p| (p, args.screen.clone()));

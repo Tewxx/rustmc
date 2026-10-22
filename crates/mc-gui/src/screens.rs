@@ -428,6 +428,7 @@ impl Screen for VideoSettings {
 
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         if self.done.as_ref().is_some_and(|d| d.hit(mx, my)) {
+            ui.sounds.push("gui.button.press");
             ui.settings.save();
             return Action::Close;
         }

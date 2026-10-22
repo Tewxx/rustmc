@@ -76,6 +76,8 @@ pub struct Settings {
     pub vsync: bool,
     pub show_debug: bool,
     pub hide_gui: bool,
+    /// `soundCategory_<name>` volumes (missing = 1.0).
+    pub sound_volumes: std::collections::BTreeMap<String, f32>,
     path: Option<PathBuf>,
 }
 
@@ -95,6 +97,7 @@ impl Default for Settings {
             vsync: true,
             show_debug: false,
             hide_gui: false,
+            sound_volumes: Default::default(),
             path: None,
         }
     }
@@ -128,6 +131,11 @@ impl Settings {
                 "fancyGraphics" => s.fancy_graphics = b,
                 "bobView" => s.view_bobbing = b,
                 "enableVsync" => s.vsync = b,
+                _ if k.starts_with("soundCategory_") => {
+                    if let Some(f) = f {
+                        s.sound_volumes.insert(k["soundCategory_".len()..].to_string(), f);
+                    }
+                }
                 _ => {}
             }
         }
@@ -137,7 +145,7 @@ impl Settings {
     /// Rewrites our keys in `options.txt`, keeping every other line as it was.
     pub fn save(&self) {
         let Some(path) = &self.path else { return };
-        let ours = [
+        let mut ours = vec![
             ("fov", format!("{}", (self.fov - 70.0) / 40.0)),
             ("mouseSensitivity", format!("{}", self.mouse_sensitivity)),
             ("gamma", format!("{}", self.gamma)),
@@ -149,6 +157,10 @@ impl Settings {
             ("bobView", self.view_bobbing.to_string()),
             ("enableVsync", self.vsync.to_string()),
         ];
+        let sound_keys: Vec<String> = self.sound_volumes.keys().map(|k| format!("soundCategory_{k}")).collect();
+        for (k, (_, v)) in sound_keys.iter().zip(&self.sound_volumes) {
+            ours.push((k.as_str(), v.to_string()));
+        }
         let existing = std::fs::read_to_string(path).unwrap_or_default();
         let mut out: Vec<String> = existing
             .lines()
@@ -157,6 +169,11 @@ impl Settings {
             .collect();
         out.extend(ours.iter().map(|(k, v)| format!("{k}:{v}")));
         let _ = std::fs::write(path, out.join("\n") + "\n");
+    }
+
+    /// `getSoundLevel`
+    pub fn sound_volume(&self, category: &str) -> f32 {
+        self.sound_volumes.get(category).copied().unwrap_or(1.0)
     }
 
     pub fn float(&self, o: Opt) -> f32 {

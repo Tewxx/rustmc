@@ -63,6 +63,7 @@ impl Button {
         if !(self.enabled && self.visible && self.hit(mx, my)) {
             return false;
         }
+        ui.sounds.push("gui.button.press");
         match &mut self.kind {
             Kind::Slider { dragging, .. } => {
                 *dragging = true;

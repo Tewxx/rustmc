@@ -47,6 +47,10 @@ pub struct PlayerEntity {
     pub distance_walked: f32,
     pub prev_distance_walked: f32,
     pub distance_walked_on_step: f32,
+    next_step_distance: i32,
+    /// Sounds this entity played since the client last drained them: (event, volume, pitch).
+    pub sounds: Vec<(&'static str, f32, f32)>,
+    sound_rand: u64,
 
     // MovementInput
     pub move_forward: f32,
@@ -126,6 +130,9 @@ impl PlayerEntity {
             distance_walked: 0.,
             prev_distance_walked: 0.,
             distance_walked_on_step: 0.,
+            next_step_distance: 1,
+            sounds: Vec::new(),
+            sound_rand: 0x9E3779B97F4A7C15,
             move_forward: 0.,
             move_strafe: 0.,
             jump_key: false,
@@ -176,6 +183,13 @@ impl PlayerEntity {
         self.prev_pos = p;
         self.last_tick_pos = p;
         self.bb = player_bb(p);
+    }
+
+    fn next_float(&mut self) -> f32 {
+        self.sound_rand ^= self.sound_rand << 13;
+        self.sound_rand ^= self.sound_rand >> 7;
+        self.sound_rand ^= self.sound_rand << 17;
+        (self.sound_rand >> 40) as f32 / (1u64 << 24) as f32
     }
 
     pub fn is_sneaking(&self) -> bool {
@@ -709,7 +723,6 @@ impl PlayerEntity {
                 pos = pos.down();
             }
         }
-        let _ = pos;
         // updateFallState (damage is the server's)
         if self.on_ground {
             self.fall_distance = 0.0;
@@ -750,6 +763,21 @@ impl PlayerEntity {
             self.distance_walked = (self.distance_walked as f64 + math::sqrt_double(d12 * d12 + d14 * d14) as f64 * 0.6) as f32;
             self.distance_walked_on_step =
                 (self.distance_walked_on_step as f64 + math::sqrt_double(d12 * d12 + d13 * d13 + d14 * d14) as f64 * 0.6) as f32;
+            if self.distance_walked_on_step > self.next_step_distance as f32 && block.material != Material::Air {
+                self.next_step_distance = self.distance_walked_on_step as i32 + 1;
+                if self.in_water {
+                    let m = self.motion;
+                    let f = ((m.x * m.x * 0.2 + m.y * m.y + m.z * m.z * 0.2).sqrt() as f32 * 0.35).min(1.0);
+                    let p = 1.0 + (self.next_float() - self.next_float()) * 0.4;
+                    self.sounds.push(("game.player.swim", f, p));
+                }
+                // Entity.playStepSound
+                let above = w.state(pos.up()).block();
+                let st = if above.name == "minecraft:snow_layer" { above.sound } else { block.sound };
+                if above.name == "minecraft:snow_layer" || !block.material.props().liquid {
+                    self.sounds.push((st.step_sound, st.volume * 0.15, st.frequency));
+                }
+            }
         }
         self.do_block_collisions(w);
     }
