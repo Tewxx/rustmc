@@ -905,6 +905,7 @@ version = "0.1.0"
 dependencies = [
  "mc-core",
  "mc-data",
+ "mc-logic",
  "mc-world",
 ]
 

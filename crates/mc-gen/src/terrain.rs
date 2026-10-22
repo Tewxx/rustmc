@@ -90,6 +90,8 @@ pub struct Generator {
     pub noise5: Octaves,
     depth: Octaves,
     pub mob_spawner: Octaves,
+    /// Persistent decoration state (`worldGeneratorBigTree` heights, big mushroom types).
+    pub decor: crate::populate::DecorState,
     parabolic: [f32; 25],
     density: Vec<f64>,
     stone_noise: Vec<f64>,
@@ -149,6 +151,7 @@ impl Generator {
             filler[b.id as usize] = raw(b.filler.0, b.filler.1);
         }
         Self {
+            decor: Default::default(),
             seed,
             layers: Layers::new(seed, false),
             rand,

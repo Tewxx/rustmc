@@ -145,13 +145,23 @@ fn load_world(args: &Args) -> (World, (i32, i32)) {
                 },
                 None => {
                     let mut c = generator.provide_chunk(cx, cz);
-                    // Not decorated yet; mark populated so the light pass runs.
                     c.terrain_populated = true;
                     c
                 }
             };
             world.insert(chunk);
         }
+    }
+    if args.world.is_none() {
+        // Chunk.populateChunk: a chunk is decorated once it and its +x, +z neighbours exist,
+        // in load order (x outer, z inner).
+        let t = Instant::now();
+        for cx in ccx - args.radius..ccx + args.radius {
+            for cz in ccz - args.radius..ccz + args.radius {
+                mc_gen::populate::populate(&mut generator, &mut world, cx, cz);
+            }
+        }
+        println!("populated chunks in {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
     }
     let t = Instant::now();
     let keys: Vec<(i32, i32)> = world.chunks.keys().copied().collect();

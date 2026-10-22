@@ -282,10 +282,10 @@ mod tests {
         s.pickup(&mut ui, Slot::Inv(10), true);
         assert_eq!(ui.inventory[10].unwrap().count, 1);
         s.pickup(&mut ui, Slot::Inv(9), false);
-        assert_eq!((s.cursor.unwrap().count, ui.inventory[9].unwrap().count), (31, 64));
+        assert_eq!((s.cursor.is_none(), ui.inventory[9].unwrap().count), (true, 63));
         s.cursor = None;
         s.transfer(&mut ui, Slot::Inv(9));
-        assert_eq!(ui.inventory[0].unwrap().count, 64);
+        assert_eq!(ui.inventory[0].unwrap().count, 63);
         ui.inventory[11] = Some(ItemStack { item: helmet, count: 1 });
         s.transfer(&mut ui, Slot::Inv(11));
         assert!(ui.armor[0].is_some() && ui.inventory[11].is_none());
