@@ -2,6 +2,7 @@
 
 use crate::batch::{GuiBatch, Special};
 use crate::settings::Opt;
+use crate::text_field::TextField;
 use crate::widgets::{Button, Kind};
 use crate::Ui;
 
@@ -25,8 +26,14 @@ pub enum Action {
     Respawn,
     /// `GuiYesNo` answer for the pending `S48PacketResourcePackSend`.
     ResourcePackDecision(bool),
-    /// Direct-connect request from the multiplayer screen: relaunch against `address`.
+    /// Join a server from the multiplayer screens (`GuiConnecting`).
     Connect { address: String, name: String, online: bool },
+    /// `displayGuiScreen(null)`: close this screen and every parent.
+    CloseAll,
+    /// `GuiChat` Page Up/Down: scroll the chat by `lineCount - 1` in that direction.
+    ScrollChatPage(i32),
+    /// `GuiConfirmOpenLink` accepted: open the link, then return to the chat.
+    OpenLink(String),
 }
 
 /// `GuiGameOver`
@@ -164,6 +171,10 @@ pub enum Key {
     End,
     Delete,
     Tab,
+    PageUp,
+    PageDown,
+    /// Ctrl held with a letter key (`isKeyComboCtrlA` and friends), lower-case.
+    Combo(char),
     Other,
 }
 
@@ -178,7 +189,13 @@ pub trait Screen {
     fn key(&mut self, _ui: &mut Ui, key: Key) -> Action {
         if key == Key::Escape { Action::Close } else { Action::None }
     }
-    fn typed(&mut self, _c: char) {}
+    fn typed(&mut self, _ui: &mut Ui, _c: char) {}
+    /// `GuiChat.setText` for chat-component clicks.
+    fn set_chat_text(&mut self, _ui: &Ui, _text: &str, _overwrite: bool) {}
+    /// `instanceof GuiChat`: the chat lines take clicks, hovers and the mouse wheel.
+    fn is_chat(&self) -> bool {
+        false
+    }
     /// `GuiChat.onAutocompleteResponse`; returns a line to print in chat (several matches).
     fn autocomplete(&mut self, _ui: &mut Ui, _list: Vec<String>) -> Option<String> {
         None
@@ -423,7 +440,7 @@ impl Screen for MultiplayerScreen {
         }
     }
 
-    fn typed(&mut self, c: char) {
+    fn typed(&mut self, _ui: &mut Ui, c: char) {
         if c == '\u{a7}' || (c as u32) < 32 {
             return;
         }
@@ -1077,11 +1094,10 @@ fn common_prefix(list: &[String]) -> String {
     first.chars().take(n).collect()
 }
 
-#[derive(Default)]
+/// `GuiChat`
 pub struct Chat {
-    pub text: String,
-    cursor: usize,
-    opened_at: f32,
+    input: TextField,
+    default_text: String,
     /// `sentHistoryCursor` and the text being typed before browsing history.
     history_cursor: usize,
     history_buffer: String,
@@ -1090,50 +1106,48 @@ pub struct Chat {
     waiting: bool,
     index: usize,
     found: Vec<String>,
+    initialised: bool,
+}
+
+impl Default for Chat {
+    fn default() -> Self {
+        Self::with_text("")
+    }
 }
 
 impl Chat {
     pub fn with_text(text: &str) -> Self {
         Self {
-            text: text.into(),
-            cursor: text.chars().count(),
-            opened_at: 0.0,
+            input: TextField::new(4, 0, 0, 12),
+            default_text: text.into(),
             history_cursor: usize::MAX,
             history_buffer: String::new(),
             names_found: false,
             waiting: false,
             index: 0,
             found: Vec::new(),
+            initialised: false,
         }
     }
 
-    fn chars(&self) -> Vec<char> {
-        self.text.chars().collect()
+    pub fn text(&self) -> String {
+        self.input.text()
     }
 
     /// `func_146197_a(-1, cursor, false)`: start of the word under the cursor.
     fn word_start(&self) -> usize {
-        let c = self.chars();
-        let mut p = self.cursor;
-        while p > 0 && c[p - 1] != ' ' {
-            p -= 1;
-        }
-        p
+        self.input.nth_word_from(-1, self.input.cursor(), false)
     }
 
     /// `deleteFromCursor(start - cursor)` then `writeText(s)`.
-    fn replace_word(&mut self, start: usize, s: &str) {
-        let mut c = self.chars();
-        c.drain(start..self.cursor);
-        let ins: Vec<char> = s.chars().take(100usize.saturating_sub(c.len())).collect();
-        let n = ins.len();
-        c.splice(start..start, ins);
-        self.text = c.into_iter().collect();
-        self.cursor = start + n;
+    fn replace_word(&mut self, ui: &Ui, start: usize, s: &str) {
+        let cur = self.input.cursor();
+        self.input.delete_from_cursor(ui, start as isize - cur as isize);
+        self.input.write_text(ui, s);
     }
 
     /// `GuiChat.autocompletePlayerNames`
-    fn cycle(&mut self) -> Option<String> {
+    fn cycle(&mut self, ui: &Ui) -> Option<String> {
         if self.found.is_empty() {
             return None;
         }
@@ -1144,7 +1158,7 @@ impl Chat {
         let line = (self.found.len() > 1).then(|| self.found.join(", "));
         let s = self.found[self.index].clone();
         self.index += 1;
-        self.replace_word(start, &s);
+        self.replace_word(ui, start, &s);
         line
     }
 
@@ -1160,42 +1174,45 @@ impl Chat {
         }
         if i == sent.len() {
             self.history_cursor = sent.len();
-            self.text = self.history_buffer.clone();
+            let t = self.history_buffer.clone();
+            self.input.set_text(ui, &t);
         } else {
             if self.history_cursor == sent.len() {
-                self.history_buffer = self.text.clone();
+                self.history_buffer = self.input.text();
             }
-            self.text = sent[i].clone();
+            let t = sent[i].clone();
+            self.input.set_text(ui, &t);
             self.history_cursor = i;
         }
-        self.cursor = self.text.chars().count();
     }
 }
 
 impl Screen for Chat {
-    fn init(&mut self, ui: &Ui, _w: i32, _h: i32) {
-        self.opened_at = ui.ticks;
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         self.history_cursor = ui.sent_messages.len();
+        self.input.relayout(4, h - 12, w - 4, 12);
+        if !self.initialised {
+            self.initialised = true;
+            self.input.max_len = 100;
+            self.input.background = false;
+            self.input.set_focused(true);
+            self.input.can_lose_focus = false;
+            let t = self.default_text.clone();
+            self.input.set_text(ui, &t);
+        }
+    }
+
+    fn tick(&mut self) {
+        self.input.tick();
     }
 
     fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, _mx: i32, _my: i32) {
         b.rect(2, h - 14, w - 2, h - 2, 0x8000_0000);
-        // GuiTextField: text with a blinking cursor (6 ticks on, 6 off).
-        let (x, y) = (4.0, (h - 12) as f32);
-        let before: String = self.text.chars().take(self.cursor).collect();
-        let end = ui.font.draw_shadow(b, &self.text, x, y, 14737632);
-        let blink = ((ui.ticks - self.opened_at) as i32 / 6) % 2 == 0;
-        if blink {
-            if self.cursor >= self.text.chars().count() {
-                ui.font.draw_shadow(b, "_", end as f32, y, 14737632);
-            } else {
-                let cx = x as i32 + ui.font.width(&before);
-                b.rect(cx, y as i32 - 1, cx + 1, y as i32 + 1 + 9, 0xFFD0_D0D0);
-            }
-        }
+        self.input.draw(ui, b);
     }
 
-    fn click(&mut self, _ui: &mut Ui, _mx: i32, _my: i32) -> Action {
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        self.input.mouse_clicked(ui, mx, my, 0);
         Action::None
     }
 
@@ -1204,20 +1221,20 @@ impl Screen for Chat {
         self.waiting = false;
         if key == Key::Tab {
             if self.names_found {
-                let line = self.cycle();
+                let line = self.cycle(ui);
                 return line.map_or(Action::None, Action::PrintChat);
             }
             self.waiting = true;
-            let prefix: String = self.text.chars().take(self.cursor).collect();
+            let prefix: String = self.input.text().chars().take(self.input.cursor()).collect();
             return Action::TabComplete(prefix);
         }
         self.names_found = false;
         match key {
-            Key::Escape => Action::Close,
+            Key::Escape => Action::CloseAll,
             Key::Enter => {
-                let msg = self.text.trim().to_string();
+                let msg = self.input.text().trim().to_string();
                 if msg.is_empty() {
-                    Action::Close
+                    Action::CloseAll
                 } else {
                     // GuiNewChat.addToSentMessages
                     if ui.sent_messages.last() != Some(&msg) {
@@ -1225,39 +1242,6 @@ impl Screen for Chat {
                     }
                     Action::SendChat(msg)
                 }
-            }
-            Key::Backspace => {
-                if self.cursor > 0 {
-                    let mut chars = self.chars();
-                    chars.remove(self.cursor - 1);
-                    self.text = chars.into_iter().collect();
-                    self.cursor -= 1;
-                }
-                Action::None
-            }
-            Key::Delete => {
-                let mut chars = self.chars();
-                if self.cursor < chars.len() {
-                    chars.remove(self.cursor);
-                    self.text = chars.into_iter().collect();
-                }
-                Action::None
-            }
-            Key::Left => {
-                self.cursor = self.cursor.saturating_sub(1);
-                Action::None
-            }
-            Key::Right => {
-                self.cursor = (self.cursor + 1).min(self.text.chars().count());
-                Action::None
-            }
-            Key::Home => {
-                self.cursor = 0;
-                Action::None
-            }
-            Key::End => {
-                self.cursor = self.text.chars().count();
-                Action::None
             }
             Key::Up => {
                 self.history(ui, -1);
@@ -1267,11 +1251,16 @@ impl Screen for Chat {
                 self.history(ui, 1);
                 Action::None
             }
-            Key::Tab | Key::Other | Key::Inventory | Key::Number(_) => Action::None,
+            Key::PageUp => Action::ScrollChatPage(1),
+            Key::PageDown => Action::ScrollChatPage(-1),
+            k => {
+                self.input.key(ui, k);
+                Action::None
+            }
         }
     }
 
-    fn autocomplete(&mut self, _ui: &mut Ui, list: Vec<String>) -> Option<String> {
+    fn autocomplete(&mut self, ui: &mut Ui, list: Vec<String>) -> Option<String> {
         if !self.waiting {
             return None;
         }
@@ -1280,29 +1269,36 @@ impl Screen for Chat {
         self.found = list.iter().filter(|s| !s.is_empty()).cloned().collect();
         self.index = 0;
         let start = self.word_start();
-        let current: String = self.chars()[start..self.cursor].iter().collect();
+        let current: String = self.input.text().chars().skip(start).take(self.input.cursor() - start).collect();
         let common = common_prefix(&list);
         if !common.is_empty() && !current.eq_ignore_ascii_case(&common) {
-            self.replace_word(start, &common);
+            self.replace_word(ui, start, &common);
             None
         } else if !self.found.is_empty() {
             self.names_found = true;
-            self.cycle()
+            self.cycle(ui)
         } else {
             None
         }
     }
 
-    /// `ChatAllowedCharacters.isAllowedCharacter` and the 100-char limit.
-    fn typed(&mut self, c: char) {
-        if c == '\u{a7}' || (c as u32) < 32 || c == '\u{7f}' || self.text.chars().count() >= 100 {
-            return;
+    fn typed(&mut self, ui: &mut Ui, c: char) {
+        if self.input.typed(ui, c) {
+            self.names_found = false;
         }
-        self.names_found = false;
-        let mut chars = self.chars();
-        chars.insert(self.cursor, c);
-        self.text = chars.into_iter().collect();
-        self.cursor += 1;
+    }
+
+    /// `GuiChat.setText`: suggestions overwrite, shift-click insertions are typed in.
+    fn set_chat_text(&mut self, ui: &Ui, text: &str, overwrite: bool) {
+        if overwrite {
+            self.input.set_text(ui, text);
+        } else {
+            self.input.write_text(ui, text);
+        }
+    }
+
+    fn is_chat(&self) -> bool {
+        true
     }
 
     fn pauses(&self) -> bool {
@@ -1314,20 +1310,87 @@ impl Screen for Chat {
     }
 }
 
+// ---------------------------------------------------------------- link prompt
+
+/// `GuiConfirmOpenLink` over `GuiChat` (`chatLinksPrompt`).
+pub struct ConfirmOpenLink {
+    buttons: Vec<Button>,
+    pub link: String,
+    trusted: bool,
+}
+
+impl ConfirmOpenLink {
+    pub fn new(link: impl Into<String>, trusted: bool) -> Self {
+        Self { buttons: Vec::new(), link: link.into(), trusted }
+    }
+}
+
+impl Screen for ConfirmOpenLink {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        let t = |k: &str| ui.lang.get(k);
+        let (yes, no) = if self.trusted { (t("chat.link.open"), t("gui.cancel")) } else { (t("gui.yes"), t("gui.no")) };
+        self.buttons = vec![
+            Button::sized(0, w / 2 - 50 - 105, h / 6 + 96, 100, 20, yes),
+            Button::sized(2, w / 2 - 50, h / 6 + 96, 100, 20, t("chat.copy")),
+            Button::sized(1, w / 2 - 50 + 105, h / 6 + 96, 100, 20, no),
+        ];
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        // GuiYesNo.drawScreen, then the warning.
+        default_background(ui, b, w, h);
+        let title = ui.lang.get(if self.trusted { "chat.link.confirmTrusted" } else { "chat.link.confirm" });
+        ui.font.draw_centered(b, &title, w / 2, 70, 0xFFFF_FFFF);
+        let mut y = 90;
+        for line in ui.font.list_to_width(&self.link, w - 50) {
+            ui.font.draw_centered(b, &line, w / 2, y, 0xFFFF_FFFF);
+            y += 9;
+        }
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+        let warning = ui.lang.get("chat.link.warning");
+        ui.font.draw_centered(b, &warning, w / 2, 110, 0xFF00_0000 | 16764108);
+    }
+
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        match click_buttons(&mut self.buttons, ui, mx, my) {
+            Some(0) => Action::OpenLink(self.link.clone()),
+            Some(2) => {
+                crate::clipboard::set(&self.link);
+                Action::Close
+            }
+            Some(1) => Action::Close,
+            _ => Action::None,
+        }
+    }
+
+    /// `GuiScreen.keyTyped`: Escape is `displayGuiScreen(null)`, past the chat as well.
+    fn key(&mut self, _: &mut Ui, key: Key) -> Action {
+        if key == Key::Escape {
+            Action::CloseAll
+        } else {
+            Action::None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ui() -> Ui {
+        Ui::new(&mc_assets::AssetSource::new(), crate::settings::Settings::default())
+    }
 
     #[test]
     fn multiplayer_screen_builds_a_connect_action() {
         let mut s = MultiplayerScreen::new();
         for c in "play.example.com:25566".chars() {
-            s.typed(c);
+            s.typed(&mut ui(), c);
         }
         s.focus = 1;
         s.name.clear();
         for c in "ASUISSU".chars() {
-            s.typed(c);
+            s.typed(&mut ui(), c);
         }
         match s.submit(false) {
             Action::Connect { address, name, online } => {

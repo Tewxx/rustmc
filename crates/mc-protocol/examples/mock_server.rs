@@ -76,17 +76,17 @@ fn handle(stream: TcpStream) {
                         // waterfall column at the far edge (double-sided sides).
                         for x in 4..12 {
                             for z in 7..15 {
-                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 2, z), state: 1 }));
-                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 3, z), state: 9 }));
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 2, z), state: 1 << 4 }));
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 3, z), state: 9 << 4 }));
                             }
                         }
                         for y in 4..7 {
-                            play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(8, y, 14), state: 9 }));
+                            play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(8, y, 14), state: 9 << 4 }));
                         }
                         for x in 1..4 {
                             for z in 8..12 {
-                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 2, z), state: 1 }));
-                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 3, z), state: 11 }));
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 2, z), state: 1 << 4 }));
+                                play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(x, 3, z), state: 11 << 4 }));
                             }
                         }
                         play(PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 5.0, z: 5.0, yaw: 0.0, pitch: 25.0, flags: 0 }));
@@ -96,7 +96,7 @@ fn handle(stream: TcpStream) {
                         // of them: a single chest, a double chest along +X, a trapped chest whose
                         // lid is opened with block event 1, and an ender chest.
                         let mut tile = |pos: BlockPos, id: i32, meta: i32| {
-                            play(PlayClientbound::BlockChange(BlockChange { pos, state: id + (meta << 12) }));
+                            play(PlayClientbound::BlockChange(BlockChange { pos, state: id << 4 | meta }));
                             play(PlayClientbound::UpdateTileEntity(UpdateTileEntity { pos, action: 0, nbt: Some(mc_core::nbt::Compound::new()) }));
                         };
                         tile(BlockPos::new(4, 4, 8), 54, 3);
@@ -110,7 +110,7 @@ fn handle(stream: TcpStream) {
                     }
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"Welcome to the ","color":"yellow","extra":[{"text":"mock server","bold":true}]}"#.into(), position: 0 }));
                     play(PlayClientbound::ChatS(ChatS { json: r#"{"text":"action bar"}"#.into(), position: 2 }));
-                    play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(10, 4, 8), state: 57 }));
+                    play(PlayClientbound::BlockChange(BlockChange { pos: BlockPos::new(10, 4, 8), state: 57 << 4 }));
                     // A second player 3 blocks ahead, holding a sword, walking and swinging.
                     let uuid = mc_protocol::Uuid(7, 7);
                     play(PlayClientbound::PlayerListItem(PlayerListItem {

@@ -1,6 +1,7 @@
 //! `GuiIngame`: crosshair, hotbar, player stats, XP bar, chat and the F3 overlay.
 
 use crate::batch::{Blend, GuiBatch};
+use crate::component::{chat_colors, split_text, Component, Piece};
 use crate::font::FONT_HEIGHT;
 use crate::widgets::WIDGETS;
 use crate::{Scaled, Ui};
@@ -121,15 +122,146 @@ impl Default for TitleTimes {
     }
 }
 
+/// `ChatLine`
+#[derive(Clone)]
 struct ChatLine {
-    text: String,
+    component: Component,
     /// `updateCounter` when added.
     tick: i32,
+    id: i32,
+}
+
+/// `GuiNewChat`: the full messages, their wrapped lines and the scroll position. Messages are
+/// wrapped on the next layout (which needs the font), in the order they arrived.
+#[derive(Default)]
+pub struct ChatGui {
+    chat_lines: Vec<ChatLine>,
+    drawn: Vec<ChatLine>,
+    pending: Vec<ChatLine>,
+    scroll_pos: i32,
+    is_scrolled: bool,
+    /// Width, scale and colour setting the drawn lines were wrapped with (`refreshChat`
+    /// runs when the chat options change).
+    layout_key: Option<(i32, u32, bool)>,
+}
+
+impl ChatGui {
+    /// `getChatWidth` / `getChatScale` / `getLineCount`
+    fn metrics(ui: &Ui, chat_open: bool) -> (i32, f32, i32) {
+        let st = &ui.settings;
+        let width = (st.chat_width * 280.0 + 40.0).floor() as i32;
+        let height = (if chat_open { st.chat_height_focused } else { st.chat_height_unfocused } * 160.0 + 20.0).floor() as i32;
+        (width, st.chat_scale, height / 9)
+    }
+
+    /// `setChatLine`
+    fn set_chat_line(&mut self, ui: &Ui, line: ChatLine, chat_open: bool, display_only: bool) {
+        if line.id != 0 {
+            self.delete_chat_line(line.id);
+        }
+        let (width, scale, _) = Self::metrics(ui, chat_open);
+        let i = (width as f32 / scale).floor() as i32;
+        let list = split_text(&line.component, i, &ui.font, false, false, ui.settings.chat_colors);
+        for c in list {
+            if chat_open && self.scroll_pos > 0 {
+                self.is_scrolled = true;
+                self.scroll(ui, 1, chat_open);
+            }
+            self.drawn.insert(0, ChatLine { component: c, tick: line.tick, id: line.id });
+        }
+        self.drawn.truncate(100);
+        if !display_only {
+            self.chat_lines.insert(0, line);
+            self.chat_lines.truncate(100);
+        }
+    }
+
+    /// `deleteChatLine`
+    fn delete_chat_line(&mut self, id: i32) {
+        self.drawn.retain(|l| l.id != id);
+        if let Some(i) = self.chat_lines.iter().position(|l| l.id == id) {
+            self.chat_lines.remove(i);
+        }
+    }
+
+    /// Wraps queued messages, re-wrapping everything first if the chat options changed.
+    pub fn layout(&mut self, ui: &Ui, chat_open: bool) {
+        let (width, scale, _) = Self::metrics(ui, chat_open);
+        let key = (width, scale.to_bits(), ui.settings.chat_colors);
+        if self.layout_key.is_some_and(|k| k != key) {
+            // refreshChat
+            self.drawn.clear();
+            self.reset_scroll();
+            for l in self.chat_lines.clone().into_iter().rev() {
+                self.set_chat_line(ui, l, chat_open, true);
+            }
+        }
+        self.layout_key = Some(key);
+        for l in std::mem::take(&mut self.pending) {
+            self.set_chat_line(ui, l, chat_open, false);
+        }
+    }
+
+    /// `getLineCount`
+    pub fn line_count(&self, ui: &Ui, chat_open: bool) -> i32 {
+        Self::metrics(ui, chat_open).2
+    }
+
+    pub fn reset_scroll(&mut self) {
+        self.scroll_pos = 0;
+        self.is_scrolled = false;
+    }
+
+    /// `scroll`
+    pub fn scroll(&mut self, ui: &Ui, amount: i32, chat_open: bool) {
+        let (_, _, lines) = Self::metrics(ui, chat_open);
+        self.scroll_pos += amount;
+        let i = self.drawn.len() as i32;
+        if self.scroll_pos > i - lines {
+            self.scroll_pos = i - lines;
+        }
+        if self.scroll_pos <= 0 {
+            self.scroll_pos = 0;
+            self.is_scrolled = false;
+        }
+    }
+
+    /// `clearChatMessages` (the sent history lives in `Ui`).
+    pub fn clear(&mut self) {
+        self.drawn.clear();
+        self.chat_lines.clear();
+        self.pending.clear();
+    }
+
+    /// `getChatComponent(Mouse.getX(), Mouse.getY())` with the chat open: `mouse_x` from the
+    /// left and `mouse_y` from the bottom of the window, in pixels.
+    pub fn component_at(&self, ui: &Ui, scale_factor: i32, mouse_x: i32, mouse_y: i32) -> Option<&Piece> {
+        let (width, f, lines) = Self::metrics(ui, true);
+        let j = ((mouse_x / scale_factor - 3) as f32 / f).floor() as i32;
+        let k = ((mouse_y / scale_factor - 27) as f32 / f).floor() as i32;
+        if j < 0 || k < 0 {
+            return None;
+        }
+        let l = lines.min(self.drawn.len() as i32);
+        if j > (width as f32 / f).floor() as i32 || k >= FONT_HEIGHT * l + l {
+            return None;
+        }
+        let i1 = k / FONT_HEIGHT + self.scroll_pos;
+        let line = self.drawn.get(usize::try_from(i1).ok()?)?;
+        let mut j1 = 0;
+        for p in &line.component.0 {
+            j1 += ui.font.width(&chat_colors(&p.text, false, ui.settings.chat_colors));
+            if j1 > j {
+                return Some(p);
+            }
+        }
+        None
+    }
 }
 
 #[derive(Default)]
 pub struct Hud {
-    chat: Vec<ChatLine>,
+    pub chat: ChatGui,
     /// Integer client ticks (`updateCounter`).
     pub update_counter: i32,
     /// `GuiIngame.recordPlaying` / `recordPlayingUpFor`: the action bar message.
@@ -155,9 +287,15 @@ pub struct Hud {
 
 impl Hud {
     /// `GuiNewChat.printChatMessage`: newest first.
-    pub fn add_chat(&mut self, text: impl Into<String>) {
-        self.chat.insert(0, ChatLine { text: text.into(), tick: self.update_counter });
-        self.chat.truncate(100);
+    pub fn add_chat(&mut self, c: impl Into<Component>) {
+        self.add_chat_with_id(c, 0);
+    }
+
+    /// `printChatMessageWithOptionalDeletion`: a non-zero id replaces the earlier line with it.
+    pub fn add_chat_with_id(&mut self, c: impl Into<Component>, id: i32) {
+        let component = c.into();
+        println!("[CHAT] {}", component.unformatted());
+        self.chat.pending.push(ChatLine { component, tick: self.update_counter, id });
     }
 
     /// `GuiIngame.setRecordPlaying(message, false)`
@@ -471,39 +609,60 @@ impl Hud {
         }
     }
 
-    /// `GuiNewChat.drawChat`: visibility, opacity, scale, width and line count from the chat options.
-    fn draw_chat(&self, ui: &mut Ui, b: &mut GuiBatch, screen_h: i32, chat_open: bool) {
+    /// `GuiNewChat.drawChat`: visibility, opacity, scale, width, line count and the scroll bar.
+    fn draw_chat(&mut self, ui: &mut Ui, b: &mut GuiBatch, screen_h: i32, chat_open: bool) {
+        self.chat.layout(ui, chat_open);
         let st = &ui.settings;
         if st.chat_visibility == 2 {
             return;
         }
-        // calculateChatboxHeight / calculateChatboxWidth
-        let height = (if chat_open { st.chat_height_focused } else { st.chat_height_unfocused } * 160.0 + 20.0).floor() as i32;
-        let max_lines = (height / 9) as usize;
+        let (width, scale, i) = ChatGui::metrics(ui, chat_open);
         let opacity = st.chat_opacity * 0.9 + 0.1;
-        let scale = st.chat_scale;
-        let width = ((st.chat_width * 280.0 + 40.0).floor() as f32 / scale).ceil() as i32;
+        let k = self.chat.drawn.len() as i32;
+        if k == 0 {
+            return;
+        }
+        let l = (width as f32 / scale).ceil() as i32;
         let saved = b.transform;
         b.transform = Some((scale, [2.0, (screen_h - 48 + 20) as f32]));
-        for (l1, line) in self.chat.iter().take(max_lines).enumerate() {
+        let mut j = 0;
+        let mut i1 = 0;
+        while i1 + self.chat.scroll_pos < k && i1 < i {
+            let line = &self.chat.drawn[(i1 + self.chat.scroll_pos) as usize];
             let age = self.update_counter - line.tick;
-            if age >= 200 && !chat_open {
-                continue;
+            if age < 200 || chat_open {
+                let mut d0 = (age as f64 / 200.0).clamp(0.0, 1.0);
+                d0 = 1.0 - d0;
+                d0 *= 10.0;
+                d0 = d0.clamp(0.0, 1.0);
+                d0 *= d0;
+                let mut l1 = (255.0 * d0) as i32;
+                if chat_open {
+                    l1 = 255;
+                }
+                l1 = (l1 as f32 * opacity) as i32;
+                j += 1;
+                if l1 > 3 {
+                    let j2 = -i1 * 9;
+                    b.rect(0, j2 - 9, l + 4, j2, ((l1 / 2) as u32) << 24);
+                    let text = line.component.formatted();
+                    ui.font.draw_shadow(b, &text, 0.0, (j2 - 8) as f32, 16777215 + ((l1 as u32) << 24));
+                }
             }
-            let mut d0 = (age as f64 / 200.0).clamp(0.0, 1.0);
-            d0 = 1.0 - d0;
-            d0 *= 10.0;
-            d0 = d0.clamp(0.0, 1.0);
-            d0 *= d0;
-            let mut l2 = (255.0 * d0) as i32;
-            if chat_open {
-                l2 = 255;
-            }
-            l2 = (l2 as f32 * opacity) as i32;
-            if l2 > 3 {
-                let i2 = -(l1 as i32) * 9;
-                b.rect(0, i2 - 9, width + 4, i2, ((l2 / 2) as u32) << 24);
-                ui.font.draw_shadow(b, &line.text, 0.0, (i2 - 8) as f32, 16777215 + ((l2 as u32) << 24));
+            i1 += 1;
+        }
+        if chat_open {
+            // The scroll bar, after `translate(-3, 0, 0)`.
+            let k2 = FONT_HEIGHT;
+            let l2 = k * k2 + k;
+            let i3 = j * k2 + j;
+            let j3 = self.chat.scroll_pos * i3 / k;
+            let k1 = i3 * i3 / l2;
+            if l2 != i3 {
+                let k3: u32 = if j3 > 0 { 170 } else { 96 };
+                let l3: u32 = if self.chat.is_scrolled { 13382451 } else { 3355562 };
+                b.rect(-3, -j3, -1, -j3 - k1, l3 + (k3 << 24));
+                b.rect(-1, -j3, -2, -j3 - k1, 13421772 + (k3 << 24));
             }
         }
         b.transform = saved;

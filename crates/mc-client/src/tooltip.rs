@@ -489,3 +489,56 @@ pub fn render_lines(cat: &Catalogue, lang: &Lang, stack: &ItemStack, advanced: b
         .map(|(i, l)| if i == 0 { format!("\u{a7}{rarity}{l}") } else { format!("\u{a7}7{l}") })
         .collect()
 }
+
+/// `Item.getByNameOrId`: a registry name (lower-cased like `ResourceLocation`), else a number.
+fn item_by_name_or_id(s: &str) -> Option<u16> {
+    mc_data::item::Item::by_name(&s.to_lowercase()).map(|i| i.id).or_else(|| s.parse::<i32>().ok().and_then(|n| u16::try_from(n).ok()).filter(|&n| mc_data::item::Item::by_id(n).is_some()))
+}
+
+/// `handleComponentHover` for `show_item`: `ItemStack.loadItemStackFromNBT(JsonToNBT
+/// .getTagFromJson(text))` and `renderToolTip`. `None` is vanilla's "Invalid Item!".
+pub fn from_snbt(text: &str, cat: &Catalogue, ui: &mc_gui::Ui) -> Option<Vec<String>> {
+    let nbt = mc_core::snbt::parse(text).ok()?;
+    let id = match nbt.get("id") {
+        Some(Tag::String(s)) => item_by_name_or_id(s)?,
+        _ => u16::try_from(num(&nbt, "id").floor() as i64 as i16).ok().filter(|&n| n != 0 && mc_data::item::Item::by_id(n).is_some())?,
+    };
+    let count = num(&nbt, "Count").floor() as i64 as i8;
+    let damage = (num(&nbt, "Damage").floor() as i64 as i16).max(0);
+    let idx = cat.index_of(id, damage as u16)?;
+    let mut stack = ItemStack::new(idx, count as u8, damage);
+    if let Some(tag) = compound(&nbt, "tag") {
+        stack.tag = Some(mc_core::nbt::Interned::new(tag.clone()));
+    }
+    Some(render_lines(cat, &ui.lang, &stack, ui.settings.advanced_item_tooltips))
+}
+
+/// `EntityList.stringToIDMapping`
+const ENTITY_IDS: &[(&str, i32)] = &[
+    ("Item", 1), ("XPOrb", 2), ("ThrownEgg", 7), ("LeashKnot", 8), ("Painting", 9), ("Arrow", 10), ("Snowball", 11), ("Fireball", 12),
+    ("SmallFireball", 13), ("ThrownEnderpearl", 14), ("EyeOfEnderSignal", 15), ("ThrownPotion", 16), ("ThrownExpBottle", 17), ("ItemFrame", 18),
+    ("WitherSkull", 19), ("PrimedTnt", 20), ("FallingSand", 21), ("FireworksRocketEntity", 22), ("ArmorStand", 30), ("Boat", 41),
+    ("MinecartRideable", 42), ("MinecartChest", 43), ("MinecartFurnace", 44), ("MinecartTNT", 45), ("MinecartHopper", 46), ("MinecartSpawner", 47),
+    ("MinecartCommandBlock", 40), ("Mob", 48), ("Monster", 49), ("Creeper", 50), ("Skeleton", 51), ("Spider", 52), ("Giant", 53), ("Zombie", 54),
+    ("Slime", 55), ("Ghast", 56), ("PigZombie", 57), ("Enderman", 58), ("CaveSpider", 59), ("Silverfish", 60), ("Blaze", 61), ("LavaSlime", 62),
+    ("EnderDragon", 63), ("WitherBoss", 64), ("Bat", 65), ("Witch", 66), ("Endermite", 67), ("Guardian", 68), ("Pig", 90), ("Sheep", 91),
+    ("Cow", 92), ("Chicken", 93), ("Squid", 94), ("Wolf", 95), ("MushroomCow", 96), ("SnowMan", 97), ("Ozelot", 98), ("VillagerGolem", 99),
+    ("EntityHorse", 100), ("Rabbit", 101), ("Villager", 120), ("EnderCrystal", 200),
+];
+
+/// `handleComponentHover` for `show_entity`: name, type and id with advanced tooltips on (F3+H),
+/// nothing otherwise. `None` is "Invalid Entity!".
+pub fn entity_lines(text: &str, advanced: bool) -> Option<Vec<String>> {
+    if !advanced {
+        return Some(Vec::new());
+    }
+    let c = mc_core::snbt::parse(text).ok()?;
+    let mut out = vec![string(&c, "name").unwrap_or("").to_string()];
+    if let Some(ty) = string(&c, "type") {
+        // getIDFromString falls back to 90 for unknown names.
+        let id = ENTITY_IDS.iter().find(|(n, _)| *n == ty).map_or(90, |e| e.1);
+        out.push(format!("Type: {ty} ({id})"));
+    }
+    out.push(string(&c, "id").unwrap_or("").to_string());
+    Some(out)
+}

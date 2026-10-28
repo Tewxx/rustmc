@@ -32,6 +32,8 @@ pub struct Net {
     /// `PlayerControllerMP.currentPlayerItem`
     pub current_item: i32,
     pub closed: Option<String>,
+    /// `NetHandlerPlayClient.doneLoadingTerrain`: the first `S08` snaps `prevPos`.
+    done_loading_terrain: bool,
 }
 
 impl Net {
@@ -79,6 +81,7 @@ impl Net {
             server_sneak: false,
             current_item: 0,
             closed: None,
+            done_loading_terrain: false,
         })
     }
 
@@ -115,10 +118,26 @@ impl Net {
     }
 
     /// `handlePlayerPosLook`: applies the (possibly relative) position and answers with C06.
-    pub fn handle_pos_look(&mut self, p: &PlayerPosLookS, pos: &mut Vec3, yaw: &mut f32, pitch: &mut f32) {
-        let x = if p.flags & 1 != 0 { pos.x + p.x } else { p.x };
-        let y = if p.flags & 2 != 0 { pos.y + p.y } else { p.y };
-        let z = if p.flags & 4 != 0 { pos.z + p.z } else { p.z };
+    ///
+    /// Every axis the packet gives as absolute also zeroes that axis of the player's motion
+    /// (`NetHandlerPlayClient.handlePlayerPosLook`), so a teleport does not carry momentum.
+    /// On the first teleport after joining, `prev_pos` is snapped to the new position like
+    /// vanilla's `!doneLoadingTerrain` branch, which keeps the camera from interpolating from
+    /// wherever the client happened to be.
+    pub fn handle_pos_look(&mut self, p: &PlayerPosLookS, pos: &mut Vec3, motion: &mut Vec3, prev_pos: &mut Vec3, yaw: &mut f32, pitch: &mut f32) {
+        let relative = |bit: u8| p.flags & bit != 0;
+        let x = if relative(1) { pos.x + p.x } else { p.x };
+        let y = if relative(2) { pos.y + p.y } else { p.y };
+        let z = if relative(4) { pos.z + p.z } else { p.z };
+        if !relative(1) {
+            motion.x = 0.;
+        }
+        if !relative(2) {
+            motion.y = 0.;
+        }
+        if !relative(4) {
+            motion.z = 0.;
+        }
         let pt = if p.flags & 16 != 0 { *pitch + p.pitch } else { p.pitch };
         let yw = if p.flags & 8 != 0 { *yaw + p.yaw } else { p.yaw };
         *pos = Vec3::new(x, y, z);
@@ -126,11 +145,32 @@ impl Net {
         *pitch = pt;
         // The reply uses getEntityBoundingBox().minY, which equals posY right after setPosition.
         self.send(PlayServerbound::PlayerPosLook(PlayerPosLook { x, y, z, yaw: yw, pitch: pt, on_ground: false }));
+        if !self.done_loading_terrain {
+            *prev_pos = *pos;
+            self.done_loading_terrain = true;
+        }
     }
 
     /// `EntityPlayerSP.onUpdateWalkingPlayer`
+    ///
+    /// The sprint/sneak `EntityAction`s are sent before the view-entity check, so they still go
+    /// out while the `S43` camera watches another entity. A riding player sends the
+    /// `C06(motionX, -999, motionZ)` form instead of its own position and does not refresh the
+    /// reported position, exactly like vanilla.
     #[allow(clippy::too_many_arguments)]
-    pub fn update_walking(&mut self, sprinting: bool, sneaking: bool, x: f64, min_y: f64, z: f64, yaw: f32, pitch: f32, on_ground: bool) {
+    pub fn update_walking(
+        &mut self,
+        sprinting: bool,
+        sneaking: bool,
+        current_view: bool,
+        riding: Option<(f64, f64)>,
+        x: f64,
+        min_y: f64,
+        z: f64,
+        yaw: f32,
+        pitch: f32,
+        on_ground: bool,
+    ) {
         if sprinting != self.server_sprint {
             let action = if sprinting { EntityActionKind::StartSprinting } else { EntityActionKind::StopSprinting };
             self.send(PlayServerbound::EntityAction(EntityAction { entity_id: self.entity_id, action, aux: 0 }));
@@ -141,18 +181,26 @@ impl Net {
             self.send(PlayServerbound::EntityAction(EntityAction { entity_id: self.entity_id, action, aux: 0 }));
             self.server_sneak = sneaking;
         }
+        if !current_view {
+            return;
+        }
         let (d0, d1, d2) = (x - self.last_x, min_y - self.last_y, z - self.last_z);
         let d3 = (yaw - self.last_yaw) as f64;
         let d4 = (pitch - self.last_pitch) as f64;
-        let moved = d0 * d0 + d1 * d1 + d2 * d2 > 9.0E-4 || self.position_update_ticks >= 20;
+        let mut moved = d0 * d0 + d1 * d1 + d2 * d2 > 9.0E-4 || self.position_update_ticks >= 20;
         let rotated = d3 != 0.0 || d4 != 0.0;
-        let p = match (moved, rotated) {
-            (true, true) => PlayServerbound::PlayerPosLook(PlayerPosLook { x, y: min_y, z, yaw, pitch, on_ground }),
-            (true, false) => PlayServerbound::PlayerPosition(PlayerPosition { x, y: min_y, z, on_ground }),
-            (false, true) => PlayServerbound::PlayerLook(PlayerLook { yaw, pitch, on_ground }),
-            (false, false) => PlayServerbound::PlayerGround(PlayerGround { on_ground }),
-        };
-        self.send(p);
+        if let Some((mx, mz)) = riding {
+            self.send(PlayServerbound::PlayerPosLook(PlayerPosLook { x: mx, y: -999.0, z: mz, yaw, pitch, on_ground }));
+            moved = false;
+        } else {
+            let p = match (moved, rotated) {
+                (true, true) => PlayServerbound::PlayerPosLook(PlayerPosLook { x, y: min_y, z, yaw, pitch, on_ground }),
+                (true, false) => PlayServerbound::PlayerPosition(PlayerPosition { x, y: min_y, z, on_ground }),
+                (false, true) => PlayServerbound::PlayerLook(PlayerLook { yaw, pitch, on_ground }),
+                (false, false) => PlayServerbound::PlayerGround(PlayerGround { on_ground }),
+            };
+            self.send(p);
+        }
         self.position_update_ticks += 1;
         if moved {
             self.last_x = x;
@@ -262,9 +310,9 @@ mod tests {
         assert_eq!(c.height(0, 0), 33);
     }
 
-    #[test]
-    fn walking_packets_follow_vanilla_thresholds() {
-        // Exercised through a loopback socket so the bytes go through the real writer.
+    /// A loopback server that completes the login and hands back the first `collect`
+    /// serverbound play packets, so assertions run on the real encoded bytes.
+    fn loopback(collect: usize) -> (Net, std::thread::JoinHandle<Vec<PlayServerbound>>) {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
         let srv = std::thread::spawn(move || {
@@ -286,7 +334,7 @@ mod tests {
                         s.write_all(&out).unwrap();
                     } else {
                         got.push(PlayServerbound::read(&p).unwrap());
-                        if got.len() == 4 {
+                        if got.len() == collect {
                             return got;
                         }
                     }
@@ -295,14 +343,79 @@ mod tests {
                 d.feed(&buf[..n]);
             }
         });
-        let mut n = Net::connect("127.0.0.1", port, "a", None).unwrap();
-        n.update_walking(true, false, 0.0, 64.0, 0.0, 0.0, 0.0, true); // sprint + moved
-        n.update_walking(true, false, 0.01, 64.0, 0.0, 0.0, 0.0, true); // below threshold
-        n.update_walking(true, false, 0.01, 64.0, 0.0, 5.0, 0.0, false); // look only
+        (Net::connect("127.0.0.1", port, "a", None).unwrap(), srv)
+    }
+
+    #[test]
+    fn walking_packets_follow_vanilla_thresholds() {
+        let (mut n, srv) = loopback(4);
+        n.update_walking(true, false, true, None, 0.0, 64.0, 0.0, 0.0, 0.0, true); // sprint + moved
+        n.update_walking(true, false, true, None, 0.01, 64.0, 0.0, 0.0, 0.0, true); // below threshold
+        n.update_walking(true, false, true, None, 0.01, 64.0, 0.0, 5.0, 0.0, false); // look only
         let got = srv.join().unwrap();
         assert!(matches!(got[0], PlayServerbound::EntityAction(EntityAction { action: EntityActionKind::StartSprinting, .. })));
         assert!(matches!(got[1], PlayServerbound::PlayerPosition(PlayerPosition { y, .. }) if y == 64.0));
         assert!(matches!(got[2], PlayServerbound::PlayerGround(PlayerGround { on_ground: true })));
         assert!(matches!(got[3], PlayServerbound::PlayerLook(PlayerLook { yaw, on_ground: false, .. }) if yaw == 5.0));
+    }
+
+    /// `ridingEntity != null`: `C06PacketPlayerPosLook(motionX, -999, motionZ, yaw, pitch,
+    /// onGround)` every tick, and `flag2` is forced false so the reported position stays stale.
+    #[test]
+    fn riding_sends_motion_with_minus_999_y() {
+        let (mut n, srv) = loopback(2);
+        n.update_walking(false, false, true, None, 1.0, 64.0, 2.0, 0.0, 0.0, true);
+        n.update_walking(false, false, true, Some((0.25, -0.5)), 9.0, 80.0, 9.0, 30.0, 10.0, false);
+        let got = srv.join().unwrap();
+        assert!(matches!(got[0], PlayServerbound::PlayerPosition(_)));
+        match &got[1] {
+            PlayServerbound::PlayerPosLook(p) => {
+                assert_eq!((p.x, p.y, p.z), (0.25, -999.0, -0.5));
+                assert_eq!((p.yaw, p.pitch, p.on_ground), (30.0, 10.0, false));
+            }
+            other => panic!("expected C06, got {other:?}"),
+        }
+    }
+
+    /// `isCurrentViewEntity()`: while the `S43` camera watches someone else, only the sprint and
+    /// sneak entity actions go out (they are sent before the guard).
+    #[test]
+    fn spectating_sends_only_entity_actions() {
+        let (mut n, srv) = loopback(2);
+        n.update_walking(true, true, false, None, 5.0, 70.0, 5.0, 45.0, 45.0, true);
+        n.update_walking(true, true, true, None, 5.0, 70.0, 5.0, 45.0, 45.0, true);
+        let got = srv.join().unwrap();
+        assert!(matches!(got[0], PlayServerbound::EntityAction(EntityAction { action: EntityActionKind::StartSprinting, .. })));
+        assert!(matches!(got[1], PlayServerbound::EntityAction(EntityAction { action: EntityActionKind::StartSneaking, .. })));
+    }
+
+    /// `handlePlayerPosLook` zeroes the motion of every absolute axis, answers with a C06 whose
+    /// `onGround` is hard-coded false, and snaps `prevPos` on the first teleport only.
+    #[test]
+    fn pos_look_zeroes_absolute_axes_and_snaps_prev_pos() {
+        let (mut n, srv) = loopback(3);
+        let mut pos = Vec3::new(10., 64., 10.);
+        let mut prev = Vec3::new(9., 63., 9.);
+        let mut motion = Vec3::new(0.5, -0.25, 0.75);
+        let (mut yaw, mut pitch) = (0.0f32, 0.0f32);
+        // Absolute y only, relative x/z: only motionY is cleared.
+        let p = PlayerPosLookS { x: 1.0, y: 70.0, z: 2.0, yaw: 90.0, pitch: 15.0, flags: 1 | 4 };
+        n.handle_pos_look(&p, &mut pos, &mut motion, &mut prev, &mut yaw, &mut pitch);
+        assert_eq!(pos, Vec3::new(11., 70., 12.));
+        assert_eq!(motion, Vec3::new(0.5, 0., 0.75));
+        assert_eq!((yaw, pitch), (90.0, 15.0));
+        // First teleport snaps prevPos; the second one leaves it alone.
+        assert_eq!(prev, pos);
+        // All three axes absolute this time: every motion component is cleared.
+        let p2 = PlayerPosLookS { x: 0.0, y: 0.0, z: 0.0, yaw: 0.0, pitch: 0.0, flags: 0 };
+        n.handle_pos_look(&p2, &mut pos, &mut motion, &mut prev, &mut yaw, &mut pitch);
+        assert_eq!(pos, Vec3::new(0., 0., 0.));
+        assert_eq!(motion, Vec3::new(0., 0., 0.));
+        assert_eq!(prev, Vec3::new(11., 70., 12.), "prevPos stays at the first teleport");
+        let got = srv.join().unwrap();
+        for p in &got {
+            assert!(matches!(p, PlayServerbound::PlayerPosLook(PlayerPosLook { on_ground: false, .. })));
+        }
+        assert!(matches!(got[0], PlayServerbound::PlayerPosLook(PlayerPosLook { x: 11.0, y: 70.0, z: 12.0, .. })));
     }
 }

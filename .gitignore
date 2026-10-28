@@ -1,11 +1,39 @@
+# Build output
 /target
+**/*.rs.bk
+*.class
+/tools/extract/out
+/tools/oracle/out
+
+# Local game state and accounts (personal: never commit)
+rustmc_account.json
+/options.txt
+server-packs.json
+server-resource-packs/
+saves/
+
+# Logs, screenshots, benchmarks, golden dumps
+logs/
+*.log
 /shot.png
 /shots
-/options.txt
-/golden
-/tools/extract/out
+/screenshots
 /bench.csv
-/logs
-rustmc_account.json
-server-resource-packs/
-server-packs.json
+/golden
+
+# Vanilla game files (copyrighted, not redistributable)
+*.jar
+/MCP-919
+
+# Editor / OS junk
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code local files
+.claude/
+CLAUDE.local.md

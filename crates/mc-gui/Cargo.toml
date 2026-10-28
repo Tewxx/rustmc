@@ -7,3 +7,4 @@ edition.workspace = true
 mc-assets = { path = "../mc-assets" }
 mc-core = { path = "../mc-core" }
 image = { version = "0.25", default-features = false, features = ["png"] }
+arboard = { version = "3", default-features = false }

@@ -206,15 +206,48 @@ impl FontRenderer {
 
     /// `trimStringToWidth` (forward only).
     pub fn trim_to_width(&self, text: &str, width: i32) -> String {
-        let mut out = String::new();
-        for c in text.chars() {
-            out.push(c);
-            if self.width(&out) > width {
-                out.pop();
+        self.trim(text, width, false)
+    }
+
+    /// `trimStringToWidth(text, width, reverse)`: the longest prefix (or suffix) that fits,
+    /// skipping `§` codes and counting bold's extra pixel.
+    pub fn trim(&self, text: &str, width: i32, reverse: bool) -> String {
+        let chars: Vec<char> = text.chars().collect();
+        let mut out: std::collections::VecDeque<char> = std::collections::VecDeque::new();
+        let (mut i, mut code, mut bold) = (0, false, false);
+        let n = chars.len() as isize;
+        let (mut l, k) = if reverse { (n - 1, -1) } else { (0, 1) };
+        while l >= 0 && l < n && i < width {
+            let c0 = chars[l as usize];
+            let i1 = self.char_width(c0 as u32 as u16);
+            if code {
+                code = false;
+                if c0 != 'l' && c0 != 'L' {
+                    if c0 == 'r' || c0 == 'R' {
+                        bold = false;
+                    }
+                } else {
+                    bold = true;
+                }
+            } else if i1 < 0 {
+                code = true;
+            } else {
+                i += i1;
+                if bold {
+                    i += 1;
+                }
+            }
+            if i > width {
                 break;
             }
+            if reverse {
+                out.push_front(c0);
+            } else {
+                out.push_back(c0);
+            }
+            l += k;
         }
-        out
+        out.into_iter().collect()
     }
 
     pub fn draw(&mut self, b: &mut GuiBatch, text: &str, x: f32, y: f32, color: u32) -> i32 {

@@ -11,6 +11,7 @@ pub mod fxhash;
 pub mod java_hash;
 pub mod math;
 pub mod nbt;
+pub mod snbt;
 pub mod random;
 pub mod strict_math;
 pub mod vec3;

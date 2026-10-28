@@ -4,12 +4,15 @@
 //! turns that into GPU draws.
 
 pub mod batch;
+pub mod clipboard;
+pub mod component;
 pub mod font;
 pub mod hud;
 pub mod keys;
 pub mod lang;
 pub mod screens;
 pub mod settings;
+pub mod text_field;
 pub mod widgets;
 
 /// A client `ItemStack`. `item` is the catalogue entry that draws it; `damage` is the stack's own
@@ -109,6 +112,8 @@ pub struct Ui {
     pub sent_messages: Vec<String>,
     pub selected_slot: usize,
     pub shift_down: bool,
+    /// `GuiScreen.isCtrlKeyDown`
+    pub ctrl_down: bool,
     /// LWJGL code of the key behind the current `Screen::key` call (for rebinding).
     pub key_code: i32,
     pub font: FontRenderer,
@@ -130,7 +135,7 @@ pub struct Ui {
 impl Ui {
     pub fn new(assets: &AssetSource, settings: Settings) -> Self {
         Self {
-            inventory: [None; 36], armor: [None; 4], crafting: [None; 4], drops: Vec::new(), sent_messages: Vec::new(), selected_slot: 0, shift_down: false, key_code: 0,
+            inventory: [None; 36], armor: [None; 4], crafting: [None; 4], drops: Vec::new(), sent_messages: Vec::new(), selected_slot: 0, shift_down: false, ctrl_down: false, key_code: 0,
             font: FontRenderer::load(assets),
             lang: Lang::load(assets, "en_US"),
             settings,

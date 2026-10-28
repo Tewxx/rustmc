@@ -624,7 +624,7 @@ impl Screen for Creative {
             _ => Action::None,
         }
     }
-    fn typed(&mut self, c: char) {
+    fn typed(&mut self, _ui: &mut mc_gui::Ui, c: char) {
         if self.tab == 5 && !c.is_control() && self.search.len() < 50 {
             self.search.push(c);
             self.row = 0;
@@ -690,7 +690,7 @@ mod tests {
         screen.click(&mut ui, x + 169, y - 24);
         assert_eq!(screen.tab, 5);
         for c in "diamond_sword".chars() {
-            screen.typed(c);
+            screen.typed(&mut ui, c);
         }
         let results = screen.filtered();
         assert!(!results.is_empty());

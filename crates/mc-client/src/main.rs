@@ -382,6 +382,19 @@ fn find_player_spawn(world: &World, center: (i32, i32)) -> mc_core::Vec3 {
     mc_core::Vec3::new(center.0 as f64 + 0.5, y as f64 + 1., center.1 as f64 + 0.5)
 }
 
+/// `GuiScreen.openWebLink`: hands the link to the desktop's browser (`Desktop.browse`).
+fn open_web_link(url: &str) {
+    #[cfg(windows)]
+    let r = std::process::Command::new("rundll32").arg("url.dll,FileProtocolHandler").arg(url).spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(url).spawn();
+    if let Err(e) = r {
+        eprintln!("Couldn't open link: {e}");
+    }
+}
+
 /// `Math.random()`
 fn rand_f64() -> f64 {
     use std::cell::Cell;
@@ -397,8 +410,21 @@ fn rand_f64() -> f64 {
 }
 
 /// Screen keys: the inventory and hotbar keys follow their bindings (`GuiContainer.keyTyped`).
-fn map_key(code: KeyCode, settings: &mc_gui::settings::Settings) -> Key {
+fn map_key(code: KeyCode, settings: &mc_gui::settings::Settings, ctrl: bool) -> Key {
     let lw = keymap::lwjgl(code);
+    // GuiScreen.isKeyComboCtrlA/C/V/X: checked before every other key.
+    if ctrl {
+        let letter = match code {
+            KeyCode::KeyA => Some('a'),
+            KeyCode::KeyC => Some('c'),
+            KeyCode::KeyV => Some('v'),
+            KeyCode::KeyX => Some('x'),
+            _ => None,
+        };
+        if let Some(c) = letter {
+            return Key::Combo(c);
+        }
+    }
     if lw != 0 && lw == settings.key("key.inventory") {
         return Key::Inventory;
     }
@@ -417,6 +443,8 @@ fn map_key(code: KeyCode, settings: &mc_gui::settings::Settings) -> Key {
         KeyCode::End => Key::End,
         KeyCode::Delete => Key::Delete,
         KeyCode::Tab => Key::Tab,
+        KeyCode::PageUp => Key::PageUp,
+        KeyCode::PageDown => Key::PageDown,
         _ => Key::Other,
     }
 }
@@ -717,6 +745,72 @@ impl App {
         }
     }
 
+    /// `displayGuiScreen(null)`: drops the screen and its parents; leaving `GuiChat` resets
+    /// the chat scroll (`onGuiClosed`).
+    fn close_all(&mut self) {
+        if self.screen.as_ref().is_some_and(|s| s.is_chat()) || self.parents.iter().any(|s| s.is_chat()) {
+            self.hud.chat.reset_scroll();
+        }
+        self.parents.clear();
+        self.screen = None;
+        if self.in_game {
+            self.grab(true);
+        }
+    }
+
+    /// `GuiChat.getChatComponent(Mouse.getX(), Mouse.getY())`
+    fn chat_piece_under_mouse(&self) -> Option<mc_gui::component::Piece> {
+        let h = self.renderer.as_ref().map_or(720, |r| r.config.height) as i32;
+        let (x, y) = (self.mouse_px.0 as i32, h - self.mouse_px.1 as i32 - 1);
+        self.hud.chat.component_at(&self.ui, self.scaled().factor, x, y).cloned()
+    }
+
+    /// `GuiScreen.handleComponentClick`; true when the click was used.
+    fn handle_component_click(&mut self, piece: &mc_gui::component::Piece) -> bool {
+        use mc_gui::component::ClickAction;
+        if self.ui.shift_down {
+            if let Some(ins) = &piece.insertion {
+                if let Some(s) = &mut self.screen {
+                    s.set_chat_text(&self.ui, ins, false);
+                }
+            }
+            return false;
+        }
+        let Some(click) = &piece.click else { return false };
+        match click.action {
+            ClickAction::OpenUrl => {
+                if !self.ui.settings.chat_links {
+                    return false;
+                }
+                // Only http(s) URIs with a scheme are accepted (`PROTOCOLS`).
+                let scheme = click.value.split_once(':').map(|(s, _)| s.to_ascii_lowercase());
+                match scheme.as_deref() {
+                    Some("http") | Some("https") => {
+                        if self.ui.settings.chat_links_prompt {
+                            self.open(Box::new(screens::ConfirmOpenLink::new(click.value.clone(), false)), true);
+                        } else {
+                            open_web_link(&click.value);
+                        }
+                    }
+                    _ => eprintln!("Can't open url for {:?}", click.value),
+                }
+            }
+            ClickAction::OpenFile => open_web_link(&click.value),
+            ClickAction::SuggestCommand => {
+                if let Some(s) = &mut self.screen {
+                    s.set_chat_text(&self.ui, &click.value, true);
+                }
+            }
+            ClickAction::RunCommand => {
+                // sendChatMessage(value, false): sent without entering the history.
+                let v = click.value.clone();
+                self.send_chat(&v);
+            }
+            ClickAction::TwitchUserInfo | ClickAction::ChangePage => eprintln!("Don't know how to handle {:?}", click.action),
+        }
+        true
+    }
+
     fn handle(&mut self, action: Action, el: &ActiveEventLoop) {
         match action {
             Action::None => {}
@@ -760,6 +854,16 @@ impl App {
                 }
             }
             Action::Quit => el.exit(),
+            Action::CloseAll => self.close_all(),
+            Action::ScrollChatPage(dir) => {
+                let n = self.hud.chat.line_count(&self.ui, true) - 1;
+                self.hud.chat.scroll(&self.ui, dir * n, true);
+            }
+            Action::OpenLink(url) => {
+                // GuiChat.confirmClicked: open it, then back to the chat.
+                open_web_link(&url);
+                self.close_screen();
+            }
             Action::ResourcePackDecision(accept) => self.resource_pack_decision(accept),
             Action::TabComplete(prefix) => {
                 if self.net.is_some() {
@@ -777,7 +881,7 @@ impl App {
             }
             Action::PrintChat(line) => self.hud.add_chat(line),
             Action::SendChat(msg) => {
-                self.close_screen();
+                self.close_all();
                 self.send_chat(&msg);
             }
             Action::Respawn if self.net.is_some() => {
@@ -895,7 +999,9 @@ impl App {
         if !self.ui.sounds.is_empty() {
             self.flush_sounds();
         }
-        let paused = self.screen.as_ref().is_some_and(|s| s.pauses());
+        // `Minecraft.isGamePaused`: only the integrated server pauses; on a remote server the
+        // world keeps ticking under the pause menu or the server would rubber-band the player.
+        let paused = self.net.is_none() && self.screen.as_ref().is_some_and(|s| s.pauses());
         self.tick_accum += dt * 20.0;
         while self.tick_accum >= 1.0 {
             self.tick_accum -= 1.0;
@@ -1024,7 +1130,9 @@ impl App {
             }
             if let Some(n) = &mut self.net {
                 let e = &self.entity;
-                n.update_walking(e.sprinting, e.is_sneaking(), e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
+                // `ridingEntity != null`: the vehicle relays `C06(motionX, -999, motionZ)`.
+                let riding = self.attached.contains_key(&n.entity_id).then(|| (e.motion.x, e.motion.z));
+                n.update_walking(e.sprinting, e.is_sneaking(), self.camera_entity.is_none(), riding, e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
             }
         }
         // `World.updateEntities`: tile entities tick after the world's entities.
@@ -1138,11 +1246,10 @@ impl App {
                 }
                 C::PlayerPosLookS(pl) => {
                     let (mut pos, mut yaw, mut pitch) = (self.entity.pos, self.entity.yaw, self.entity.pitch);
-                    n.handle_pos_look(&pl, &mut pos, &mut yaw, &mut pitch);
+                    let mut prev = self.entity.prev_pos;
+                    n.handle_pos_look(&pl, &mut pos, &mut self.entity.motion, &mut prev, &mut yaw, &mut pitch);
                     self.entity.set_position(pos);
-                    if pl.flags & 7 == 0 {
-                        self.entity.motion = mc_core::Vec3::new(0., 0., 0.);
-                    }
+                    self.entity.prev_pos = prev;
                     self.entity.yaw = yaw;
                     self.entity.pitch = pitch;
                     self.entity.prev_yaw = yaw;
@@ -1164,14 +1271,15 @@ impl App {
                     }
                 }
                 C::BlockChange(b) => {
-                    let st = mc_data::StateId::try_from_network(b.state).unwrap_or(mc_data::StateId::AIR);
+                    // S23 carries `Block.BLOCK_STATE_IDS` (`id << 4 | meta`), not `getStateId`.
+                    let st = u16::try_from(b.state).ok().and_then(mc_data::StateId::try_from_raw).unwrap_or(mc_data::StateId::AIR);
                     self.world.set_block_state(b.pos, st);
                     edits.push(b.pos);
                 }
                 C::MultiBlockChange(m) => {
                     for (p, state) in m.records {
                         let pos = BlockPos::new(m.chunk_x * 16 + (p >> 12) as i32, (p & 255) as i32, m.chunk_z * 16 + ((p >> 8) & 15) as i32);
-                        let st = mc_data::StateId::try_from_network(state).unwrap_or(mc_data::StateId::AIR);
+                        let st = u16::try_from(state).ok().and_then(mc_data::StateId::try_from_raw).unwrap_or(mc_data::StateId::AIR);
                         self.world.set_block_state(pos, st);
                         edits.push(pos);
                     }
@@ -1184,11 +1292,12 @@ impl App {
                     self.info.rules.set("doDaylightCycle", if neg { "false" } else { "true" });
                 }
                 C::ChatS(c) => {
-                    let text = chat::format(&c.json, &self.ui.lang);
+                    let component = chat::parse(&c.json, &self.ui.lang);
                     if c.position == 2 {
-                        self.hud.set_action_bar(text);
+                        // GuiIngame.setRecordPlaying(component, false) uses getUnformattedText.
+                        self.hud.set_action_bar(component.unformatted());
                     } else {
-                        self.hud.add_chat(text);
+                        self.hud.add_chat(component);
                     }
                 }
                 C::SpawnPosition(sp) => self.info.spawn = sp.pos,
@@ -3857,7 +3966,8 @@ impl App {
             self.name_tags(sr);
         }
         if hud_visible {
-            let chat_open = self.screen.is_some();
+            // GuiNewChat.getChatOpen: `currentScreen instanceof GuiChat`.
+            let chat_open = self.screen.as_ref().is_some_and(|s| s.is_chat());
             let debug = self.debug_info();
             let me = self.my_name();
             self.hud.sidebar = self.scoreboard.sidebar(&me);
@@ -3878,7 +3988,27 @@ impl App {
         if let Some(s) = &mut self.screen {
             s.draw(&mut self.ui, &mut self.batch, sr.width, sr.height, mx, my);
         }
+        if self.screen.as_ref().is_some_and(|s| s.is_chat()) {
+            if let Some(hover) = self.chat_piece_under_mouse().and_then(|p| p.hover) {
+                self.chat_hover(&hover, mx, my, sr);
+            }
+        }
         sr
+    }
+
+    /// `GuiScreen.handleComponentHover`
+    fn chat_hover(&mut self, hover: &mc_gui::component::HoverEvent, mx: i32, my: i32, sr: Scaled) {
+        use mc_gui::component::HoverAction;
+        let lines: Vec<String> = match hover.action {
+            HoverAction::ShowText => hover.value.formatted().split('\n').map(str::to_string).collect(),
+            HoverAction::ShowItem => match tooltip::from_snbt(&hover.value.unformatted(), &self.catalogue, &self.ui) {
+                Some(lines) => lines,
+                None => vec![format!("\u{a7}cInvalid Item!")],
+            },
+            HoverAction::ShowEntity => tooltip::entity_lines(&hover.value.unformatted(), self.ui.settings.advanced_item_tooltips).unwrap_or_else(|| vec!["\u{a7}cInvalid Entity!".to_string()]),
+            HoverAction::ShowAchievement => vec![hover.value.unformatted()],
+        };
+        self.ui.draw_hovering_text(&mut self.batch, &lines, mx, my, sr.width, sr.height);
     }
 
     /// `RendererLivingEntity.renderName` / `renderLivingLabel`, projected into the GUI pass:
@@ -4334,6 +4464,13 @@ impl ApplicationHandler for App {
                 let (mx, my) = self.mouse_gui();
                 match state {
                     ElementState::Pressed => {
+                        if button == MouseButton::Left && self.screen.as_ref().is_some_and(|s| s.is_chat()) {
+                            if let Some(piece) = self.chat_piece_under_mouse() {
+                                if self.handle_component_click(&piece) {
+                                    return;
+                                }
+                            }
+                        }
                         if let Some(s) = &mut self.screen {
                             let a = match button {
                                 MouseButton::Left => s.click(&mut self.ui, mx, my),
@@ -4362,7 +4499,13 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::LineDelta(_, y) => y.signum() as i32,
                     MouseScrollDelta::PixelDelta(p) => p.y.signum() as i32,
                 };
-                if let Some(s) = &mut self.screen {
+                if self.screen.as_ref().is_some_and(|s| s.is_chat()) {
+                    // GuiChat.handleMouseInput: one line with shift, seven without.
+                    if d != 0 {
+                        let n = if self.ui.shift_down { d } else { d * 7 };
+                        self.hud.chat.scroll(&self.ui, n, true);
+                    }
+                } else if let Some(s) = &mut self.screen {
                     s.scroll(d);
                 } else if self.in_game && d != 0 {
                     // Scrolling down moves right, like vanilla.
@@ -4380,20 +4523,25 @@ impl ApplicationHandler for App {
                 if event.state == ElementState::Released {
                     self.keys.remove(&code);
                     self.ui.shift_down = self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
+                    self.ui.ctrl_down = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
                     return;
                 }
                 if matches!(code, KeyCode::ShiftLeft | KeyCode::ShiftRight) {
                     self.keys.insert(code);
                     self.ui.shift_down = true;
                 }
+                if matches!(code, KeyCode::ControlLeft | KeyCode::ControlRight) {
+                    self.keys.insert(code);
+                    self.ui.ctrl_down = true;
+                }
                 self.ui.key_code = keymap::lwjgl(code);
-                let mapped = map_key(code, &self.ui.settings);
+                let mapped = map_key(code, &self.ui.settings, self.ui.ctrl_down);
                 if let Some(s) = &mut self.screen {
                     let a = s.key(&mut self.ui, mapped);
                     if let Some(text) = &event.text {
                         if let Some(s) = &mut self.screen {
                             for c in text.chars() {
-                                s.typed(c);
+                                s.typed(&mut self.ui, c);
                             }
                         }
                     }
