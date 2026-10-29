@@ -27,6 +27,12 @@ wgpu = "24"
 winit = "0.30"
 flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
+puffin = { version = "0.19", optional = true }
+puffin_http = { version = "0.16", optional = true }
+
+[features]
+# `cargo build --release --features profile`: puffin zones + HTTP server on 127.0.0.1:8585.
+profile = ["dep:puffin", "dep:puffin_http"]
 
 [build-dependencies]
 winresource = "0.1"
