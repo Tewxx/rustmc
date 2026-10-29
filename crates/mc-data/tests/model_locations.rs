@@ -6,7 +6,7 @@ use std::path::Path;
 fn every_model_location_matches_java() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/models.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        eprintln!("skipping: {} not found (run tools/extract/extract.ps1 models)", path.display());
+        eprintln!("skipping: {} not found (run tools/extract/extract.sh models)", path.display());
         return;
     };
     let rows: Vec<Value> = serde_json::from_str(&text).unwrap();

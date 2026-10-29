@@ -9,7 +9,7 @@ use std::path::Path;
 fn all_model_display_transforms_match_java() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let golden = root.join("golden/item_transforms.json");
-    let jar = root.join("../MCP-919/jars/versions/1.8.9/1.8.9.jar");
+    let jar = root.join("MCP-919/jars/versions/1.8.9/1.8.9.jar");
     if !golden.exists() || !jar.exists() {
         eprintln!("Java item transform fixture unavailable");
         return;
