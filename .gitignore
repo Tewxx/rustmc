@@ -37,3 +37,4 @@ desktop.ini
 # Claude Code local files
 .claude/
 CLAUDE.local.md
+/.mc-tools

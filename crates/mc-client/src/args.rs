@@ -108,7 +108,6 @@ pub(crate) fn parse_args() -> Args {
 
 pub(crate) fn find_jar() -> Option<PathBuf> {
     let mut candidates = vec![
-        PathBuf::from("../MCP-919/jars/versions/1.8.9/1.8.9.jar"),
         PathBuf::from("MCP-919/jars/versions/1.8.9/1.8.9.jar"),
     ];
     if let Ok(exe) = std::env::current_exe() {

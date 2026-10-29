@@ -12,10 +12,10 @@ use std::path::Path;
 
 fn inputs(name: &str) -> Option<(BlockColors, Vec<Value>)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let jar = root.join("../../../MCP-919/jars/versions/1.8.9/1.8.9.jar");
+    let jar = root.join("../../MCP-919/jars/versions/1.8.9/1.8.9.jar");
     let path = root.join(format!("../../golden/{name}.json"));
     if !jar.is_file() || !path.is_file() {
-        eprintln!("skipping: requires 1.8.9.jar and {} (run tools/extract/extract.ps1)", path.display());
+        eprintln!("skipping: requires 1.8.9.jar and {} (run tools/extract/extract.sh)", path.display());
         return None;
     }
     let mut assets = AssetSource::new();
