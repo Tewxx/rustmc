@@ -8,11 +8,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 fn golden(name: &str) -> Option<Value> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden").join(name);
-    let Ok(text) = std::fs::read_to_string(&p) else {
-        eprintln!("skipping: {} not found (run tools/extract/extract.ps1)", p.display());
-        return None;
-    };
+    let p = mc_testutil::golden(name)?;
+    let text = std::fs::read_to_string(&p).unwrap();
     Some(serde_json::from_str(&text).unwrap())
 }
 

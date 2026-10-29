@@ -2,11 +2,9 @@ use mc_render::sky::Sky;
 use std::path::Path;
 #[test]
 fn overworld_sky_values_match_java() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/sky.json");
-    if !path.exists() {
-        eprintln!("Java sky fixture unavailable");
+    let Some(path) = mc_testutil::golden("sky.json") else {
         return;
-    }
+    };
     let data: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     for row in data.as_array().unwrap() {
         let time = row["time"].as_i64().unwrap();

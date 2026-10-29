@@ -10,11 +10,7 @@ use std::path::Path;
 const JAR: &str = "../../../MCP-919/jars/versions/1.8.9/1.8.9.jar";
 
 fn assets() -> Option<AssetSource> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(JAR);
-    if !p.is_file() {
-        eprintln!("skipping: {} not found", p.display());
-        return None;
-    }
+    let p = mc_testutil::jar()?;
     let mut a = AssetSource::new();
     a.push(&p).unwrap();
     Some(a)
