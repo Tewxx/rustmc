@@ -123,7 +123,7 @@ fn handle(stream: TcpStream) {
                         // Chests on the grass at y = 4, facing south at a camera standing south
                         // of them: a single chest, a double chest along +X, a trapped chest whose
                         // lid is opened with block event 1, and an ender chest.
-                        let mut tile = |pos: BlockPos, id: i32, meta: i32| {
+                        let tile = |pos: BlockPos, id: i32, meta: i32| {
                             play(PlayClientbound::BlockChange(BlockChange { pos, state: id << 4 | meta }));
                             play(PlayClientbound::UpdateTileEntity(UpdateTileEntity { pos, action: 0, nbt: Some(mc_core::nbt::Compound::new()) }));
                         };
