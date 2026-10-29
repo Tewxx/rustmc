@@ -50,7 +50,7 @@ impl ApplicationHandler for App {
         let attrs = Window::default_attributes()
             .with_title("Minecraft 1.8.9")
             .with_window_icon(icon::window_icon())
-            .with_inner_size(winit::dpi::PhysicalSize::new(1280, 720))
+            .with_inner_size({ let (w, h) = WINDOW_SIZE.get().copied().unwrap_or((1280, 720)); winit::dpi::PhysicalSize::new(w, h) })
             .with_visible(self.screenshot.is_none());
         let window = Arc::new(el.create_window(attrs).expect("create window"));
         let renderer = pollster::block_on(Renderer::new(window.clone(), &self.models, &self.assets));
