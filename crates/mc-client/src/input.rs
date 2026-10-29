@@ -243,6 +243,7 @@ impl ApplicationHandler for App {
                 let now = Instant::now();
                 let dt = (now - self.last_frame).as_secs_f32().min(0.5);
                 self.last_frame = now;
+                crate::bench::profile_frame();
                 if let Some(b) = &mut self.bench {
                     let p = b.pose(now);
                     (self.camera.pos, self.camera.yaw, self.camera.pitch) = (p.pos, p.yaw, p.pitch);

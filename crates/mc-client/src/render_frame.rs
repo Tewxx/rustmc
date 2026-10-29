@@ -492,7 +492,11 @@ impl App {
     }
 
     pub(crate) fn draw_frame(&mut self) {
-        let sr = self.build_gui();
+        let sr = {
+            let _z = crate::bench::zone(crate::bench::Phase::Gui);
+            self.build_gui()
+        };
+        let _z = crate::bench::zone(crate::bench::Phase::World);
         let cam = self.in_game.then_some(&self.camera);
         let Some(r) = &mut self.renderer else { return };
         match r.render(cam, Some((&self.batch, sr)), &self.assets) {
