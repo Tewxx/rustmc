@@ -40,7 +40,7 @@ fn vec3(v: &Value) -> Vec3 {
 fn geometry_matches_java() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/geometry.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        eprintln!("skipping: {} (run tools/extract/extract.ps1 geometry)", path.display());
+        eprintln!("skipping: {} (run tools/extract/extract.sh geometry)", path.display());
         return;
     };
     let rows: Vec<Value> = serde_json::from_str(&text).unwrap();

@@ -19,7 +19,7 @@ fn main() {
 
     let read = |name: &str| -> Value {
         let p = golden.join(name);
-        let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e} (run tools/extract/extract.ps1)", p.display()));
+        let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e} (run tools/extract/extract.sh)", p.display()));
         serde_json::from_str(&text).unwrap()
     };
     let materials = read("materials.json");
