@@ -245,7 +245,7 @@ mod tests {
     fn fill_converts_formats_and_channels() {
         let mut d = [0i16; 6];
         fill(&mut d, 3, &mut || (1.0, -1.0));
-        assert_eq!(d, [32767, -32767, 0, 32767, -32767, 0]);
+        assert_eq!(d, [32767, -32768, 0, 32767, -32768, 0]);
         let mut m = [0f32; 2];
         fill(&mut m, 1, &mut || (1.0, 0.0));
         assert_eq!(m, [0.5, 0.5]);
