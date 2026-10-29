@@ -127,7 +127,7 @@ fn seeded_demo_world_is_deterministic() {
     let mk = || Args {
         play: false, jar: None, packs: vec![], world: None, radius: 8, pos: None, screenshot: None,
         screen: "hud".into(), bench: None, seed: Some(12345), connect: None, name: "Player".into(),
-        online: false, pack_mode: None,
+        online: false, pack_mode: None, assets_dir: None, asset_index: String::new(), window: None,
     };
     let hashes = |w: &World| {
         let mut keys: Vec<_> = w.chunks.keys().copied().collect();
