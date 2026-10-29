@@ -1336,6 +1336,7 @@ dependencies = [
  "mc-core",
  "mc-data",
  "mc-logic",
+ "mc-testutil",
  "mc-world",
 ]
 

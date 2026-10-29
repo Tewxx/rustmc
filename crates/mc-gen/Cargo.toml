@@ -8,3 +8,6 @@ mc-core = { path = "../mc-core" }
 mc-data = { path = "../mc-data" }
 mc-world = { path = "../mc-world" }
 mc-logic = { path = "../mc-logic" }
+
+[dev-dependencies]
+mc-testutil = { path = "../mc-testutil" }
