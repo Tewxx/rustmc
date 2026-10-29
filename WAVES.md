@@ -26,7 +26,7 @@ merges in wave order. **Stabilise what exists before adding anything new.**
 | P1 | Prism launch-argument module (not wired in) | new `mc-client/src/launch.rs` |
 | B1 | Busy-scene benchmarks + profiler feature + baseline | `mc-client/src/bench.rs`, `mc-protocol/examples/mock_server.rs` |
 
-## Wave 2 — stabilise existing features (running: F1, F3, F5, F6, D1, G2; queued: F2, F4)
+## Wave 2 — stabilise existing features (running: F1, F3, F5, F6, D1, G2, M1, RP1; queued: F2, F4, M2)
 | Id | Task |
 |---|---|
 | F1 | Movement replay harness vs Java `EntityPlayerSP`; fix divergences (bit-exact) |
@@ -36,6 +36,9 @@ merges in wave order. **Stabilise what exists before adding anything new.**
 | F5 | Prism wrapper mode wired in, `dirs` per-OS paths, importable instance zip |
 | F6 | Robustness: malformed packets, disconnects, chunk unload, pack reload; no panics in the net path |
 | D1 | Same world + radius gives different quad counts run to run (BENCH.md): find and fix the nondeterminism in load/light/mesh |
+| M1 | Original multiplayer UI: GuiMultiplayer server list, servers.dat, pinger (MOTD/icon/ping bars/players), add/edit/delete, direct connect |
+| M2 | In-process connect/disconnect (no relaunch), GuiConnecting; after F5/F6 merge |
+| RP1 | Resource packs: repository, GuiScreenResourcePacks, options.txt lists, shared reload, sounds/lang from packs |
 | G2 | mc-gen oracle tests actually run (tools/oracle on macOS) and honour `RUSTMC_REQUIRE_GOLDEN`; gen-data sorts `effectiveBlocks` (Java HashSet order made regeneration nondeterministic) |
 
 ## Wave 3 — performance (parallel with Wave 2)
