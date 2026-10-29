@@ -4,6 +4,8 @@ Integration branch: `stabilize`. Each task runs in its own git worktree and bran
 merges in wave order. **Stabilise what exists before adding anything new.**
 
 ## Rules for every task
+- Worktrees start from `main`: run `git merge stabilize` first.
+- Build with `CARGO_BUILD_JOBS=3` (several agents share 8 cores / 16 GB). macOS has no `timeout`; use `perl -e 'alarm shift; exec @ARGV' 600 <cmd>`.
 - Stay inside the files you own. Anything you need changed elsewhere goes in your final report.
 - Expected values come from the Java reference (`MCP-919/src/minecraft`, compiled `MCP-919/bin/minecraft`)
   or golden dumps, never hand-written guesses. Never copy Java source into this repo.
@@ -14,7 +16,7 @@ merges in wave order. **Stabilise what exists before adding anything new.**
   `/Volumes/SSD/projects/rustmc/golden` (once generated). Symlink them into your worktree if a test needs them.
 - Commit on your branch with clear messages. Do not push.
 
-## Wave 1 — foundations (parallel, now)
+## Wave 1 — foundations (merged: S1, P1, G1, A1; running: C1, B1)
 | Id | Task | Owns |
 |---|---|---|
 | A1 | Split `mc-client/src/main.rs` into modules, move-only | `mc-client/src/` |
@@ -24,7 +26,7 @@ merges in wave order. **Stabilise what exists before adding anything new.**
 | P1 | Prism launch-argument module (not wired in) | new `mc-client/src/launch.rs` |
 | B1 | Busy-scene benchmarks + profiler feature + baseline | `mc-client/src/bench.rs`, `mc-protocol/examples/mock_server.rs` |
 
-## Wave 2 — stabilise existing features (after A1)
+## Wave 2 — stabilise existing features (running: F1, F3, F5, F6; queued: F2, F4, G2)
 | Id | Task |
 |---|---|
 | F1 | Movement replay harness vs Java `EntityPlayerSP`; fix divergences (bit-exact) |
@@ -33,6 +35,7 @@ merges in wave order. **Stabilise what exists before adding anything new.**
 | F4 | Containers/inventory/items audit vs Java (slotClick golden sequences) |
 | F5 | Prism wrapper mode wired in, `dirs` per-OS paths, importable instance zip |
 | F6 | Robustness: malformed packets, disconnects, chunk unload, pack reload; no panics in the net path |
+| G2 | mc-gen oracle tests actually run (tools/oracle on macOS) and honour `RUSTMC_REQUIRE_GOLDEN`; gen-data sorts `effectiveBlocks` (Java HashSet order made regeneration nondeterministic) |
 
 ## Wave 3 — performance (parallel with Wave 2)
 R1 mesh/light worker pool + 18³ snapshots · R2 GPU arena/compact vertex/multi-draw-indirect ·
