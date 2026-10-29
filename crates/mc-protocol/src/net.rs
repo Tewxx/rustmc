@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 fn proto(e: crate::Error) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, format!("{e:?}"))
+    io::Error::new(io::ErrorKind::InvalidData, format!("{e}"))
 }
 
 /// Outgoing half: frames, compresses and encrypts packet bodies.
@@ -56,7 +56,14 @@ impl Reader {
             if let Some(p) = self.decoder.next_packet().map_err(proto)? {
                 return Ok(p);
             }
-            let n = self.stream.read(&mut self.buf)?;
+            let n = self.stream.read(&mut self.buf).map_err(|e| match e.kind() {
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut => io::Error::new(io::ErrorKind::TimedOut, "Timed out"),
+                _ => e,
+            });
+            let n = match n {
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                n => n?,
+            };
             if n == 0 {
                 return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "End of stream"));
             }
@@ -107,6 +114,9 @@ pub fn login(host: &str, port: u16, name: &str, auth: Option<Authenticate>) -> R
     let addr = (host, port).to_socket_addrs()?.next().ok_or_else(|| LoginError::Protocol(format!("Unknown host '{host}'")))?;
     let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(30))?;
     stream.set_nodelay(true)?;
+    // `ReadTimeoutHandler(30)`: a silent server ends the connection instead of hanging it.
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
     let threshold = Arc::new(AtomicI32::new(-1));
     let mut w = Writer { stream: stream.try_clone()?, cipher: None, threshold: threshold.clone() };
     let mut r = Reader { stream, cipher: None, decoder: Decoder::new(), threshold, buf: vec![0; 64 * 1024] };

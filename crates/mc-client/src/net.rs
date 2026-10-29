@@ -52,7 +52,10 @@ impl Net {
         std::thread::Builder::new()
             .name("Netty Client IO".into())
             .spawn(move || loop {
-                match reader.recv_play() {
+                // A panic here would drop the channel and leave the game waiting forever.
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.recv_play()))
+                    .unwrap_or_else(|_| Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Internal Exception: packet handling panicked")));
+                match r {
                     Ok(p) => {
                         if tx.send(Incoming::Packet(Box::new(p))).is_err() {
                             return;
@@ -140,6 +143,12 @@ impl Net {
         }
         let pt = if p.flags & 16 != 0 { *pitch + p.pitch } else { p.pitch };
         let yw = if p.flags & 8 != 0 { *yaw + p.yaw } else { p.yaw };
+        // A hostile server can send NaN/infinite/astronomical values; the player's yaw-wrapping
+        // loops never finish for those (a freeze), so keep everything in a sane range.
+        let coord = |v: f64, old: f64| if v.is_finite() { v.clamp(-3.0e7, 3.0e7) } else { old };
+        let (x, y, z) = (coord(x, pos.x), coord(y, pos.y), coord(z, pos.z));
+        let pt = if pt.is_finite() { pt.clamp(-90.0, 90.0) } else { *pitch };
+        let yw = if !yw.is_finite() { *yaw } else if yw.abs() > 36000.0 { yw % 360.0 } else { yw };
         *pos = Vec3::new(x, y, z);
         *yaw = yw;
         *pitch = pt;
