@@ -98,6 +98,7 @@ fn main() {
         Some(r) => r,
         None => (parse_args(), None),
     };
+    bench::profile_init();
     if let Some(w) = args.window {
         let _ = WINDOW_SIZE.set(w);
     }
