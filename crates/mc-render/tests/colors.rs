@@ -8,7 +8,6 @@ use mc_data::{Block, BlockAccess, StateId};
 use mc_render::models::BlockColors;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::Path;
 
 fn inputs(name: &str) -> Option<(BlockColors, Vec<Value>)> {
     let jar = mc_testutil::jar()?;

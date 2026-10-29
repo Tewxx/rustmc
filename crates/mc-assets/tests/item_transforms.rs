@@ -3,7 +3,6 @@ use mc_assets::{
     model::{ItemTransform, ModelLoader},
     AssetSource,
 };
-use std::path::Path;
 
 #[test]
 fn all_model_display_transforms_match_java() {

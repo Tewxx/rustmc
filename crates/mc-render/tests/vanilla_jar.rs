@@ -7,7 +7,6 @@ use mc_data::{ids, Block, BlockAccess};
 use mc_world::World;
 use std::path::Path;
 
-const JAR: &str = "../../MCP-919/jars/versions/1.8.9/1.8.9.jar";
 
 fn assets() -> Option<AssetSource> {
     let p = mc_testutil::jar()?;

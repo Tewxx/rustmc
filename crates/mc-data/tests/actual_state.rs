@@ -5,7 +5,6 @@ use mc_core::BlockPos;
 use mc_data::{Block, BlockAccess, StateId};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
 
 #[derive(Default)]
 struct Scene {

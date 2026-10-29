@@ -5,7 +5,6 @@
 use mc_data::{Block, Material, RenderLayer, StateId};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::path::Path;
 
 fn golden(name: &str) -> Option<Value> {
     let p = mc_testutil::golden(name)?;

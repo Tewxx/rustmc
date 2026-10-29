@@ -1,5 +1,4 @@
 use mc_render::sky::Sky;
-use std::path::Path;
 #[test]
 fn overworld_sky_values_match_java() {
     let Some(path) = mc_testutil::golden("sky.json") else {

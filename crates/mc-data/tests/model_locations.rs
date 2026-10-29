@@ -1,6 +1,5 @@
 use mc_data::Block;
 use serde_json::Value;
-use std::path::Path;
 
 #[test]
 fn every_model_location_matches_java() {

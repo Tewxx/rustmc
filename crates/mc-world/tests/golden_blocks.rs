@@ -4,7 +4,6 @@
 use mc_data::Block;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::Path;
 
 fn golden() -> Option<HashMap<u64, Value>> {
     let p = mc_testutil::golden("blocks.json")?;

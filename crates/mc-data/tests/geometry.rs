@@ -4,7 +4,6 @@ use mc_data::geometry::{BlockGeometry, CollisionEntity, MovingPiston};
 use mc_data::{BlockAccess, StateId};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
 
 #[derive(Default)]
 struct Scene {
