@@ -2,7 +2,7 @@
 fn main() {
     let ev = std::env::args().nth(1).unwrap_or_else(|| "random.orb".into());
     let dir = std::path::PathBuf::from(
-        std::env::args().nth(2).unwrap_or_else(|| "/Volumes/SSD/projects/rustmc/MCP-919/.minecraft/assets".into()),
+        std::env::args().nth(2).unwrap_or_else(|| "MCP-919/.minecraft/assets".into()),
     );
     let read = mc_sound::manager::index_reader(&dir, "1.8").expect("asset index");
     let mut s = mc_sound::SoundManager::new(std::sync::Arc::new(read));

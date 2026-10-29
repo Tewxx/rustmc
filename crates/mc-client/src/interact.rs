@@ -563,6 +563,7 @@ impl App {
             }
         }
         // Remesh only the columns whose blocks or light actually changed.
+        let _z = crate::bench::zone(crate::bench::Phase::Mesh);
         let dirty = self.world.take_dirty();
         let t1 = Instant::now();
         let n = dirty.len();

@@ -405,7 +405,6 @@ mod tests {
             .iter()
             .map(|f| match f {
                 mc_render::tile::TileFrame::Chest { pos, large, skin, meta, .. } => (pos.x as i32, *large, *skin, *meta),
-                _ => unreachable!(),
             })
             .collect();
         use mc_render::tile::ChestSkin::*;

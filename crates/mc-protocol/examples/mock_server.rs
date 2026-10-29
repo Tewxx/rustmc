@@ -37,6 +37,34 @@ fn flat_chunk() -> (u16, Vec<u8>) {
     encode(&sections, Some(&[1u8; 256]), true)
 }
 
+/// `MOCK_*=N` busy-scene knobs (0 when unset or not a number).
+fn env_n(name: &str) -> usize {
+    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(0)
+}
+
+/// Rolling hills (two sections tall) so streamed chunks cost real meshing/lighting work.
+fn hilly_chunk(cx: i32, cz: i32, seed: i32) -> (u16, Vec<u8>) {
+    let mut sections: [Option<WireSection>; 16] = Default::default();
+    for sy in 0..2usize {
+        let mut s = WireSection::empty(true);
+        for i in 0..4096usize {
+            let (x, z, y) = ((i & 15) as i32, ((i >> 4) & 15) as i32, (sy * 16 + (i >> 8)) as i32);
+            let h = 10 + (6.0 * (((cx * 16 + x) as f32) * 0.2 + seed as f32 * 0.1).sin() + 5.0 * (((cz * 16 + z) as f32) * 0.15).cos()) as i32;
+            s.blocks[i] = match y {
+                0 => 7 << 4,
+                y if y < h - 1 => 1 << 4,
+                y if y == h - 1 => 2 << 4,
+                _ => 0,
+            };
+            if y >= h {
+                s.sky_light.as_mut().unwrap()[i / 2] |= 0xf << ((i & 1) * 4);
+            }
+        }
+        sections[sy] = Some(s);
+    }
+    encode(&sections, Some(&[1u8; 256]), true)
+}
+
 fn handle(stream: TcpStream) {
     stream.set_nodelay(true).unwrap();
     let w = Arc::new(Mutex::new(stream.try_clone().unwrap()));
@@ -95,7 +123,7 @@ fn handle(stream: TcpStream) {
                         // Chests on the grass at y = 4, facing south at a camera standing south
                         // of them: a single chest, a double chest along +X, a trapped chest whose
                         // lid is opened with block event 1, and an ender chest.
-                        let mut tile = |pos: BlockPos, id: i32, meta: i32| {
+                        let tile = |pos: BlockPos, id: i32, meta: i32| {
                             play(PlayClientbound::BlockChange(BlockChange { pos, state: id << 4 | meta }));
                             play(PlayClientbound::UpdateTileEntity(UpdateTileEntity { pos, action: 0, nbt: Some(mc_core::nbt::Compound::new()) }));
                         };
@@ -403,6 +431,79 @@ fn handle(stream: TcpStream) {
                             items[i] = Some(mc_protocol::Slot { id, count: if id == 1 { 64 } else { 1 }, damage: 0, nbt: None });
                         }
                         play(PlayClientbound::WindowItems(WindowItems { window_id: 3, items }));
+                    }
+                    // MOCK_CROWD=N: N players/zombies spread around spawn, walking in circles and swinging.
+                    let crowd = env_n("MOCK_CROWD");
+                    if crowd > 0 {
+                        for i in 0..crowd {
+                            let (a, r) = (i as f32 * 2.399, 4.0 + 26.0 * ((i as f32 + 0.5) / crowd as f32).sqrt());
+                            let (x, z) = (8.5 + r * a.cos(), 8.5 + r * a.sin());
+                            let id = 1000 + i as i32;
+                            if i % 2 == 0 {
+                                let uuid = mc_protocol::Uuid(1000 + i as u64, 1);
+                                play(PlayClientbound::PlayerListItem(PlayerListItem {
+                                    action: PlayerListAction::AddPlayer,
+                                    entries: vec![PlayerListEntry { uuid, name: format!("Bot{i}"), ..Default::default() }],
+                                }));
+                                play(PlayClientbound::SpawnPlayer(SpawnPlayer { entity_id: id, uuid, x: (x * 32.) as i32, y: 4 * 32, z: (z * 32.) as i32, yaw: 0, pitch: 0, current_item: 276, metadata: vec![(0, mc_protocol::MetaValue::Byte(0))] }));
+                            } else {
+                                play(PlayClientbound::SpawnMob(SpawnMob { entity_id: id, kind: 54, x: (x * 32.) as i32, y: 4 * 32, z: (z * 32.) as i32, yaw: 0, pitch: 0, head_pitch: 0, vx: 0, vy: 0, vz: 0, metadata: vec![] }));
+                            }
+                        }
+                        let wc = w.clone();
+                        std::thread::spawn(move || {
+                            for tick in 0u32.. {
+                                std::thread::sleep(Duration::from_millis(50));
+                                for i in 0..crowd {
+                                    let id = 1000 + i as i32;
+                                    let t = tick as f32 * 0.1 + i as f32;
+                                    send(&wc, threshold, &PlayClientbound::EntityLookMove(EntityLookMove { entity_id: id, dx: (3.0 * t.cos()) as i8, dy: 0, dz: (3.0 * t.sin()) as i8, yaw: ((t * 40.0) as i32 + 64) as i8, pitch: 0, on_ground: true }).to_bytes());
+                                    if (tick as usize + i) % 8 == 0 && i % 2 == 0 {
+                                        send(&wc, threshold, &PlayClientbound::AnimationS(AnimationS { entity_id: id, animation: 0 }).to_bytes());
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    // MOCK_STREAM=C: C chunk columns/s (17 chunks each) are unloaded and reloaded with new terrain on x = 4..16.
+                    let stream_rate = env_n("MOCK_STREAM");
+                    if stream_rate > 0 {
+                        let ws = w.clone();
+                        std::thread::spawn(move || {
+                            for k in 0i32.. {
+                                std::thread::sleep(Duration::from_millis(1000 / stream_rate as u64));
+                                let x = 4 + k % 12;
+                                for z in -8..=8 {
+                                    send(&ws, threshold, &PlayClientbound::ChunkData(ChunkData { x, z, full: true, bitmask: 0, data: vec![] }).to_bytes());
+                                }
+                                for z in -8..=8 {
+                                    let (mask, data) = hilly_chunk(x, z, k);
+                                    send(&ws, threshold, &PlayClientbound::ChunkData(ChunkData { x, z, full: true, bitmask: mask, data }).to_bytes());
+                                }
+                            }
+                        });
+                    }
+                    // MOCK_EDITS=N: N random stone/air block changes per tick (20 Hz) within 12 blocks of spawn.
+                    let edits = env_n("MOCK_EDITS");
+                    if edits > 0 {
+                        let we = w.clone();
+                        std::thread::spawn(move || {
+                            let mut rng = 0x2545_F491_4F6C_DD1Du64;
+                            let mut next = move |m: u64| {
+                                rng ^= rng << 13;
+                                rng ^= rng >> 7;
+                                rng ^= rng << 17;
+                                (rng % m) as i32
+                            };
+                            loop {
+                                std::thread::sleep(Duration::from_millis(50));
+                                for _ in 0..edits {
+                                    let pos = BlockPos::new(8 + next(25) - 12, 4 + next(4), 8 + next(25) - 12);
+                                    let state = if next(2) == 0 { 1 << 4 } else { 0 };
+                                    send(&we, threshold, &PlayClientbound::BlockChange(BlockChange { pos, state }).to_bytes());
+                                }
+                            }
+                        });
                     }
                     let w2 = w.clone();
                     std::thread::spawn(move || {

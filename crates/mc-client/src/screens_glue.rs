@@ -227,6 +227,7 @@ impl App {
     }
 
     pub(crate) fn remesh(&mut self, smooth: bool) {
+        let _z = crate::bench::zone(crate::bench::Phase::Mesh);
         let Some(r) = &mut self.renderer else { return };
         let t = Instant::now();
         let jobs: Vec<_> = self.world.chunks.keys().flat_map(|&(cx, cz)| (0..16).map(move |sy| (cx, sy, cz))).collect();
