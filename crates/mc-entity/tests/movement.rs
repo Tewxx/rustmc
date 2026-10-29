@@ -77,6 +77,16 @@ fn movement_matches_java() {
         if let Some(m) = sc["motion0"].as_array().filter(|m| !m.is_empty()) {
             e.motion = Vec3::new(d(&m[0]), d(&m[1]), d(&m[2]));
         }
+        for f in sc["fx"].as_array().unwrap() {
+            e.effects.add(mc_entity::effects::PotionEffect {
+                id: i(&f[0]) as u8,
+                duration: 100000,
+                amplifier: i(&f[1]) as i32,
+                ambient: false,
+                show_particles: true,
+                duration_max: false,
+            });
+        }
         let script = sc["script"].as_array().unwrap();
         let out = sc["out"].as_array().unwrap();
         for (t, (tk, want)) in script.iter().zip(out).enumerate() {

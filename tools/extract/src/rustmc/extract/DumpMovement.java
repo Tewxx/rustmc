@@ -88,6 +88,7 @@ final class DumpMovement {
         boolean flying;
         boolean armSword;
         double[] motion0;
+        final List<int[]> fx = new ArrayList<int[]>();
         Sc(String name) { this.name = name; }
         Sc floor() { return fill(-24, 60, -24, 24, 63, 24, "stone"); }
         Sc fill(int x1, int y1, int z1, int x2, int y2, int z2, String s) { fills.add(new Object[] {x1, y1, z1, x2, y2, z2, s}); return this; }
@@ -190,6 +191,7 @@ final class DumpMovement {
         p.rotationYaw = sc.yaw; p.prevRotationYaw = sc.yaw; p.rotationYawHead = sc.yaw; p.prevRotationYawHead = sc.yaw;
         if (sc.motion0 != null) { p.motionX = sc.motion0[0]; p.motionY = sc.motion0[1]; p.motionZ = sc.motion0[2]; }
         p.onGround = false;
+        for (int[] e : sc.fx) p.addPotionEffect(new net.minecraft.potion.PotionEffect(e[0], 100000, e[1]));
 
         JsonArray script = new JsonArray(), rows = new JsonArray();
         KeyBinding[] kb = {gs.keyBindForward, gs.keyBindBack, gs.keyBindLeft, gs.keyBindRight, gs.keyBindJump, gs.keyBindSneak, gs.keyBindSprint};
@@ -226,6 +228,9 @@ final class DumpMovement {
         o.add("start", bits(sc.x, sc.y, sc.z));
         o.addProperty("yaw", Float.floatToRawIntBits(sc.yaw));
         o.add("motion0", sc.motion0 == null ? new JsonArray() : bits(sc.motion0[0], sc.motion0[1], sc.motion0[2]));
+        JsonArray fxa = new JsonArray();
+        for (int[] e : sc.fx) { JsonArray a = new JsonArray(); a.add(Json.num(e[0])); a.add(Json.num(e[1])); fxa.add(a); }
+        o.add("fx", fxa);
         o.add("blocks", blocks);
         o.add("script", script);
         o.add("out", rows);
@@ -499,6 +504,74 @@ final class DumpMovement {
         s.rep(120, F | P | J);
         l.add(s);
 
+        s = new Sc("effects_jump_boost").floor(); s.fx.add(new int[] {8, 1});
+        s.rep(40, F | P | J).rep(40, J).rep(20, 0);
+        l.add(s);
+
+        s = new Sc("effects_blindness_sprint").floor(); s.fx.add(new int[] {15, 0});
+        s.rep(40, F | P).rep(20, F | P | J);
+        l.add(s);
+
+        s = new Sc("effects_jump_boost_ceiling").floor().fill(-24, 67, -24, 24, 67, 24, "stone"); s.fx.add(new int[] {8, 3});
+        s.rep(60, J | F | P);
+        l.add(s);
+
+        for (int seed = 1; seed <= 10; seed++) l.add(fuzz(seed));
         return l;
+    }
+
+    static final String[] PALETTE = {
+        "stone", "stone_slab[half=bottom]", "stone_slab[half=top]", "oak_stairs[facing=north,half=bottom]", "oak_stairs[facing=east,half=bottom]",
+        "oak_stairs[facing=south,half=top]", "oak_stairs[facing=west,half=bottom]", "fence", "cobblestone_wall", "fence_gate[facing=north,open=false]",
+        "ladder[facing=north]", "ladder[facing=east]", "vine[south=true]", "web", "soul_sand", "ice", "slime", "carpet", "snow_layer[layers=2]",
+        "snow_layer[layers=5]", "trapdoor[facing=north,half=bottom,open=false]", "trapdoor[facing=south,half=top,open=true]", "cactus",
+        "water", "flowing_water[level=3]", "flowing_water[level=8]", "lava", "chest[facing=north]", "dirt", "iron_bars", "glass_pane", "cake[bites=1]",
+        "packed_ice", "stone_stairs[facing=south,half=bottom]", "stone_stairs[facing=east,half=top]", "stone_slab[half=bottom]"
+    };
+
+    /** Random terrain and random inputs, seeded so the dump is reproducible. */
+    static Sc fuzz(int seed) {
+        Random r = new Random(7000 + seed);
+        Sc s = new Sc("fuzz_" + seed).floor();
+        s.mode = seed % 5 == 0 ? "creative" : "survival";
+        int count = 40 + r.nextInt(80);
+        for (int i = 0; i < count; i++) {
+            int x = r.nextInt(17) - 8, z = r.nextInt(17) - 8, y = 64 + (r.nextInt(5) == 0 ? 1 : 0);
+            String b = PALETTE[r.nextInt(PALETTE.length)];
+            if (b.equals("water") || b.startsWith("flowing_water") || b.equals("lava")) { y = 63; }
+            s.set(x, y, z, b);
+            if (r.nextInt(6) == 0) s.set(x, 64 + 1, z, "stone");
+        }
+        if (r.nextBoolean()) s.fill(-8, 63, -8, 8, 63, 8, PALETTE[14 + r.nextInt(4)]);
+        s.x = r.nextInt(5) - 2 + r.nextDouble();
+        s.z = r.nextInt(5) - 2 + r.nextDouble();
+        s.y = 64 + r.nextInt(3);
+        float yaw = r.nextInt(360);
+        s.yaw = yaw;
+        int total = 0;
+        while (total < 450) {
+            int len = 1 + r.nextInt(14);
+            int k = 0;
+            if (r.nextInt(4) != 0) k |= F;
+            if (r.nextInt(12) == 0) k |= B;
+            if (r.nextInt(6) == 0) k |= L;
+            if (r.nextInt(6) == 0) k |= R;
+            if (r.nextInt(4) == 0) k |= J;
+            if (r.nextInt(8) == 0) k |= S;
+            if (r.nextInt(2) == 0) k |= P;
+            if (r.nextInt(30) == 0) k |= U;
+            if ((k & U) != 0) s.armSword = true;
+            if (r.nextInt(25) == 0) {
+                s.knock((r.nextDouble() - 0.5) * 0.8, r.nextDouble() * 0.5, (r.nextDouble() - 0.5) * 0.8, k);
+                len--;
+            }
+            float turn = r.nextInt(3) == 0 ? (r.nextFloat() - 0.5f) * 40f : 0f;
+            for (int i = 0; i < len; i++) {
+                yaw += turn;
+                s.rep(1, k, r.nextInt(5) == 0 ? Float.NaN : yaw);
+            }
+            total += len;
+        }
+        return s;
     }
 }
