@@ -159,7 +159,6 @@ fn parse_args() -> Args {
 
 fn find_jar() -> Option<PathBuf> {
     let mut candidates = vec![
-        PathBuf::from("../MCP-919/jars/versions/1.8.9/1.8.9.jar"),
         PathBuf::from("MCP-919/jars/versions/1.8.9/1.8.9.jar"),
     ];
     if let Ok(exe) = std::env::current_exe() {
@@ -4763,8 +4762,9 @@ fn main() {
     app.info.seed = seed;
     app.in_game = args.play || connection.is_some();
     if args.screenshot.is_none() && std::env::var_os("RUSTMC_NO_SOUND").is_none() {
-        let dir = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(".minecraft").join("assets"));
-        if let Some(read) = dir.and_then(|d| mc_sound::manager::index_reader(&d, "1.8")) {
+        let dirs = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(".minecraft").join("assets")).into_iter()
+            .chain([PathBuf::from("MCP-919/.minecraft/assets")]);
+        if let Some(read) = dirs.into_iter().find_map(|d| mc_sound::manager::index_reader(&d, "1.8")) {
             let s = mc_sound::SoundManager::new(std::sync::Arc::new(read));
             println!("sound: {} events, output {}", s.event_count(), if s.mixer.available { "ok" } else { "unavailable" });
             app.sound = Some(s);
