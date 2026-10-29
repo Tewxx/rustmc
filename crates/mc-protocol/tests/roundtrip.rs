@@ -404,3 +404,108 @@ fn vanilla_reencodes_every_packet_identically() {
     assert!(bad.is_empty(), "{} mismatches:\n{}", bad.len(), bad.join("\n"));
     eprintln!("{} packets identical to vanilla", expected.len());
 }
+
+/// Deterministic xorshift so failures reproduce.
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+    fn below(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+    /// Bytes biased towards values that stress lengths and varints.
+    fn byte(&mut self) -> u8 {
+        match self.below(6) {
+            0 => 0,
+            1 => 0xff,
+            2 => 0x7f,
+            3 => 0x80,
+            _ => self.next() as u8,
+        }
+    }
+}
+
+/// Random and mutated packet streams must produce errors, never panics.
+#[test]
+fn fuzz_decoders_never_panic() {
+    let mut rng = Rng(0x9E3779B97F4A7C15);
+    let seeds: Vec<Vec<u8>> = clientbound().iter().map(|p| p.to_bytes()).collect();
+    let sb: Vec<Vec<u8>> = serverbound().iter().map(|p| p.to_bytes()).collect();
+    let mut ok = 0u32;
+    for i in 0..300_000u32 {
+        let mut b: Vec<u8> = match i % 3 {
+            0 => {
+                let n = rng.below(64);
+                let mut v = vec![rng.below(0x49) as u8];
+                v.extend((0..n).map(|_| rng.byte()));
+                v
+            }
+            1 => seeds[rng.below(seeds.len())].clone(),
+            _ => sb[rng.below(sb.len())].clone(),
+        };
+        if i % 3 != 0 {
+            for _ in 0..1 + rng.below(4) {
+                match rng.below(4) {
+                    0 if !b.is_empty() => {
+                        let k = rng.below(b.len());
+                        b[k] = rng.byte();
+                    }
+                    1 if !b.is_empty() => {
+                        let k = rng.below(b.len());
+                        b.truncate(k);
+                    }
+                    2 => {
+                        let k = rng.below(b.len() + 1);
+                        b.insert(k, rng.byte());
+                    }
+                    _ if !b.is_empty() => {
+                        let k = rng.below(b.len());
+                        b.remove(k);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if PlayClientbound::read(&b).is_ok() {
+            ok += 1;
+        }
+        let _ = PlayServerbound::read(&b);
+        let _ = LoginClientbound::read(&b);
+        let _ = StatusClientbound::read(&b);
+    }
+    assert!(ok > 0);
+}
+
+/// Hostile frame streams: wild lengths, bogus compression headers, garbage zlib.
+#[test]
+fn fuzz_frame_decoder_never_panics() {
+    let mut rng = Rng(0xD1B54A32D192ED03);
+    for i in 0..100_000u32 {
+        let mut d = frame::Decoder::new();
+        d.threshold = if i % 2 == 0 { -1 } else { rng.below(300) as i32 - 1 };
+        let n = rng.below(48);
+        let data: Vec<u8> = (0..n).map(|_| rng.byte()).collect();
+        let mut from = 0;
+        while from < data.len() {
+            let to = (from + 1 + rng.below(8)).min(data.len());
+            d.feed(&data[from..to]);
+            from = to;
+            while let Ok(Some(_)) = d.next_packet() {}
+        }
+    }
+    // Valid zlib header, truncated / lying about size.
+    let mut d = frame::Decoder::new();
+    d.threshold = 10;
+    d.feed(&[6, 0xff, 0xff, 0x7f, 0x78, 0x9c, 0x00]);
+    assert!(d.next_packet().is_err());
+}
+
+#[test]
+fn varints_past_five_bytes_error() {
+    assert!(mc_protocol::Reader::new(&[0x80; 8]).varint().is_err());
+    assert!(mc_protocol::Reader::new(&[0x80; 12]).varlong().is_err());
+}
