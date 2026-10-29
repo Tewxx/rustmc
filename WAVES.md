@@ -26,7 +26,7 @@ merges in wave order. **Stabilise what exists before adding anything new.**
 | P1 | Prism launch-argument module (not wired in) | new `mc-client/src/launch.rs` |
 | B1 | Busy-scene benchmarks + profiler feature + baseline | `mc-client/src/bench.rs`, `mc-protocol/examples/mock_server.rs` |
 
-## Wave 2 — stabilise existing features (running: F1, F3, F5, F6, D1, G2, M1, RP1; queued: F2, F4, M2)
+## Wave 2 — stabilise existing features (merged: F1, F5, D1, G2; paused mid-task at usage limit, work in their worktree branches: F3, F6, M1, RP1; queued: F2, F4, M2)
 | Id | Task |
 |---|---|
 | F1 | Movement replay harness vs Java `EntityPlayerSP`; fix divergences (bit-exact) |
