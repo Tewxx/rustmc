@@ -11,7 +11,8 @@ pub struct Lang {
 impl Lang {
     pub fn load(assets: &AssetSource, code: &str) -> Self {
         let mut map = HashMap::new();
-        if let Some(bytes) = assets.read(&format!("lang/{code}.lang")) {
+        // `LanguageManager`: every pack's file, lowest first, so a partial pack file only overrides.
+        for bytes in assets.read_all(&format!("lang/{code}.lang")) {
             for line in String::from_utf8_lossy(&bytes).lines() {
                 if line.starts_with('#') {
                     continue;

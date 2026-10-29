@@ -53,6 +53,11 @@ impl AssetSource {
         self.layers.iter().rev().find_map(|l| read_layer(l, full))
     }
 
+    /// A root file of the lowest layer only (the default pack's `pack.png`).
+    pub fn read_base(&self, full: &str) -> Option<Vec<u8>> {
+        self.layers.first().and_then(|l| read_layer(l, full))
+    }
+
     /// `IResourceManager.getAllResources`: every layer's copy of `assets/minecraft/<path>`,
     /// lowest layer first.
     pub fn read_all(&self, path: &str) -> Vec<Vec<u8>> {
