@@ -3,7 +3,7 @@
 A Minecraft 1.8.9 client in Rust. Goal: replace PvP clients (Lunar etc.) with something that **looks and
 feels 1:1 vanilla** but runs with **much higher FPS and steadier frame times**.
 
-Reference source: `../MCP-919/src/minecraft/` (decompiled 1.8.9, MCP names). It is a reference only —
+Reference source: `MCP-919/src/minecraft/` (decompiled 1.8.9, MCP names). It is a reference only —
 never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`.
 
 ---
@@ -269,7 +269,7 @@ inputs are missing; the local verification used all inputs. New dumps: `models.j
 `geometry.json` replays 37,506 scenes covering every state, 487,578 rays and 112,518 masked collision
 list queries, including 300 moving-piston tile-entity scenes.
 Benchmark: `rustmc --radius 8 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
-Golden data: `powershell -ExecutionPolicy Bypass -File tools/extract/extract.ps1` (needs a JDK 8 and MCP's
+Golden data: `tools/extract/extract.sh` (needs a JDK 8 and MCP's
 compiled `bin/minecraft`; writes `golden/`, which is gitignored because it's derived from Mojang code).
 
 Registry tables: after changing the extractor, rerun it and then `cargo run --release -p gen-data`, which

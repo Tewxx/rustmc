@@ -34,7 +34,7 @@ fn int(v: &Value) -> i32 {
 fn every_scene_matches_vanilla() {
     let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/actual_states.json");
     let Ok(text) = std::fs::read_to_string(&p) else {
-        eprintln!("skipping: {} not found (run tools/extract/extract.ps1)", p.display());
+        eprintln!("skipping: {} not found (run tools/extract/extract.sh)", p.display());
         return;
     };
     let scenes: Vec<Value> = serde_json::from_str(&text).unwrap();
