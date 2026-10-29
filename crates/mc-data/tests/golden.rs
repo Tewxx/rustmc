@@ -1,18 +1,14 @@
 //! Checks the registry, through its public API, against the dumps from the real 1.8.9 classes
-//! (`tools/extract/extract.sh`). Also catches a `generated/` that is stale relative to `golden/`.
+//! (`tools/extract/extract.ps1`). Also catches a `generated/` that is stale relative to `golden/`.
 //! Skipped when the dumps aren't present.
 
 use mc_data::{Block, Material, RenderLayer, StateId};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::path::Path;
 
 fn golden(name: &str) -> Option<Value> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden").join(name);
-    let Ok(text) = std::fs::read_to_string(&p) else {
-        eprintln!("skipping: {} not found (run tools/extract/extract.sh)", p.display());
-        return None;
-    };
+    let p = mc_testutil::golden(name)?;
+    let text = std::fs::read_to_string(&p).unwrap();
     Some(serde_json::from_str(&text).unwrap())
 }
 

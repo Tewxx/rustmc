@@ -1,17 +1,13 @@
 //! Checks lighting's registry view against `golden/blocks.json`, dumped from the real 1.8.9 classes by
-//! `tools/extract/extract.sh`. Skipped when the dump isn't present.
+//! `tools/extract/extract.ps1`. Skipped when the dump isn't present.
 
 use mc_data::Block;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::Path;
 
 fn golden() -> Option<HashMap<u64, Value>> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/blocks.json");
-    let Ok(text) = std::fs::read_to_string(&p) else {
-        eprintln!("skipping: {} not found (run tools/extract/extract.sh)", p.display());
-        return None;
-    };
+    let p = mc_testutil::golden("blocks.json")?;
+    let text = std::fs::read_to_string(&p).unwrap();
     let all: Vec<Value> = serde_json::from_str(&text).unwrap();
     Some(all.into_iter().map(|b| (b["id"].as_u64().unwrap(), b)).collect())
 }

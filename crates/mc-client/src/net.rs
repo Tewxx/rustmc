@@ -393,7 +393,7 @@ mod tests {
     /// `onGround` is hard-coded false, and snaps `prevPos` on the first teleport only.
     #[test]
     fn pos_look_zeroes_absolute_axes_and_snaps_prev_pos() {
-        let (mut n, srv) = loopback(3);
+        let (mut n, srv) = loopback(2);
         let mut pos = Vec3::new(10., 64., 10.);
         let mut prev = Vec3::new(9., 63., 9.);
         let mut motion = Vec3::new(0.5, -0.25, 0.75);

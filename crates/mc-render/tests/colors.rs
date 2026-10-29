@@ -8,16 +8,10 @@ use mc_data::{Block, BlockAccess, StateId};
 use mc_render::models::BlockColors;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::Path;
 
 fn inputs(name: &str) -> Option<(BlockColors, Vec<Value>)> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let jar = root.join("../../MCP-919/jars/versions/1.8.9/1.8.9.jar");
-    let path = root.join(format!("../../golden/{name}.json"));
-    if !jar.is_file() || !path.is_file() {
-        eprintln!("skipping: requires 1.8.9.jar and {} (run tools/extract/extract.sh)", path.display());
-        return None;
-    }
+    let jar = mc_testutil::jar()?;
+    let path = mc_testutil::golden(&format!("{name}.json"))?;
     let mut assets = AssetSource::new();
     assets.push(&jar).unwrap();
     Some((BlockColors::load(&assets), serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()))

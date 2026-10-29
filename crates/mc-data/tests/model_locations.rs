@@ -1,14 +1,12 @@
 use mc_data::Block;
 use serde_json::Value;
-use std::path::Path;
 
 #[test]
 fn every_model_location_matches_java() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/models.json");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        eprintln!("skipping: {} not found (run tools/extract/extract.sh models)", path.display());
+    let Some(path) = mc_testutil::golden("models.json") else {
         return;
     };
+    let text = std::fs::read_to_string(&path).unwrap();
     let rows: Vec<Value> = serde_json::from_str(&text).unwrap();
     let states: Vec<_> = Block::all().iter().flat_map(Block::states).collect();
     assert_eq!(rows.len(), states.len());

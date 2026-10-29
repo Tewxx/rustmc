@@ -3,17 +3,12 @@ use mc_assets::{
     model::{ItemTransform, ModelLoader},
     AssetSource,
 };
-use std::path::Path;
 
 #[test]
 fn all_model_display_transforms_match_java() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let golden = root.join("golden/item_transforms.json");
-    let jar = root.join("MCP-919/jars/versions/1.8.9/1.8.9.jar");
-    if !golden.exists() || !jar.exists() {
-        eprintln!("Java item transform fixture unavailable");
+    let (Some(golden), Some(jar)) = (mc_testutil::golden("item_transforms.json"), mc_testutil::jar()) else {
         return;
-    }
+    };
     let data: serde_json::Value = serde_json::from_slice(&std::fs::read(golden).unwrap()).unwrap();
     let mut assets = AssetSource::new();
     assets.push(&jar).unwrap();

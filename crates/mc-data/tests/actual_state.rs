@@ -5,7 +5,6 @@ use mc_core::BlockPos;
 use mc_data::{Block, BlockAccess, StateId};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
 
 #[derive(Default)]
 struct Scene {
@@ -32,11 +31,10 @@ fn int(v: &Value) -> i32 {
 
 #[test]
 fn every_scene_matches_vanilla() {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/actual_states.json");
-    let Ok(text) = std::fs::read_to_string(&p) else {
-        eprintln!("skipping: {} not found (run tools/extract/extract.sh)", p.display());
+    let Some(p) = mc_testutil::golden("actual_states.json") else {
         return;
     };
+    let text = std::fs::read_to_string(&p).unwrap();
     let scenes: Vec<Value> = serde_json::from_str(&text).unwrap();
     assert!(!scenes.is_empty());
 

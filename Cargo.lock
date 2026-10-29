@@ -1202,6 +1202,7 @@ dependencies = [
  "glam",
  "image",
  "mc-core",
+ "mc-testutil",
  "serde_json",
  "zip",
 ]
@@ -1241,6 +1242,7 @@ name = "mc-data"
 version = "0.1.0"
 dependencies = [
  "mc-core",
+ "mc-testutil",
  "serde_json",
 ]
 
@@ -1301,6 +1303,7 @@ dependencies = [
  "mc-core",
  "mc-data",
  "mc-gui",
+ "mc-testutil",
  "mc-world",
  "serde_json",
  "wgpu",
@@ -1316,12 +1319,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mc-testutil"
+version = "0.1.0"
+
+[[package]]
 name = "mc-world"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "mc-core",
  "mc-data",
+ "mc-testutil",
  "serde_json",
 ]
 
