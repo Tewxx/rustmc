@@ -1,12 +1,12 @@
-//! Software mixer feeding a WinMM `waveOut` device: 44.1 kHz stereo 16-bit, a few short
-//! buffers in flight (~70 ms), voices resampled with linear interpolation for pitch.
+//! Software mixer feeding a `cpal` output stream: mixed as 44.1 kHz stereo, converted to the
+//! device's rate/format/channels in the callback; voices resampled with linear interpolation for pitch.
 use crate::vorbis::Decoded;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub const RATE: u32 = 44100;
 const FRAMES: usize = 1024;
-const BUFFERS: usize = 4;
 
 struct Voice {
     id: u64,
@@ -120,63 +120,134 @@ fn mix(shared: &Mutex<Shared>, out: &mut [i16]) {
     }
 }
 
-#[cfg(windows)]
-fn start_output(shared: Arc<Mutex<Shared>>, stop: Arc<AtomicBool>) -> bool {
-    use windows_sys::Win32::Media::Audio::*;
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("Sound Library".into())
-        .spawn(move || unsafe {
-            let fmt = WAVEFORMATEX {
-                wFormatTag: WAVE_FORMAT_PCM as u16,
-                nChannels: 2,
-                nSamplesPerSec: RATE,
-                nAvgBytesPerSec: RATE * 4,
-                nBlockAlign: 4,
-                wBitsPerSample: 16,
-                cbSize: 0,
-            };
-            let mut h: HWAVEOUT = std::ptr::null_mut();
-            if waveOutOpen(&mut h, WAVE_MAPPER, &fmt, 0, 0, CALLBACK_NULL) != 0 {
-                let _ = tx.send(false);
-                return;
-            }
-            let _ = tx.send(true);
-            let mut bufs: Vec<Box<[i16; FRAMES * 2]>> = (0..BUFFERS).map(|_| Box::new([0i16; FRAMES * 2])).collect();
-            let mut hdrs: Vec<Box<WAVEHDR>> = Vec::new();
-            for b in bufs.iter_mut() {
-                let mut hdr: Box<WAVEHDR> = Box::new(std::mem::zeroed());
-                hdr.lpData = b.as_mut_ptr() as *mut u8;
-                hdr.dwBufferLength = (FRAMES * 4) as u32;
-                waveOutPrepareHeader(h, &mut *hdr, std::mem::size_of::<WAVEHDR>() as u32);
-                hdr.dwFlags |= WHDR_DONE;
-                hdrs.push(hdr);
-            }
-            while !stop.load(Ordering::Relaxed) {
-                let mut wrote = false;
-                for (i, hdr) in hdrs.iter_mut().enumerate() {
-                    if hdr.dwFlags & WHDR_DONE != 0 {
-                        mix(&shared, &mut bufs[i][..]);
-                        hdr.dwFlags &= !WHDR_DONE;
-                        waveOutWrite(h, &mut **hdr, std::mem::size_of::<WAVEHDR>() as u32);
-                        wrote = true;
-                    }
-                }
-                if !wrote {
-                    std::thread::sleep(std::time::Duration::from_millis(2));
-                }
-            }
-            waveOutReset(h);
-            for hdr in hdrs.iter_mut() {
-                waveOutUnprepareHeader(h, &mut **hdr, std::mem::size_of::<WAVEHDR>() as u32);
-            }
-            waveOutClose(h);
-        })
-        .ok();
-    rx.recv().unwrap_or(false)
+/// Pulls stereo frames from `pull` (at `RATE`) and yields them at the device rate, linearly interpolated.
+struct Resampler<F: FnMut() -> (f32, f32)> {
+    pull: F,
+    step: f64,
+    frac: f64,
+    cur: (f32, f32),
+    nxt: (f32, f32),
 }
 
-#[cfg(not(windows))]
-fn start_output(_shared: Arc<Mutex<Shared>>, _stop: Arc<AtomicBool>) -> bool {
-    false
+impl<F: FnMut() -> (f32, f32)> Resampler<F> {
+    fn new(mut pull: F, dev_rate: u32) -> Self {
+        let (cur, nxt) = (pull(), pull());
+        Resampler { pull, step: RATE as f64 / dev_rate as f64, frac: 0.0, cur, nxt }
+    }
+
+    fn next(&mut self) -> (f32, f32) {
+        let t = self.frac as f32;
+        let out = (self.cur.0 + (self.nxt.0 - self.cur.0) * t, self.cur.1 + (self.nxt.1 - self.cur.1) * t);
+        self.frac += self.step;
+        while self.frac >= 1.0 {
+            self.frac -= 1.0;
+            self.cur = self.nxt;
+            self.nxt = (self.pull)();
+        }
+        out
+    }
+}
+
+/// Fills an interleaved device buffer: channel 0/1 get left/right, any others silence.
+fn fill<T: cpal::SizedSample + cpal::FromSample<f32>>(data: &mut [T], channels: usize, rs: &mut impl FnMut() -> (f32, f32)) {
+    for frame in data.chunks_mut(channels) {
+        let (l, r) = rs();
+        for (c, o) in frame.iter_mut().enumerate() {
+            *o = T::from_sample(match c {
+                0 => l,
+                1 => r,
+                _ => 0.0,
+            });
+        }
+        if channels == 1 {
+            frame[0] = T::from_sample((l + r) * 0.5);
+        }
+    }
+}
+
+fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
+    dev: &cpal::Device,
+    cfg: &cpal::StreamConfig,
+    shared: Arc<Mutex<Shared>>,
+) -> Result<cpal::Stream, cpal::BuildStreamError> {
+    let channels = cfg.channels as usize;
+    let mut buf = [0i16; FRAMES * 2];
+    let mut idx = FRAMES;
+    let mut rs = Resampler::new(
+        move || {
+            if idx == FRAMES {
+                mix(&shared, &mut buf);
+                idx = 0;
+            }
+            idx += 1;
+            (buf[(idx - 1) * 2] as f32 / 32767.0, buf[(idx - 1) * 2 + 1] as f32 / 32767.0)
+        },
+        cfg.sample_rate.0,
+    );
+    dev.build_output_stream(cfg, move |d: &mut [T], _| fill(d, channels, &mut || rs.next()), |e| eprintln!("audio: {e}"), None)
+}
+
+/// Opens the default output device on a thread that owns the stream until `stop` is set.
+fn start_output(shared: Arc<Mutex<Shared>>, stop: Arc<AtomicBool>) -> bool {
+    use cpal::SampleFormat as F;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new().name("Sound Library".into()).spawn(move || {
+        let open = || -> Option<cpal::Stream> {
+            let dev = cpal::default_host().default_output_device()?;
+            // Prefer a stereo config that natively supports RATE, else the device default.
+            let rate = cpal::SampleRate(RATE);
+            let want = dev
+                .supported_output_configs()
+                .ok()?
+                .filter(|c| c.channels() == 2 && matches!(c.sample_format(), F::F32 | F::I16))
+                .find(|c| c.min_sample_rate() <= rate && rate <= c.max_sample_rate())
+                .map(|c| c.with_sample_rate(rate));
+            let sup = want.or_else(|| dev.default_output_config().ok())?;
+            let fmt = sup.sample_format();
+            let cfg = sup.config();
+            let stream = match fmt {
+                F::F32 => build::<f32>(&dev, &cfg, shared),
+                F::I16 => build::<i16>(&dev, &cfg, shared),
+                F::U16 => build::<u16>(&dev, &cfg, shared),
+                F::I32 => build::<i32>(&dev, &cfg, shared),
+                _ => return None,
+            }
+            .ok()?;
+            stream.play().ok()?;
+            if std::env::var_os("MC_SOUND_DEBUG").is_some() {
+                eprintln!("audio: {fmt:?} {} ch @ {} Hz", cfg.channels, cfg.sample_rate.0);
+            }
+            Some(stream)
+        };
+        let stream = open();
+        let _ = tx.send(stream.is_some());
+        while stream.is_some() && !stop.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    });
+    spawned.is_ok() && rx.recv().unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resample_upsamples_linearly() {
+        let mut n = 0f32;
+        // Source ramp 0,1,2,... at RATE; device at 2*RATE -> half steps.
+        let mut r = Resampler::new(|| { n += 1.0; (n - 1.0, 0.0) }, RATE * 2);
+        let got: Vec<f32> = (0..5).map(|_| r.next().0).collect();
+        assert_eq!(got, vec![0.0, 0.5, 1.0, 1.5, 2.0]);
+    }
+
+    #[test]
+    fn fill_converts_formats_and_channels() {
+        let mut d = [0i16; 6];
+        fill(&mut d, 3, &mut || (1.0, -1.0));
+        assert_eq!(d, [32767, -32767, 0, 32767, -32767, 0]);
+        let mut m = [0f32; 2];
+        fill(&mut m, 1, &mut || (1.0, 0.0));
+        assert_eq!(m, [0.5, 0.5]);
+    }
 }
