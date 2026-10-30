@@ -31,7 +31,7 @@ performance → Forge. Max 5 agents at once.
 | P1 | Prism launch-argument module (not wired in) | new `mc-client/src/launch.rs` |
 | B1 | Busy-scene benchmarks + profiler feature + baseline | `mc-client/src/bench.rs`, `mc-protocol/examples/mock_server.rs` |
 
-## Wave 2 — stabilise existing features (merged: F1, F5, F6, D1, G2, M1, RP1; running: SP0, F3; queued: F2, F4, M2)
+## Wave 2 — stabilise existing features (merged: F1, F5, F6, D1, G2, M1, RP1, SP0; running: F3, F2, M2; queued: F4)
 | Id | Task |
 |---|---|
 | F1 | Movement replay harness vs Java `EntityPlayerSP`; fix divergences (bit-exact) |
@@ -60,7 +60,7 @@ seam Forge mod UIs will later draw through.
 
 ## Wave 5 — Forge
 FG0 (running) static analysis of a test corpus (RavenB4, LunarForge, Meowtils, AccountManager — never executed) → `docs/FORGE_COMPAT.md` ranked API surface; general compatibility, not per-mod hacks. **Loader policy: never load OptiFine.** ·
-WM0 (running) `docs/WASM_MODS.md`: spec for JVM-free native WASM mods ·
+WM0 (merged) `docs/WASM_MODS.md`: spec for JVM-free native WASM mods ·
 FS1 (running) full Forge 1.8.9 contract from the real artifacts (universal jar, Forge src + patches, LaunchWrapper, Mixin, MCP mappings) → `docs/forge-spec/` (API dump, event catalogue with fire sites, loading/runtime SPEC.md, coverage IDs) ·
 FT1 (running) differential test suite `tests/forge/`: our own per-area test mods emitting traces, golden traces from real Forge, rustmc runner (0/N until the bridge exists), corpus smoke tier ·
 FG1 join Forge 1.8.9 servers: FML handshake (`FML|HS` channel, mod list, registry sync), `REGISTER`/plugin channels ·
