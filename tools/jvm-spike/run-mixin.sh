@@ -9,4 +9,4 @@ case "$(uname -s)" in
   *) echo 'Set up the JVM path for this platform before running this spike' >&2; exit 1;;
 esac
 CP="$FT_BUILD/jvm-spike/spike.jar:$FT_BUILD/mods/ftmixin.jar:$PL/org/spongepowered/mixin/0.8.7/mixin-0.8.7.jar:$(ft_libs)"
-cargo run --manifest-path "$FT_REPO/Cargo.toml" --release -p jvm-spike -- "$JVM" "$CP" spike/Run 1
+cargo run --manifest-path "$FT_REPO/Cargo.toml" --release -p jvm-spike -- "$JVM" "$CP" spike/Run 100000 hooked
