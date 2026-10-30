@@ -431,6 +431,10 @@ final class DumpPackets {
         s.op("join").op("settings", 5, 1, 0, 21).op("settings", 12, 0, 1, 127).idle(2);
         l.add(s);
 
+        s = new Sc("vehicle_using_item").floor().item(0, "iron_sword", 1);
+        s.idle(2).op("mount").hold(8, F, false, true).idle(2).op("dismount").idle(2);
+        l.add(s);
+
         s = new Sc("vehicle_input").floor();
         s.idle(2).op("mount").keys(3, F).keys(2, L | F | J).keys(2, S | R).look(33.5f, 8f).idle(2).op("dismount").idle(3);
         l.add(s);

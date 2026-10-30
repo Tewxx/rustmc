@@ -69,6 +69,7 @@ pub struct PlayerEntity {
     pub food_level: i32,
     // PlayerCapabilities
     pub flying: bool,
+    pub riding: bool,
     pub disable_damage: bool,
     pub allow_flying: bool,
     pub creative: bool,
@@ -159,6 +160,7 @@ impl PlayerEntity {
             fly_toggle_timer: 0,
             food_level: 20,
             flying: false,
+            riding: false,
             disable_damage: false,
             allow_flying: false,
             creative: false,
@@ -364,7 +366,7 @@ impl PlayerEntity {
             self.move_strafe = (self.move_strafe as f64 * 0.3) as f32;
             self.move_forward = (self.move_forward as f64 * 0.3) as f32;
         }
-        if keys.using_item {
+        if keys.using_item && !self.riding {
             self.move_strafe *= 0.2;
             self.move_forward *= 0.2;
             self.sprint_toggle_timer = 0;

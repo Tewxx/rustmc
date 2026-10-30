@@ -658,6 +658,7 @@ mod tests {
             "join_replies",
             "place_blocked_by_entity",
             "place_through_item",
+            "vehicle_using_item",
             "vehicle_input",
             "server_replies",
             "respawn",

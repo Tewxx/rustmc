@@ -146,6 +146,7 @@ impl App {
         if self.is_local() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
             self.tick_item_in_use();
             let riding = self.net.as_ref().and_then(|n| self.attached.get(&n.entity_id)).copied();
+            self.entity.riding = riding.is_some();
             if riding.is_some() { self.entity.motion = mc_core::Vec3::new(0., 0., 0.); }
             self.entity.tick(&self.world, &mut self.geometry, keys);
             let player = Vec3::new(self.entity.pos.x as f32, self.entity.pos.y as f32, self.entity.pos.z as f32);
