@@ -191,8 +191,27 @@ struct Vertex {
     overlay: [f32; 4],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct ParticleInstance {
+    pos: [[f32; 3]; 4],
+    uv: [[f32; 2]; 4],
+    color: [f32; 4],
+    kind: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct ParticleGlobals { vp: [[f32; 4]; 4], camera: [f32; 4] }
+
 pub struct AvatarRenderer {
     pipeline: wgpu::RenderPipeline,
+    particle_pipeline: wgpu::RenderPipeline,
+    particle_globals: wgpu::Buffer,
+    particle_bind_group: wgpu::BindGroup,
+    particle_instances: wgpu::Buffer,
+    particle_capacity: usize,
+    use_particle_instancing: bool,
     damage_pipeline: wgpu::RenderPipeline,
     vertices: [wgpu::Buffer; 3],
     bind_group: wgpu::BindGroup,
@@ -229,6 +248,12 @@ const MOB: f32 = 8.;
 /// Vertices per buffer (a frame's world pass, hand pass and inventory preview).
 const MAX_VERTS: usize = 131072;
 
+fn make_particle_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor { label: Some("particle instances"),
+        size: count as u64 * std::mem::size_of::<ParticleInstance>() as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
+}
+
 impl AvatarRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, assets: &AssetSource, atlas: wgpu::TextureView) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -263,9 +288,20 @@ const SRGB:bool={};
 @group(0) @binding(5) var armor:texture_2d<f32>;
 @group(0) @binding(6) var glint:texture_2d<f32>;
 @group(0) @binding(7) var mobs:texture_2d<f32>;
+struct ParticleGlobals {{ vp:mat4x4<f32>, camera:vec4<f32> }};
+@group(1) @binding(0) var<uniform> particle_globals:ParticleGlobals;
 struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) color:vec4<f32>, @location(2) @interpolate(flat) kind:u32, @location(3) overlay:vec4<f32> }};
 @vertex fn vs(@location(0) p:vec4<f32>,@location(1) uv:vec2<f32>,@location(2) color:vec4<f32>,@location(3) kind:f32,@location(4) overlay:vec4<f32>)->V {{
  var o:V;o.pos=p;o.uv=uv;o.color=color;o.kind=u32(kind);o.overlay=overlay;return o;
+}}
+@vertex fn vs_particle(@builtin(vertex_index) vertex:u32,
+ @location(0) p0:vec3<f32>, @location(1) p1:vec3<f32>, @location(2) p2:vec3<f32>, @location(3) p3:vec3<f32>,
+ @location(4) u0:vec2<f32>, @location(5) u1:vec2<f32>, @location(6) u2:vec2<f32>, @location(7) u3:vec2<f32>,
+ @location(8) color:vec4<f32>, @location(9) kind:f32)->V {{
+ var p=p0; var uv=u0;
+ if(vertex==1u) {{p=p1;uv=u1;}} else if(vertex==2u || vertex==4u) {{p=p2;uv=u2;}} else if(vertex==5u) {{p=p3;uv=u3;}}
+ var o:V; o.pos=particle_globals.vp*vec4<f32>(p-particle_globals.camera.xyz,1.0);
+ o.uv=uv; o.color=color; o.kind=u32(kind); o.overlay=vec4<f32>(0.0); return o;
 }}
 @fragment fn fs(v:V)->@location(0) vec4<f32> {{
  var c=v.color;
@@ -331,6 +367,41 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             multiview: None,
             cache: None,
         });
+        let particle_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("particle globals"), entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0, visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None,
+            }],
+        });
+        let particle_globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("particle globals"), size: std::mem::size_of::<ParticleGlobals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        let particle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("particle globals"), layout: &particle_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: particle_globals.as_entire_binding() }],
+        });
+        let particle_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("particle pipeline"), bind_group_layouts: &[&layout, &particle_layout], push_constant_ranges: &[],
+        });
+        let particle_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("instanced particles"), layout: Some(&particle_pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_particle"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<ParticleInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x3,3=>Float32x3,4=>Float32x2,5=>Float32x2,6=>Float32x2,7=>Float32x2,8=>Float32x4,9=>Float32],
+                }],
+            },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
+        });
+        let particle_capacity = 1024;
+        let particle_instances = make_particle_buffer(device, particle_capacity);
         // drawBlockDamageTexture: blend (DST_COLOR, SRC_COLOR), polygon offset -3, no depth writes.
         let damage_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("block damage"),
@@ -522,6 +593,12 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
         Self {
             pipeline,
+            particle_pipeline,
+            particle_globals,
+            particle_bind_group,
+            particle_instances,
+            particle_capacity,
+            use_particle_instancing: std::env::var_os("RUSTMC_NO_PARTICLE_INSTANCING").is_none(),
             damage_pipeline,
             vertices,
             bind_group,
@@ -561,7 +638,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     #[allow(clippy::too_many_arguments)]
     pub fn encode(
         &mut self,
-        _device: &wgpu::Device,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         enc: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
@@ -576,6 +653,10 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     ) {
         let mut verts = Vec::new();
         let mut damage = Vec::new();
+        let mut particles = Vec::new();
+        let max_instances = (device.limits().max_buffer_size / std::mem::size_of::<ParticleInstance>() as u64).min(u32::MAX as u64) as usize;
+        let use_particle_instancing = self.use_particle_instancing && frame.particles.len() <= max_instances;
+        let mut particle_split = 0;
         let world_vp = cam.view_proj(aspect, far);
         if !hand_stage {
             if frame.perspective != 0 {
@@ -611,6 +692,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                     verts.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: [q.color[0], q.color[1], q.color[2], 1.], kind: 9., overlay: [0.; 4] });
                 }
             }
+            particle_split = verts.len();
             for q in &frame.particles {
                 let (kind, uv) = match q.tex {
                     ParticleTex::Block => (9., q.uv),
@@ -620,15 +702,14 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                         (10., q.uv.map(|u| [r[0] + u[0] * r[2], r[1] + u[1] * r[3]]))
                     }
                 };
-                let clip = q.pos.map(|p| world_vp * (p - cam.pos).extend(1.));
-                for i in [0, 1, 2, 0, 2, 3] {
-                    verts.push(Vertex {
-                        clip: clip[i].to_array(),
-                        uv: uv[i],
-                        color: [q.color[0] * q.light[0], q.color[1] * q.light[1], q.color[2] * q.light[2], q.color[3]],
-                        kind,
-                        overlay: [0.; 4],
-                    });
+                let color = [q.color[0] * q.light[0], q.color[1] * q.light[1], q.color[2] * q.light[2], q.color[3]];
+                if use_particle_instancing {
+                    particles.push(ParticleInstance { pos: q.pos.map(|p| p.to_array()), uv, color, kind });
+                } else {
+                    let clip = q.pos.map(|p| world_vp * (p - cam.pos).extend(1.));
+                    for i in [0, 1, 2, 0, 2, 3] {
+                        verts.push(Vertex { clip: clip[i].to_array(), uv: uv[i], color, kind, overlay: [0.; 4] });
+                    }
                 }
             }
             for d in &frame.dropped {
@@ -648,17 +729,26 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         }
         // The crack overlay draws right after the terrain, before entities.
         let split = damage.len() as u32;
+        particle_split += split as usize;
         damage.extend(verts);
         let additive_start = damage.len() as u32;
         damage.append(&mut self.additive);
         let glint_start = damage.len() as u32;
         damage.append(&mut self.glint);
         let verts = damage;
-        if verts.is_empty() {
-            return;
+        if verts.is_empty() && particles.is_empty() { return; }
+        if !particles.is_empty() {
+            if particles.len() > self.particle_capacity {
+                self.particle_capacity = particles.len().next_power_of_two().min(max_instances);
+                self.particle_instances = make_particle_buffer(device, self.particle_capacity);
+            }
+            queue.write_buffer(&self.particle_instances, 0, bytemuck::cast_slice(&particles));
+            queue.write_buffer(&self.particle_globals, 0, bytemuck::bytes_of(&ParticleGlobals {
+                vp: world_vp.to_cols_array_2d(), camera: cam.pos.extend(0.).to_array(),
+            }));
         }
         let buf = &self.vertices[hand_stage as usize];
-        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)]));
+        if !verts.is_empty() { queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)])); }
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(if hand_stage { "first person" } else { "player" }),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -685,7 +775,19 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.draw(0..split.min(end), 0..1);
         }
         pass.set_pipeline(&self.pipeline);
-        pass.draw(split.min(end)..additive_start.min(end), 0..1);
+        if particles.is_empty() {
+            pass.draw(split.min(end)..additive_start.min(end), 0..1);
+        } else {
+            let at = (particle_split as u32).min(additive_start).min(end);
+            pass.draw(split.min(end)..at, 0..1);
+            pass.set_pipeline(&self.particle_pipeline);
+            pass.set_bind_group(1, &self.particle_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.particle_instances.slice(..));
+            pass.draw(0..6, 0..particles.len() as u32);
+            pass.set_pipeline(&self.pipeline);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            pass.draw(at..additive_start.min(end), 0..1);
+        }
         if additive_start < glint_start.min(end) {
             pass.set_pipeline(&self.additive_pipeline);
             pass.draw(additive_start..glint_start.min(end), 0..1);
@@ -1317,4 +1419,124 @@ fn texture(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::RgbaImage) -
         wgpu::util::TextureDataOrder::LayerMajor,
         img,
     )
+}
+
+#[cfg(test)]
+mod particle_instance_tests {
+    use super::*;
+
+    #[test]
+    fn particle_instance_layout_is_compact() {
+        assert_eq!(std::mem::size_of::<ParticleInstance>(), 100);
+        assert!(std::mem::size_of::<ParticleInstance>() < 6 * std::mem::size_of::<Vertex>());
+    }
+
+    /// CPU-side preparation/encoding only; excludes the time waiting for the GPU and presentation.
+    #[test]
+    #[ignore = "manual headless particle benchmark"]
+    fn particle_headless_bench() {
+        let jar = mc_testutil::jar().expect("benchmark needs the vanilla jar");
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("headless GPU");
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
+        let atlas = texture(&device, &queue, &image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])));
+        let mut renderer = AvatarRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets, atlas.create_view(&Default::default()));
+        let make_texture = |format, usage| device.create_texture(&wgpu::TextureDescriptor { label: None,
+            size: wgpu::Extent3d { width: 128, height: 128, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1,
+            dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] });
+        let color = make_texture(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::RENDER_ATTACHMENT).create_view(&Default::default());
+        let depth = make_texture(wgpu::TextureFormat::Depth32Float, wgpu::TextureUsages::RENDER_ATTACHMENT).create_view(&Default::default());
+        let camera = Camera { pos: Vec3::ZERO, yaw: 0., pitch: 0., fov_deg: 70., bob: Mat4::IDENTITY };
+        let particles = (0..4000).map(|i| {
+            let x = (i % 40) as f32 * 0.05 - 1.; let y = (i / 40 % 40) as f32 * 0.05 - 1.; let z = 3. + (i % 13) as f32 * 0.03;
+            ParticleQuad { pos: [Vec3::new(x,y,z), Vec3::new(x,y+0.04,z), Vec3::new(x+0.04,y+0.04,z), Vec3::new(x+0.04,y,z)],
+                uv: [[0.,1.],[0.,0.],[1.,0.],[1.,1.]], color: [0.8,0.5,0.3,0.8], light: [0.9;3], tex: ParticleTex::Block }
+        }).collect();
+        let frame = AvatarFrame { particles, ..Default::default() };
+        for enabled in [false, true] {
+            renderer.use_particle_instancing = enabled;
+            let mut sum = std::time::Duration::ZERO; let mut max = std::time::Duration::ZERO;
+            for iteration in 0..31 {
+                let mut enc = device.create_command_encoder(&Default::default());
+                {
+                    let _pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor { label: None,
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &color, resolve_target: None,
+                            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth,
+                            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                        timestamp_writes: None, occlusion_query_set: None });
+                }
+                let t = std::time::Instant::now();
+                renderer.encode(&device, &queue, &mut enc, &color, &depth, &camera, 1., 128., 128., &frame, &assets, false);
+                let elapsed = t.elapsed();
+                queue.submit(Some(enc.finish())); device.poll(wgpu::Maintain::Wait);
+                if iteration > 0 { sum += elapsed; max = max.max(elapsed); }
+            }
+            eprintln!("particles {}: 4000 quads, mean encode {:.3} ms, max {:.3} ms, {} upload bytes/frame (CPU only)",
+                if enabled { "instanced" } else { "legacy" }, sum.as_secs_f64()*1000./30., max.as_secs_f64()*1000.,
+                if enabled { 4000 * std::mem::size_of::<ParticleInstance>() } else { 4000 * 6 * std::mem::size_of::<Vertex>() });
+        }
+    }
+
+    #[test]
+    fn instanced_particles_match_legacy_pixels_headlessly() {
+        let Some(jar) = mc_testutil::jar() else { return };
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else { return };
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
+        let atlas = texture(&device, &queue, &image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])));
+        let mut renderer = AvatarRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets, atlas.create_view(&Default::default()));
+        let camera = Camera { pos: Vec3::ZERO, yaw: 0., pitch: 0., fov_deg: 70., bob: Mat4::IDENTITY };
+        let quad = |z, color, tex| ParticleQuad {
+            pos: [Vec3::new(-0.8,-0.8,z), Vec3::new(-0.8,0.8,z), Vec3::new(0.8,0.8,z), Vec3::new(0.8,-0.8,z)],
+            uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]], color, light: [0.9, 0.8, 0.7], tex,
+        };
+        let mut frame = AvatarFrame { particles: vec![quad(4., [0.8,0.2,0.3,0.8], ParticleTex::Block),
+            quad(3., [0.2,0.8,0.4,0.6], ParticleTex::Block), quad(2., [1.,1.,1.,0.7], ParticleTex::Misc)], ..Default::default() };
+        frame.world_quads.push(WorldQuad { pos: quad(5., [1.;4], ParticleTex::Block).pos,
+            uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]], color: [0.1,0.1,0.5] });
+        frame.damage.push(DamageQuad { pos: quad(6., [1.;4], ParticleTex::Block).pos,
+            uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]] });
+        frame.outline = Some(Aabb::new(-0.6, -0.6, 2.5, 0.6, 0.6, 3.5));
+        let render = |renderer: &mut AvatarRenderer, frame: &AvatarFrame, instancing: bool| -> Vec<u8> {
+            renderer.use_particle_instancing = instancing;
+            let desc = |format, usage| wgpu::TextureDescriptor { label: None,
+                size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1,
+                dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] };
+            let color = device.create_texture(&desc(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC));
+            let depth = device.create_texture(&desc(wgpu::TextureFormat::Depth32Float, wgpu::TextureUsages::RENDER_ATTACHMENT));
+            let color_view = color.create_view(&Default::default()); let depth_view = depth.create_view(&Default::default());
+            let read = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 64*64*4,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+            let mut enc = device.create_command_encoder(&Default::default());
+            {
+                let _pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor { label: None,
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &color_view, resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view,
+                        depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                    timestamp_writes: None, occlusion_query_set: None });
+            }
+            renderer.encode(&device, &queue, &mut enc, &color_view, &depth_view, &camera, 1., 64., 128., frame, &assets, false);
+            enc.copy_texture_to_buffer(wgpu::TexelCopyTextureInfo { texture: &color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyBufferInfo { buffer: &read, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(256), rows_per_image: Some(64) } },
+                wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 });
+            queue.submit(Some(enc.finish()));
+            let (tx, rx) = std::sync::mpsc::channel();
+            read.slice(..).map_async(wgpu::MapMode::Read, move |r| { tx.send(r).unwrap(); });
+            device.poll(wgpu::Maintain::Wait); rx.recv().unwrap().unwrap();
+            let bytes = read.slice(..).get_mapped_range().to_vec(); read.unmap(); bytes
+        };
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0));
+        assert_eq!(old, new);
+        frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        assert!(renderer.particle_capacity >= 1500);
+    }
 }
