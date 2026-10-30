@@ -276,7 +276,7 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
             celestial,
             [[-30., 100., -30.], [30., 100., -30.], [30., 100., 30.], [-30., 100., 30.]],
             [[0., 0.], [1., 0.], [1., 1.], [0., 1.]],
-            [1.; 4],
+            [1., 1., 1., sky.celestial_visibility],
             1.,
             None,
         );
@@ -286,10 +286,15 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
             celestial,
             [[-20., -100., 20.], [20., -100., 20.], [20., -100., -20.], [-20., -100., -20.]],
             [[u + 0.25, w + 0.5], [u, w + 0.5], [u, w], [u + 0.25, w]],
-            [1.; 4],
+            [1., 1., 1., sky.celestial_visibility],
             2.,
             None,
         );
+        if sky.stars > 0. {
+            for &quad in star_quads() {
+                push(&mut v, celestial, quad, [[0.; 2]; 4], [sky.stars; 4], 0., None);
+            }
+        }
         let celestial_end = v.len() as u32;
         if sky.clouds {
             clouds(&mut v, vp, cam.pos, sky, distance);
@@ -329,6 +334,41 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
             pass.draw(range, 0..1);
         }
     }
+}
+/// Static star field generated from RenderGlobal's seeded random sequence.
+fn star_quads() -> &'static Vec<[[f32; 3]; 4]> {
+    static STARS: std::sync::OnceLock<Vec<[[f32; 3]; 4]>> = std::sync::OnceLock::new();
+    STARS.get_or_init(|| {
+        let mut random = mc_core::random::JavaRandom::new(10842);
+        let mut stars = Vec::new();
+        for _ in 0..1500 {
+            let mut direction = [0.; 3];
+            for d in &mut direction { *d = (random.next_float() * 2. - 1.) as f64; }
+            let size = (0.15_f32 + random.next_float() * 0.1) as f64;
+            let length = direction.iter().map(|d| d * d).sum::<f64>();
+            if !(0.01..1.).contains(&length) { continue; }
+            let scale = length.sqrt().recip();
+            direction.iter_mut().for_each(|d| *d *= scale);
+            let [x, y, z] = direction;
+            let azimuth = x.atan2(z);
+            let inclination = (x * x + z * z).sqrt().atan2(y);
+            let roll = random.next_double() * std::f64::consts::TAU;
+            let (sa, ca) = azimuth.sin_cos();
+            let (si, ci) = inclination.sin_cos();
+            let (sr, cr) = roll.sin_cos();
+            let mut quad = [[0.; 3]; 4];
+            for (j, point) in quad.iter_mut().enumerate() {
+                let a = ((j & 2) as i32 - 1) as f64 * size;
+                let b = (((j + 1) & 2) as i32 - 1) as f64 * size;
+                let u = a * cr - b * sr;
+                let v = b * cr + a * sr;
+                let w = -u * ci;
+                *point = [(x * 100. + w * sa - v * ca) as f32, (y * 100. + u * si) as f32, (z * 100. + v * sa + w * ca) as f32];
+            }
+            stars.push(quad);
+        }
+        stars
+    })
 }
 fn tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
@@ -507,6 +547,23 @@ fn clouds(v: &mut Vec<Vertex>, vp: Mat4, pos: Vec3, sky: &Sky, distance: f32) {
                         0.8,
                     );
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod star_tests {
+    use super::*;
+
+    #[test]
+    fn star_vertices_match_java() {
+        let expected: Vec<[i32; 3]> = serde_json::from_str(include_str!("../tests/data/stars.json")).unwrap();
+        let actual: Vec<_> = star_quads().iter().flatten().collect();
+        assert_eq!(actual.len(), expected.len());
+        for (index, (a, e)) in actual.iter().zip(expected).enumerate() {
+            for axis in 0..3 {
+                assert_eq!(a[axis].to_bits(), e[axis] as u32, "vertex {index} axis {axis}");
             }
         }
     }
