@@ -42,7 +42,8 @@ bytes are counted separately in the probe directory. A final transformer saves t
 definition. The script compares the selected bytes to the shadow jar, then compares
 per-method normalized ASM output before and after the full transformer chain. It
 requires an unchanged no-Mixin control and detects `func_76128_c(D)I` plus the
-injected handler. Rust posts a controlled event through the Forge bus and checks listener order,
+injected handler. The reusable `mc-forge` tick bridge posts START/END/START and checks that our
+test mod observes that exact sequence. Rust also posts a controlled event through the Forge bus and checks listener order,
 payload changes, and cancellation on the returned result. It also registers a
 controlled JNI native, invokes the hooked method, checks every callback, and
 measures both control and hooked dispatch after

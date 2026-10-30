@@ -1,0 +1,7 @@
+[package]
+name = "mc-forge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jni = "0.21.1"

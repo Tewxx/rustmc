@@ -24,7 +24,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         let hooked = args[5] == "shadow";
         env.call_static_method(&class, "value", "()I", &[])?;
         let target = JClass::from(env.get_static_field(&class, "target", "Ljava/lang/Class;")?.l()?);
+        let tick_class = JClass::from(env.get_static_field(&class, "tickBridge", "Ljava/lang/Class;")?.l()?);
+        let tick_bridge = mc_forge::ClientTickBridge::new(&mut env, tick_class)?;
+        tick_bridge.post(&mut env, true)?;
+        tick_bridge.post(&mut env, false)?;
+        tick_bridge.post(&mut env, true)?;
         let event_bridge = JClass::from(env.get_static_field(&class, "eventBridge", "Ljava/lang/Class;")?.l()?);
+        let phases = env.call_static_method(&event_bridge, "tickPhases", "()Ljava/lang/String;", &[])?.l()?;
+        let phases = jni::objects::JString::from(phases);
+        let phases: String = env.get_string(&phases)?.into();
+        if phases != "SES" { return Err(format!("Forge client tick phases {phases}, expected SES").into()); }
+        println!("rust_forge_tick_bridge=passed");
         for (input, expected) in [(2, 170), (-2, 71)] {
             let result = env.call_static_method(&event_bridge, "postBridgeEvent", "(I)I", &[jni::objects::JValue::Int(input)])?.i()?;
             if result != expected { return Err(format!("Forge event bridge returned {result}, expected {expected} for {input}").into()); }

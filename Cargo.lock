@@ -1391,6 +1391,7 @@ name = "jvm-spike"
 version = "0.1.0"
 dependencies = [
  "jni 0.21.1",
+ "mc-forge",
 ]
 
 [[package]]
@@ -1594,6 +1595,13 @@ dependencies = [
  "mc-data",
  "mc-testutil",
  "serde_json",
+]
+
+[[package]]
+name = "mc-forge"
+version = "0.1.0"
+dependencies = [
+ "jni 0.21.1",
 ]
 
 [[package]]

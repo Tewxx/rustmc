@@ -18,6 +18,14 @@ import net.minecraftforge.fml.common.eventhandler.*;
 public class FTBus {
     static final Trace.T T = Trace.of("bus");
 
+    private static String tickPhases = "";
+    public static final class TickListener {
+        @SubscribeEvent public void onTick(net.minecraftforge.fml.common.gameevent.TickEvent.ClientTickEvent event) {
+            tickPhases += event.phase == net.minecraftforge.fml.common.gameevent.TickEvent.Phase.START ? "S" : "E";
+        }
+    }
+    public static String tickPhases() { return tickPhases; }
+
     @Cancelable public static final class BridgeEvent extends Event {
         int value;
         BridgeEvent(int value) { this.value = value; }
@@ -139,6 +147,7 @@ public class FTBus {
     public void init(FMLInitializationEvent ev) {
         EventBus forge = MinecraftForge.EVENT_BUS;
         forge.register(new BridgeListener());
+        FMLCommonHandler.instance().bus().register(new TickListener());
         EventBus fml = FMLCommonHandler.instance().bus();
 
         Priorities p = new Priorities();

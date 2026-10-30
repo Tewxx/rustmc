@@ -8,6 +8,6 @@ import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 public class FTCommon {
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent e) {
-        if (e.getSide().isClient()) new ClientDriver().register();
+        if (e.getSide().isClient() && !Boolean.getBoolean("rustmc.headlessProbe")) new ClientDriver().register();
     }
 }
