@@ -1163,6 +1163,7 @@ impl AvatarRenderer {
 /// translate(0, age * (0.001 + 0.003i) * 20).
 fn armor_glint(glint: &mut Vec<Vertex>, mvp: Mat4, q: &ModelQuad, age: f32, light: [f32; 3]) {
     let color = [0.5 * 0.76 * light[0], 0.25 * 0.76 * light[1], 0.8 * 0.76 * light[2], 1.];
+    let clip = q.pos.map(|p| (mvp * p.extend(1.)).to_array());
     for i in 0..2 {
         let (s, c) = (30. - i as f32 * 60.).to_radians().sin_cos();
         let d = age * (0.001 + i as f32 * 0.003) * 20.;
@@ -1170,7 +1171,7 @@ fn armor_glint(glint: &mut Vec<Vertex>, mvp: Mat4, q: &ModelQuad, age: f32, ligh
             let [u, v] = q.uv[k];
             let v = v + d;
             let uv = [(u * c - v * s) / 3., (u * s + v * c) / 3.];
-            glint.push(Vertex { clip: (mvp * q.pos[k].extend(1.)).to_array(), uv, color, kind: GLINT, overlay: [0.; 4] });
+            glint.push(Vertex { clip: clip[k], uv, color, kind: GLINT, overlay: [0.; 4] });
         }
     }
 }
