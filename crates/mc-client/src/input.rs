@@ -109,7 +109,11 @@ impl ApplicationHandler for App {
                     scr.init(&self.ui, sr.width, sr.height);
                 }
             }
-            WindowEvent::CursorMoved { position, .. } => self.mouse_px = (position.x, position.y),
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_px = (position.x, position.y);
+                let (mx, my) = self.mouse_gui();
+                if let Some(s) = &mut self.screen { s.mouse_move(&mut self.ui, mx, my); }
+            },
             WindowEvent::MouseInput { state, button, .. } => {
                 let (mx, my) = self.mouse_gui();
                 match state {
@@ -138,7 +142,7 @@ impl ApplicationHandler for App {
                     ElementState::Released => {
                         self.buttons.remove(&button);
                         if let Some(s) = &mut self.screen {
-                            s.release(&mut self.ui);
+                            s.release_at(&mut self.ui, mx, my, button == MouseButton::Right);
                             self.apply_settings();
                         }
                     }

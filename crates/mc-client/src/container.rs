@@ -32,6 +32,7 @@ pub struct Window {
     pub closed: bool,
     /// `Container.transactionID`
     pub transaction: i16,
+    drag: Option<(i8, Vec<usize>)>,
 }
 
 impl Window {
@@ -43,7 +44,7 @@ impl Window {
             "minecraft:anvil" => 3,
             _ => slots as usize,
         };
-        Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0; 4], clicks: Vec::new(), closed: false, transaction: 0 }
+        Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0; 4], clicks: Vec::new(), closed: false, transaction: 0, drag: None }
     }
 
     /// Window slot index → storage: container slots first, then main inventory, then hotbar.
@@ -105,6 +106,7 @@ pub struct ContainerScreen {
     /// `GuiInventory` (an `InventoryEffectRenderer`) rather than a plain `GuiContainer`.
     is_player: bool,
     last_click: Option<(usize, bool, std::time::Instant)>,
+    dragging: Option<(bool, Vec<usize>)>,
 }
 
 struct Layout {
@@ -121,7 +123,7 @@ struct Layout {
 
 impl ContainerScreen {
     pub fn new(window: Arc<Mutex<Window>>, catalogue: Arc<Catalogue>) -> Self {
-        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None }
+        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None, dragging: None }
     }
 
     fn layout(w: &Window) -> Layout {
@@ -337,9 +339,55 @@ impl ContainerScreen {
         (rest.map_or(0, |r| r.count) != s.count).then_some(s)
     }
 
+    fn drag_click(&mut self, ui: &mut Ui, slot: i16, button: i8) {
+        let mut w = self.window.lock().unwrap();
+        let stage = button & 3;
+        let mode = (button >> 2) & 3;
+        if w.cursor.is_none() {
+            w.drag = None;
+        } else if stage == 0 && w.drag.is_none() && mode <= 1 {
+            w.drag = Some((mode, Vec::new()));
+        } else if stage == 1 && w.drag.as_ref().is_some_and(|(m, _)| *m == mode) && slot >= 0 {
+            let i = slot as usize;
+            let cursor = w.cursor.unwrap();
+            let existing = w.get(ui, i).map(|v| *v);
+            let can_add = existing.is_some_and(|v| v.is_none_or(|s| s.stacks_with(&cursor) && s.count <= self.max(cursor)))
+                && self.accepts(&w, i, cursor);
+            if can_add {
+                let (_, slots) = w.drag.as_mut().unwrap();
+                if slots.len() < cursor.count as usize && !slots.contains(&i) { slots.push(i); }
+            }
+        } else if stage == 2 && w.drag.as_ref().is_some_and(|(m, _)| *m == mode) {
+            let (_, slots) = w.drag.take().unwrap();
+            let mut cursor = w.cursor.unwrap();
+            if !slots.is_empty() {
+                let amount = if mode == 0 { cursor.count / slots.len() as u8 } else { 1 };
+                let mut left = cursor.count;
+                for i in slots {
+                    let current = w.get(ui, i).and_then(|v| *v);
+                    let old = current.map_or(0, |s| s.count);
+                    let limit = if w.kind == "player" && (5..=8).contains(&i) ||
+                        w.kind == "minecraft:furnace" && i == 1 && self.catalogue.items[cursor.item].id == 325 { 1 } else { 64 };
+                    let new_count = old.saturating_add(amount).min(limit).min(self.max(cursor));
+                    left -= new_count - old;
+                    w.set(ui, i, Some(ItemStack { count: new_count, ..cursor }));
+                }
+                cursor.count = left;
+                w.cursor = (left > 0).then_some(cursor);
+            }
+        } else {
+            w.drag = None;
+        }
+        w.clicks.push(Click { slot, button, mode: 5, item: None });
+    }
+
     fn click_slot(&mut self, ui: &mut Ui, i: usize, button: i8, mode: i8) {
         let mut w = self.window.lock().unwrap();
         let item = w.get(ui, i).and_then(|s| *s);
+        if w.drag.take().is_some() {
+            w.clicks.push(Click { slot: i as i16, button, mode, item: None });
+            return;
+        }
         let returned = match mode {
             0 => { self.pickup(&mut w, ui, i, button == 1); item }
             1 => self.transfer(&mut w, ui, i),
@@ -417,14 +465,17 @@ impl ContainerScreen {
                 let double = !right && !ui.shift_down && self.last_click.is_some_and(|(slot, previous_right, at)|
                     slot == i && !previous_right && now.duration_since(at).as_millis() < 250);
                 self.last_click = if double { None } else { Some((i, right, now)) };
-                self.click_slot(ui, i, button, if double { 6 } else if ui.shift_down { 1 } else { 0 });
+                if double {
+                    self.click_slot(ui, i, button, 6);
+                } else if self.window.lock().unwrap().cursor.is_some() {
+                    self.dragging = Some((right, Vec::new()));
+                } else {
+                    self.click_slot(ui, i, button, if ui.shift_down { 1 } else { 0 });
+                }
             }
             None if outside => {
-                // Slot -999: drop the cursor stack (or one item).
-                let mut w = self.window.lock().unwrap();
-                if let Some(c) = w.cursor {
-                    w.cursor = if right { (c.count > 1).then_some(ItemStack { count: c.count - 1, ..c }) } else { None };
-                    w.clicks.push(Click { slot: -999, button, mode: 0, item: None });
+                if self.window.lock().unwrap().cursor.is_some() {
+                    self.dragging = Some((right, Vec::new()));
                 }
             }
             None => {}
@@ -434,6 +485,44 @@ impl ContainerScreen {
 }
 
 impl Screen for ContainerScreen {
+    fn mouse_move(&mut self, ui: &mut Ui, mx: i32, my: i32) {
+        let Some((_, slots)) = self.dragging.as_ref() else { return };
+        let w = self.window.lock().unwrap();
+        let Some(cursor) = w.cursor else { return };
+        if slots.len() >= cursor.count as usize { return; }
+        let layout = Self::layout(&w);
+        drop(w);
+        let Some(i) = self.at(&layout, mx, my) else { return };
+        if slots.contains(&i) { return; }
+        let mut w = self.window.lock().unwrap();
+        let existing = w.get(ui, i).map(|v| *v);
+        let can_add = existing.is_some_and(|v| v.is_none_or(|s| s.stacks_with(&cursor) && s.count <= self.max(cursor))) && self.accepts(&w, i, cursor);
+        drop(w);
+        if can_add { self.dragging.as_mut().unwrap().1.push(i); }
+    }
+
+    fn release_at(&mut self, ui: &mut Ui, mx: i32, my: i32, right: bool) {
+        let Some((drag_right, slots)) = self.dragging.take() else { return };
+        if right != drag_right { return; }
+        if !slots.is_empty() {
+            let mode = if right { 4 } else { 0 };
+            self.drag_click(ui, -999, mode);
+            for i in slots { self.drag_click(ui, i as i16, mode + 1); }
+            self.drag_click(ui, -999, mode + 2);
+        } else {
+            let layout = Self::layout(&self.window.lock().unwrap());
+            if let Some(i) = self.at(&layout, mx, my) {
+                self.click_slot(ui, i, right as i8, if ui.shift_down { 1 } else { 0 });
+            } else if mx < self.left || my < self.top || mx >= self.left + layout.w || my >= self.top + layout.h {
+                let mut w = self.window.lock().unwrap();
+                if let Some(c) = w.cursor {
+                    w.cursor = if right { (c.count > 1).then_some(ItemStack { count: c.count - 1, ..c }) } else { None };
+                    w.clicks.push(Click { slot: -999, button: right as i8, mode: 0, item: None });
+                }
+            }
+        }
+    }
+
     fn entity_preview(&self) -> Option<(i32, i32, i32)> {
         let l = Self::layout(&self.window.lock().unwrap());
         (l.texture == "textures/gui/container/inventory.png").then_some((self.left + 51, self.top + 75, 30))
@@ -580,8 +669,11 @@ mod tests {
             }
             let mut screen = ContainerScreen::new(w.clone(), cat.clone());
             for step in fixture["steps"].as_array().unwrap() {
-                let slot = step["slot"].as_u64().unwrap() as usize;
-                screen.click_slot(&mut ui, slot, step["button"].as_i64().unwrap() as i8, step["mode"].as_i64().unwrap() as i8);
+                let slot = step["slot"].as_i64().unwrap() as i16;
+                let button = step["button"].as_i64().unwrap() as i8;
+                let mode = step["mode"].as_i64().unwrap() as i8;
+                if mode == 5 { screen.drag_click(&mut ui, slot, button); }
+                else { screen.click_slot(&mut ui, slot as usize, button, mode); }
                 let mut w = w.lock().unwrap();
                 let returned = w.clicks.last().unwrap().item;
                 assert_eq!(returned, decode(&step["returned"]), "{name} slot {slot}: return");
@@ -618,6 +710,30 @@ mod tests {
         let win = window.lock().unwrap();
         assert_eq!((win.clicks.last().unwrap().mode, win.clicks.last().unwrap().button), (4, 1));
         assert!(win.slots[1].is_none());
+    }
+
+    #[test]
+    fn drag_splits_stacks_and_sends_vanilla_sequence() {
+        let Some(jar) = crate::find_jar() else { return };
+        let mut assets = mc_assets::AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = mc_render::models::BlockModels::load(&assets);
+        let cat = Arc::new(Catalogue::load(&assets, &models));
+        let stone = cat.index_of(1, 0).unwrap();
+        let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
+        let window = Arc::new(Mutex::new(Window::new(2, "minecraft:chest", String::new(), 27)));
+        window.lock().unwrap().cursor = Some(ItemStack::new(stone, 9, 0));
+        let mut screen = ContainerScreen::new(window.clone(), cat);
+        screen.click(&mut ui, 27, 19);
+        screen.mouse_move(&mut ui, 27, 19);
+        screen.mouse_move(&mut ui, 45, 19);
+        screen.release_at(&mut ui, 45, 19, false);
+        let win = window.lock().unwrap();
+        assert_eq!(win.slots[1].unwrap().count, 4);
+        assert_eq!(win.slots[2].unwrap().count, 4);
+        assert_eq!(win.cursor.unwrap().count, 1);
+        let sent: Vec<_> = win.clicks.iter().map(|c| (c.slot, c.button, c.mode)).collect();
+        assert_eq!(sent, [(-999, 0, 5), (1, 1, 5), (2, 1, 5), (-999, 2, 5)]);
     }
 
     #[test]

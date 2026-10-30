@@ -54,6 +54,8 @@ final class DumpContainers {
         a.add(run("number key chest", "minecraft:chest", new int[][] {{0, 4, 5, 0}, {54, 1, 7, 0}}, new int[][] {{0, 0, 2}}));
         a.add(run("failed shift", "minecraft:chest", full, new int[][] {{0,0,1}}));
         a.add(run("armor slots", "player", new int[][] {{36,1,5,0}, {37,306,1,0}}, new int[][] {{36,0,0},{5,0,0},{36,0,0},{37,0,1},{5,0,2}}));
+        a.add(run("drag evenly", "minecraft:chest", new int[][] {{0,1,11,0},{1,1,60,0}}, new int[][] {{0,0,0},{-999,0,5},{1,1,5},{2,1,5},{3,1,5},{-999,2,5}}));
+        a.add(run("drag right", "minecraft:chest", new int[][] {{0,1,4,0}}, new int[][] {{0,0,0},{-999,4,5},{1,5,5},{2,5,5},{-999,6,5}}));
         a.add(run("drop items", "minecraft:chest", new int[][] {{0,1,4,0},{1,4,3,0}}, new int[][] {{0,0,4},{1,1,4},{0,0,0},{0,0,4}}));
         a.add(run("collect double click", "minecraft:chest", new int[][] {{0,1,8,0},{1,1,64,0},{2,1,32,0},{3,1,2,0}}, new int[][] {{0,0,0},{0,0,6}}));
         a.add(run("collect reverse", "minecraft:chest", new int[][] {{0,1,20,0},{1,1,32,0},{2,1,10,0}}, new int[][] {{0,1,0},{3,1,6}}));
