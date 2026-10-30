@@ -194,3 +194,18 @@ fn unresolved_weighted_alternatives_are_skipped_like_vanilla() {
     let diamond = models.get(ids::DIAMOND_BLOCK, 0).unwrap();
     assert_eq!(stone.models[0].1.quads[0].uv, diamond.models[0].1.quads[0].uv);
 }
+
+#[test]
+fn section_mesh_reports_opaque_and_open_visibility() {
+    let Some(a) = assets() else { return };
+    let models = BlockModels::load(&a);
+    let mut world = World::default();
+    let mut chunk = mc_world::chunk::Chunk::new(0, 0);
+    for y in 32..48 { for z in 0..16 { for x in 0..16 { chunk.set(x, y, z, 1, 0); } } }
+    world.insert(chunk);
+    let mut geometry = mc_data::geometry::BlockGeometry::new();
+    let opaque = mesh::build_section(&world, &models, 0, 2, 0, true, true, &mut geometry);
+    assert_eq!(opaque.visibility, Some(0));
+    let open = mesh::build_section(&world, &models, 0, 1, 0, true, true, &mut geometry);
+    assert_eq!(open.visibility, Some(mc_render::visibility::ALL_VISIBLE));
+}

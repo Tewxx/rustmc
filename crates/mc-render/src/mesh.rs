@@ -61,6 +61,8 @@ impl PackedVertex {
 pub struct ChunkMesh {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    /// Face connectivity for a single section; `None` is conservatively unknown.
+    pub visibility: Option<u64>,
 }
 
 impl ChunkMesh {
@@ -90,6 +92,8 @@ pub fn build_section(world: &World, models: &BlockModels, cx: i32, sy: i32, cz: 
 #[allow(clippy::too_many_arguments)]
 fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: std::ops::Range<usize>, smooth_lighting: bool, fancy_graphics: bool, geometry: &mut BlockGeometry) -> ChunkMesh {
     let mut mesh = ChunkMesh::default();
+    let single_section = range.end == range.start + 1;
+    let mut vis = crate::visibility::VisGraph::default();
     let Some(chunk) = world.chunks.get(&(cx, cz)) else { return mesh };
     let is_opaque = |p: (i32, i32, i32)| {
         world.state_at(p.0, p.1, p.2).block().is_opaque_cube(fancy_graphics)
@@ -107,6 +111,7 @@ fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: 
                     let (id, meta) = chunk.get(lx, y, lz);
                     let stored = StateId::from_raw(id << 4 | meta as u16);
                     let block = stored.block();
+                    if single_section && block.is_opaque_cube(fancy_graphics) { vis.set_opaque(lx, ly as usize, lz); }
                     let layer = block.render_layer(fancy_graphics);
                     if block.render_type == 1 {
                         // `BlockRendererDispatcher` case 1: `BlockFluidRenderer`.
@@ -180,5 +185,6 @@ fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: 
             }
         }
     }
+    if single_section { mesh.visibility = Some(vis.compute()); }
     mesh
 }

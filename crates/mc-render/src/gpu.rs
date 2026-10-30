@@ -91,8 +91,16 @@ struct GpuChunk {
     /// Camera position the translucent quads were last sorted/uploaded for (NaN = never).
     sorted_at: Vec3,
     key: (i32, i32, i32),
+    /// Models that protrude beyond their section must not be hidden by section connectivity.
+    cull_safe: bool,
     min: Vec3,
     max: Vec3,
+}
+
+type CaveResult = Option<((i32, i32, i32), i32, Arc<std::collections::HashSet<(i32, i32, i32)>>)>;
+
+fn cave_hidden(cull_safe: bool, key: (i32, i32, i32), cave: &CaveResult) -> bool {
+    cull_safe && cave.as_ref().is_some_and(|(start, radius, visible)| crate::visibility::culls(visible, *start, *radius, key))
 }
 
 /// `DrawIndexedIndirectArgs` layout.
@@ -149,6 +157,8 @@ pub struct Renderer {
     origins_bg: wgpu::BindGroup,
     origins: Vec<[f32; 4]>,
     pages: Vec<ArenaPage>,
+    cave_cull: crate::visibility::CaveCull,
+    use_cave_cull: bool,
     /// Slot-indexed sections (slot = instance index in the shader); `index` maps keys to slots.
     slots: Vec<Option<GpuChunk>>,
     free_slots: Vec<u32>,
@@ -473,6 +483,8 @@ impl Renderer {
             origins_bg,
             origins: vec![[0.0; 4]; INITIAL_SLOTS],
             pages: Vec::new(),
+            cave_cull: crate::visibility::CaveCull::default(),
+            use_cave_cull: std::env::var_os("RUSTMC_NO_CAVE_CULL").is_none(),
             slots: Vec::new(),
             free_slots: Vec::new(),
             index: HashMap::new(),
@@ -512,6 +524,7 @@ impl Renderer {
     /// atlas UVs change and the world must be remeshed.
     pub fn clear_sections(&mut self) {
         self.pages.clear();
+        self.cave_cull.clear();
         self.slots.clear();
         self.free_slots.clear();
         self.index.clear();
@@ -527,8 +540,14 @@ impl Renderer {
         }
     }
 
+    /// An in-flight rebuild must not use an obsolete occlusion graph.
+    pub fn invalidate_section_visibility(&mut self, cx: i32, sy: i32, cz: i32) {
+        self.cave_cull.update((cx, sy, cz), None);
+    }
+
     pub fn upload_section(&mut self, cx: i32, sy: i32, cz: i32, mesh: &ChunkMesh) {
         let key = (cx, sy, cz);
+        self.cave_cull.update(key, mesh.visibility);
         self.remove_section(key);
         if mesh.indices.is_empty() {
             return;
@@ -630,6 +649,7 @@ impl Renderer {
             transparent,
             sorted_at: Vec3::NAN,
             key,
+            cull_safe: lo.x >= 0.0 && lo.z >= 0.0 && lo.y >= section_y && hi.x <= 16.0 && hi.z <= 16.0 && hi.y <= section_y + 16.0,
             min: lo + o,
             max: hi + o,
         });
@@ -846,6 +866,11 @@ impl Renderer {
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
         let planes = frustum_planes(view_proj);
+        let cave_visible = if self.use_cave_cull && cam.pos.is_finite() && self.render_distance_blocks.is_finite() {
+            let start = ((cam.pos.x.floor() as i32) >> 4, (cam.pos.y.floor() as i32) >> 4, (cam.pos.z.floor() as i32) >> 4);
+            let radius = ((self.render_distance_blocks * std::f32::consts::SQRT_2 / 16.0).ceil() as i32).saturating_add(2);
+            self.cave_cull.visible(start, radius).map(|visible| (start, radius, visible))
+        } else { None };
 
         // Visible opaque draws, one batch per arena page (order is irrelevant under depth testing).
         self.cmds.clear();
@@ -855,7 +880,7 @@ impl Renderer {
             let start = self.cmds.len() as u32;
             for (slot, c) in self.slots.iter().enumerate() {
                 let Some(c) = c else { continue };
-                if c.page != page || !aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos) {
+                if c.page != page || cave_hidden(c.cull_safe, c.key, &cave_visible) || !aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos) {
                     continue;
                 }
                 self.drawn_chunks += 1;
@@ -945,7 +970,7 @@ impl Renderer {
             .enumerate()
             .filter_map(|(slot, c)| {
                 let c = c.as_ref()?;
-                (!c.transparent.is_empty() && aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos))
+                (!c.transparent.is_empty() && !(cave_hidden(c.cull_safe, c.key, &cave_visible)) && aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos))
                     .then(|| (slot, ((c.min + c.max) * 0.5 - cam.pos).length_squared()))
             })
             .collect();
@@ -1140,6 +1165,16 @@ impl Drop for Renderer {
 #[cfg(test)]
 mod arena_tests {
     use super::*;
+
+    #[test]
+    fn cave_filter_keeps_unknown_out_of_range_and_protruding_geometry() {
+        let visible = Arc::new(std::collections::HashSet::from([(0, 8, 0)]));
+        let cave = Some(((0, 8, 0), 2, visible));
+        assert!(cave_hidden(true, (1, 8, 0), &cave));
+        assert!(!cave_hidden(false, (1, 8, 0), &cave));
+        assert!(!cave_hidden(true, (3, 8, 0), &cave));
+        assert!(!cave_hidden(true, (1, 8, 0), &None));
+    }
 
     #[test]
     fn free_list_reuses_and_coalesces_ranges() {

@@ -99,6 +99,7 @@ impl App {
             self.world.chunks.get(&(x, z)).and_then(|c| c.sections[sy as usize].as_ref()).is_some());
         if let Some(pool) = &mut self.mesh_workers { for &key in &empty { pool.invalidate(key, false); } }
         if let Some(renderer) = &mut self.renderer {
+            for &(x, sy, z) in &nonempty { renderer.invalidate_section_visibility(x, sy, z); }
             let mesh = mesh::ChunkMesh::default();
             for (x, sy, z) in empty { renderer.upload_section(x, sy, z, &mesh); }
         }
@@ -157,6 +158,7 @@ mod tests {
 
     fn equal_mesh(a: &mesh::ChunkMesh, b: &mesh::ChunkMesh) {
         assert_eq!(a.indices, b.indices);
+        assert_eq!(a.visibility, b.visibility);
         let bits = |m: &mesh::ChunkMesh| m.vertices.iter().map(|v| (v.pos.map(f32::to_bits), v.uv.map(f32::to_bits), v.color, v.light)).collect::<Vec<_>>();
         assert_eq!(bits(a), bits(b));
     }

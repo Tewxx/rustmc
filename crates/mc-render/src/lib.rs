@@ -15,5 +15,6 @@ pub mod objects;
 pub mod sky;
 mod sky_gpu;
 pub mod tile;
+pub mod visibility;
 
 pub use gpu::{Camera, Renderer};

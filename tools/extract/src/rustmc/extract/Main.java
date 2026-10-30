@@ -24,6 +24,7 @@ public final class Main {
 
         boolean all = args.length == 1;
         if (all || contains(args,"stars")) {write(new File(outDir,"stars.json"),DumpStars.dump(), false);}
+        if (all || contains(args,"visgraph")) {write(new File(outDir,"visgraph.json"),DumpVisGraph.dump(), false);}
         if (all || contains(args,"sky")) {write(new File(outDir,"sky.json"),DumpSky.dump());}
         if (all || contains(args,"item_transforms")) {write(new File(outDir,"item_transforms.json"),DumpItemTransforms.dump());}
         if (all || contains(args, "item_models")) {
