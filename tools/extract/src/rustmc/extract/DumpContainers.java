@@ -35,11 +35,17 @@ final class DumpContainers {
             JsonArray row = new JsonArray(); for (int i : x) row.add(new JsonPrimitive(i)); init.add(row);
         }
         out.add("initial", init);
+        JsonArray initialSlots = new JsonArray();
+        for (int i = 0; i < c.inventorySlots.size(); i++) initialSlots.add(stack(c.getSlot(i).getStack()));
+        out.add("initial_slots", initialSlots);
+        if (c instanceof ContainerRepair) out.addProperty("initial_cost", ((ContainerRepair)c).maximumCost);
+        out.addProperty("level", p.experienceLevel);
         JsonArray steps = new JsonArray();
         for (int[] click : clicks) {
             ItemStack ret = c.slotClick(click[0], click[1], click[2], p);
             JsonObject step = new JsonObject(); step.addProperty("slot", click[0]); step.addProperty("button", click[1]); step.addProperty("mode", click[2]);
             step.add("returned", stack(ret)); step.add("cursor", stack(p.inventory.getItemStack()));
+            if (c instanceof ContainerRepair) step.addProperty("cost", ((ContainerRepair)c).maximumCost);
             JsonArray slots = new JsonArray();
             for (int i = 0; i < c.inventorySlots.size(); i++) slots.add(stack(c.getSlot(i).getStack()));
             step.add("slots", slots); steps.add(step);
@@ -56,6 +62,7 @@ final class DumpContainers {
         a.add(run("failed shift", "minecraft:chest", full, new int[][] {{0,0,1}}));
         a.add(run("armor slots", "player", new int[][] {{36,1,5,0}, {37,306,1,0}}, new int[][] {{36,0,0},{5,0,0},{36,0,0},{37,0,1},{5,0,2}}));
         a.add(run("shift double", "minecraft:chest", new int[][] {{0,1,10,0},{1,1,5,0},{2,4,4,0},{3,1,2,0}}, new int[][] {{0,0,1},{0,0,1}}));
+        a.add(run("anvil cannot take", "minecraft:anvil", new int[][] {{0,276,1,100},{1,276,1,100}}, new int[][] {{2,0,0},{2,0,1},{2,0,2},{2,0,4}}));
         a.add(run("anvil slots", "minecraft:anvil", new int[][] {{30,1,4,0},{31,4,3,0}}, new int[][] {{30,0,0},{2,0,0},{30,0,0},{30,0,1},{31,0,1},{0,0,1},{1,0,1}}));
         a.add(run("brewing transfer", "minecraft:brewing_stand", new int[][] {{31,377,4,0},{32,374,3,0},{33,1,5,0}}, new int[][] {{31,0,1},{32,0,1},{33,0,1},{3,0,1}}));
         a.add(run("enchanting transfer", "minecraft:enchanting_table", new int[][] {{29,351,8,4},{30,1,3,0},{31,4,1,0}}, new int[][] {{29,0,1},{30,0,1},{31,0,1},{0,0,1},{1,0,1}}));

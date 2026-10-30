@@ -142,6 +142,7 @@ impl App {
                     let title = chat::format(&o.title, &self.ui.lang);
                     let title = title.trim_end_matches("\u{a7}r").to_string();
                     let w = Arc::new(std::sync::Mutex::new(container::Window::new(o.window_id, &o.kind, title, o.slots)));
+                    w.lock().unwrap().level = self.player.level;
                     self.open_window = Some(w.clone());
                     self.parents.clear();
                     self.screen = None;
@@ -457,6 +458,7 @@ impl App {
                 C::SetExperience(x) => {
                     self.player.experience = x.bar;
                     self.player.level = x.level;
+                    if let Some(w) = &self.open_window { w.lock().unwrap().level = x.level; }
                 }
                 C::UpdateHealth(h) => {
                     self.set_player_sp_health(h.health);

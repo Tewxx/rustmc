@@ -32,6 +32,7 @@ pub struct Window {
     pub closed: bool,
     /// `Container.transactionID`
     pub transaction: i16,
+    pub level: i32,
     drag: Option<(i8, Vec<usize>)>,
 }
 
@@ -46,7 +47,7 @@ impl Window {
             "minecraft:brewing_stand" => 4,
             _ => slots as usize,
         };
-        Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0; 4], clicks: Vec::new(), closed: false, transaction: 0, drag: None }
+        Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0; 4], clicks: Vec::new(), closed: false, transaction: 0, level: 0, drag: None }
     }
 
     /// Window slot index → storage: container slots first, then main inventory, then hotbar.
@@ -272,8 +273,14 @@ impl ContainerScreen {
         true
     }
 
+    fn can_take(&self, w: &Window, i: usize) -> bool {
+        w.kind != "minecraft:anvil" || i != 2 ||
+            (w.props[0] > 0 && (self.creative || w.level >= w.props[0] as i32))
+    }
+
     /// `Container.slotClick` mode 0 (`PICKUP`) on window slot `i`.
     fn pickup(&self, w: &mut Window, ui: &mut Ui, i: usize, right: bool) {
+        if !self.can_take(w, i) && w.get(ui, i).is_some_and(|s| s.is_some()) { return; }
         let cursor = w.cursor;
         let valid = cursor.is_some_and(|c| self.accepts(w, i, c));
         let slot_limit = if (w.kind == "minecraft:brewing_stand" && i < 3) || (w.kind == "minecraft:enchanting_table" && i == 0) || (w.kind == "minecraft:beacon" && i == 0) || (w.kind == "player" && (5..=8).contains(&i)) ||
@@ -341,6 +348,7 @@ impl ContainerScreen {
     /// back to front).
     fn transfer(&self, w: &mut Window, ui: &mut Ui, i: usize) -> Option<ItemStack> {
         let s = w.get(ui, i).and_then(|x| *x)?;
+        if !self.can_take(w, i) { return None; }
         if w.kind == "player" {
             // ContainerPlayer.transferStackInSlot
             const SUFFIX: [&str; 4] = ["_helmet", "_chestplate", "_leggings", "_boots"];
@@ -474,7 +482,7 @@ impl ContainerScreen {
         let returned = match mode {
             0 => { self.pickup(&mut w, ui, i, button == 1); item }
             1 => self.transfer(&mut w, ui, i),
-            2 if (0..9).contains(&button) => {
+            2 if (0..9).contains(&button) && self.can_take(&w, i) => {
                 let hot_index = button as usize;
                 let hot = ui.inventory[hot_index];
                 let player_slot = if w.kind == "player" { i >= 5 && i < 45 } else { i >= w.slots.len() && i < w.total() };
@@ -508,7 +516,7 @@ impl ContainerScreen {
                 if let Some(s) = item { w.cursor = Some(ItemStack { count: self.max(s), obj: ItemStack::fresh_obj(), ..s }); }
                 None
             }
-            4 if w.cursor.is_none() => {
+            4 if w.cursor.is_none() && self.can_take(&w, i) => {
                 if let Some(stack) = item {
                     let count = if button == 0 { 1 } else { stack.count };
                     w.set(ui, i, (stack.count > count).then_some(ItemStack { count: stack.count - count, ..stack }));
@@ -516,7 +524,7 @@ impl ContainerScreen {
                 None
             }
             6 => {
-                if item.is_none() {
+                if item.is_none() || !self.can_take(&w, i) {
                     if let Some(mut cursor) = w.cursor {
                         let max = self.max(cursor);
                         for pass in 0..2 {
@@ -524,6 +532,7 @@ impl ContainerScreen {
                             if button != 0 { indices.reverse(); }
                             for index in indices {
                                 if index == 0 && (w.kind == "player" || w.kind == "minecraft:crafting_table") { continue; }
+                                if !self.can_take(&w, index) { continue; }
                                 let Some(stack) = w.get(ui, index).and_then(|v| *v) else { continue };
                                 if !stack.stacks_with(&cursor) || (pass == 0 && stack.count == self.max(stack)) { continue; }
                                 let take = stack.count.min(max.saturating_sub(cursor.count));
@@ -783,10 +792,13 @@ mod tests {
             let name = fixture["name"].as_str().unwrap();
             let w = Arc::new(Mutex::new(Window::new(1, kind, String::new(), if kind == "player" { 5 } else if kind == "minecraft:furnace" { 3 } else { 27 })));
             let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
-            for initial in fixture["initial"].as_array().unwrap() {
-                let row = initial.as_array().unwrap();
-                let s = decode(&serde_json::Value::Array(row[1..].to_vec()));
-                w.lock().unwrap().set(&mut ui, row[0].as_u64().unwrap() as usize, s);
+            {
+                let mut win = w.lock().unwrap();
+                win.level = fixture["level"].as_i64().unwrap() as i32;
+                win.props[0] = fixture["initial_cost"].as_i64().unwrap_or(0) as i16;
+                for (i, initial) in fixture["initial_slots"].as_array().unwrap().iter().enumerate() {
+                    win.set(&mut ui, i, decode(initial));
+                }
             }
             let mut screen = ContainerScreen::new(w.clone(), cat.clone());
             screen.creative = fixture["creative"].as_bool().unwrap_or(false);
