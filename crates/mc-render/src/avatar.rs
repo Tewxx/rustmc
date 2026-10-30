@@ -265,6 +265,21 @@ fn make_particle_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
 }
 
+fn record_entity_run(verts: &mut Vec<Vertex>, entities: &mut Vec<EntityInstance>, runs: &mut Vec<(usize, std::ops::Range<usize>)>, vertex_start: usize, instance_start: usize, max: usize) {
+    if entities.len() > max {
+        let fallback = entities.drain(instance_start..).flat_map(|instance| {
+            let mvp = Mat4::from_cols_array_2d(&instance.mvp);
+            [0, 1, 2, 0, 2, 3].map(|i| Vertex { clip: (mvp * Vec3::from_array(instance.pos[i]).extend(1.)).to_array(),
+                uv: instance.uv[i], color: instance.color, kind: instance.kind, overlay: instance.overlay })
+        });
+        verts.splice(vertex_start..vertex_start, fallback);
+    } else if entities.len() > instance_start {
+        if let Some((_, range)) = runs.last_mut().filter(|(at, range)| *at == vertex_start && range.end == instance_start) {
+            range.end = entities.len();
+        } else { runs.push((vertex_start, instance_start..entities.len())); }
+    }
+}
+
 fn make_entity_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor { label: Some("entity instances"),
         size: count as u64 * std::mem::size_of::<EntityInstance>() as u64,
@@ -709,32 +724,19 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let mut particle_split = 0;
         let world_vp = cam.view_proj(aspect, far);
         if !hand_stage {
-            if frame.perspective != 0 {
-                self.body(&mut verts, frame, world_vp, cam.pos);
-            }
-            for o in &frame.others {
-                self.body(&mut verts, o, world_vp, cam.pos);
+            for player in (frame.perspective != 0).then_some(frame).into_iter().chain(&frame.others) {
+                let vertex_start = verts.len();
+                let instance_start = entities.len();
+                let use_instances = self.use_entity_instancing && !player.armor.iter().flatten().any(|a| a.glint);
+                self.body(&mut verts, &mut entities, use_instances, player, world_vp, cam.pos);
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for m in &frame.mobs {
                 let vertex_start = verts.len();
                 let instance_start = entities.len();
                 let use_instances = self.use_entity_instancing && !m.armor.iter().flatten().any(|a| a.glint);
                 self.mob(&mut verts, &mut entities, use_instances, m, world_vp, cam.pos);
-                if entities.len() > max_entities {
-                    // Keep draw order and the original CPU path if the device cannot hold this mob.
-                    let fallback = entities.drain(instance_start..).flat_map(|instance| {
-                        let mvp = Mat4::from_cols_array_2d(&instance.mvp);
-                        [0, 1, 2, 0, 2, 3].map(|i| Vertex { clip: (mvp * Vec3::from_array(instance.pos[i]).extend(1.)).to_array(),
-                            uv: instance.uv[i], color: instance.color, kind: instance.kind, overlay: instance.overlay })
-                    });
-                    verts.splice(vertex_start..vertex_start, fallback);
-                } else if entities.len() > instance_start {
-                    if let Some((_, range)) = entity_runs.last_mut().filter(|(at, range)| *at == vertex_start && range.end == instance_start) {
-                        range.end = entities.len();
-                    } else {
-                        entity_runs.push((vertex_start, instance_start..entities.len()));
-                    }
-                }
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for o in &frame.objects {
                 self.object(&mut verts, o, world_vp, cam);
@@ -923,7 +925,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let lights = lights_in(Mat3::from_mat4(Mat4::from_scale(Vec3::new(-1., 1., 1.)) * Mat4::from_rotation_z(180f32.to_radians()) * Mat4::from_rotation_y(135f32.to_radians())));
         let m = base * Mat4::from_rotation_x(pitch.to_radians());
         let mut verts = Vec::new();
-        self.body_at(&mut verts, &f, ortho, m, lights);
+        self.body_at(&mut verts, &mut Vec::new(), false, &f, ortho, m, lights);
         if verts.is_empty() {
             return;
         }
@@ -958,10 +960,10 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     }
 
     /// `RendererLivingEntity.doRender` for the local player, plus `LayerHeldItem`.
-    fn body(&mut self, out: &mut Vec<Vertex>, f: &AvatarFrame, vp: Mat4, cam: Vec3) {
+    fn body(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &AvatarFrame, vp: Mat4, cam: Vec3) {
         self.pose(f);
         // World-space model matrix (the view is applied separately so normals stay in world space).
-        self.body_at(out, f, vp, Mat4::from_translation(f.pos - cam), lights_in(Mat3::IDENTITY));
+        self.body_at(out, instances, use_instances, f, vp, Mat4::from_translation(f.pos - cam), lights_in(Mat3::IDENTITY));
     }
 
     /// `RenderPlayer.setModelVisibilities` + `setRotationAngles` on the skin model.
@@ -988,7 +990,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
     }
 
-    fn body_at(&mut self, out: &mut Vec<Vertex>, f: &AvatarFrame, vp: Mat4, at: Mat4, lights: [Vec3; 2]) {
+    fn body_at(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &AvatarFrame, vp: Mat4, at: Mat4, lights: [Vec3; 2]) {
         let model = if f.slim { &mut self.alex } else { &mut self.steve };
         let m = at
             * Mat4::from_rotation_y((180. - f.body_yaw).to_radians())
@@ -998,8 +1000,17 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let kind = if f.slim { 2. } else { SKIN };
         let light = f.light;
         let start = out.len();
-        model.render(m, &mut |pm, q| model_quad(out, vp, pm, q, kind, lights, light, [1.; 3], false));
+        let instance_start = instances.len();
+        model.render(m, &mut |pm, q| player_quad(out, instances, use_instances, vp, pm, q, kind, lights, light, [1.; 3]));
         retarget_skin(&mut out[start..], f.skin);
+        if let Some(cell) = f.skin {
+            let per = (SKIN_ATLAS / 64) as f32;
+            let (cx, cy) = ((cell % (SKIN_ATLAS / 64)) as f32, (cell / (SKIN_ATLAS / 64)) as f32);
+            for instance in &mut instances[instance_start..] {
+                instance.kind = 5.;
+                instance.uv = instance.uv.map(|[u,v]| [(cx + u) / per, (cy + v) / per]);
+            }
+        }
         // LayerBipedArmor (before LayerHeldItem): helmet, chestplate, leggings, boots.
         let (swing, sneak, held_right, aimed_bow, pose) = (model.swing, model.sneak, model.held_right, model.aimed_bow, model.pose);
         for slot in [4, 3, 2, 1] {
@@ -1014,9 +1025,13 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             let layer = (slot == 2) as u32;
             let mut pass = |cell: u32, tint: [f32; 3]| {
                 let start = out.len();
-                am.render(m, &mut |pm, q| model_quad(out, vp, pm, q, ARMOR, lights, light, tint, false));
+                let instance_start = instances.len();
+                am.render(m, &mut |pm, q| player_quad(out, instances, use_instances, vp, pm, q, ARMOR, lights, light, tint));
                 for v in &mut out[start..] {
                     v.uv[1] = (cell as f32 + v.uv[1]) / ARMOR_CELLS as f32;
+                }
+                for instance in &mut instances[instance_start..] {
+                    for uv in &mut instance.uv { uv[1] = (cell as f32 + uv[1]) / ARMOR_CELLS as f32; }
                 }
             };
             if a.material == 0 {
@@ -1443,6 +1458,16 @@ fn is_back_face(clip: &[Vec4; 4]) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
+fn player_quad(out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f32, lights: [Vec3; 2], light: [f32; 3], tint: [f32; 3]) {
+    if !use_instances { model_quad(out, proj, m, q, kind, lights, light, tint, false); return; }
+    let n = Mat3::from_mat4(m).inverse().transpose() * q.normal;
+    let shade = standard_lighting(n, lights);
+    let color = [tint[0] * shade * light[0], tint[1] * shade * light[1], tint[2] * shade * light[2], 1.];
+    instances.push(EntityInstance { pos: q.pos.map(|p| p.to_array()), uv: q.uv,
+        mvp: (proj * m).to_cols_array_2d(), color, kind, overlay: [0.; 4] });
+}
+
 fn model_quad(out: &mut Vec<Vertex>, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f32, lights: [Vec3; 2], light: [f32; 3], tint: [f32; 3], _cull: bool) {
     let n = Mat3::from_mat4(m).inverse().transpose() * q.normal;
     let shade = standard_lighting(n, lights);
@@ -1596,7 +1621,7 @@ mod particle_instance_tests {
     }
 
     #[test]
-    fn instanced_particles_and_mobs_match_legacy_pixels_headlessly() {
+    fn instanced_geometry_matches_legacy_pixels_headlessly() {
         let Some(jar) = mc_testutil::jar() else { return };
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else { return };
@@ -1668,6 +1693,20 @@ mod particle_instance_tests {
         let new = render(&mut renderer, &frame, true);
         assert_eq!(old, new);
         frame.mobs.clear();
+        renderer.upload_skin(&queue, 0, &vec![255; 64 * 64 * 4]);
+        let player = AvatarFrame { pos: Vec3::new(-0.3, -1., 2.5), body_yaw: 15., head_yaw: 20.,
+            limb_swing: 1., limb_amount: 0.5, light: [1.;3], skin: Some(0), slim: true,
+            armor: [None, None, Some(ArmorPiece { material: 0, color: 0xa04020, glint: false }), None], ..Default::default() };
+        frame.others.push(player);
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "player must be visible");
+        assert_eq!(old, new);
+        frame.others[0].armor[2].as_mut().unwrap().glint = true;
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        frame.others.clear();
         frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
