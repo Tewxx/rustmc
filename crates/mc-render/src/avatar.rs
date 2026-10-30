@@ -1645,7 +1645,7 @@ mod particle_instance_tests {
         let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
         let atlas = texture(&device, &queue, &image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])));
         let mut renderer = AvatarRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets, atlas.create_view(&Default::default()));
-        let camera = Camera { pos: Vec3::ZERO, yaw: 0., pitch: 0., fov_deg: 70., bob: Mat4::IDENTITY };
+        let camera = Camera { pos: Vec3::new(0.15, 0.1, 0.2), yaw: 0., pitch: 0., fov_deg: 70., bob: Mat4::IDENTITY };
         let quad = |z, color, tex| ParticleQuad {
             pos: [Vec3::new(-0.8,-0.8,z), Vec3::new(-0.8,0.8,z), Vec3::new(0.8,0.8,z), Vec3::new(0.8,-0.8,z)],
             uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]], color, light: [0.9, 0.8, 0.7], tex,
