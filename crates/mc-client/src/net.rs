@@ -617,6 +617,7 @@ mod tests {
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for name in [
+            "creative_fly_toggle",
             "attack_entities",
             "mine_to_completion",
             "mine_cancel_and_retarget",

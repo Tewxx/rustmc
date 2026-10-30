@@ -158,7 +158,7 @@ impl App {
                 self.entity.abilities_dirty = false;
                 use mc_protocol::packets::{PlayServerbound as S, PlayerAbilitiesC};
                 let e = &self.entity;
-                let flags = (e.flying as u8) << 1 | (e.allow_flying as u8) << 2 | (e.creative as u8) << 3;
+                let flags = e.disable_damage as u8 | (e.flying as u8) << 1 | (e.allow_flying as u8) << 2 | (e.creative as u8) << 3;
                 self.send(S::PlayerAbilitiesC(PlayerAbilitiesC { flags, fly_speed: e.fly_speed, walk_speed: e.walk_speed }));
             }
             if let Some(n) = &mut self.net {

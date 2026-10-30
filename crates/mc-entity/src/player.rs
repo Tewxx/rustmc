@@ -69,6 +69,7 @@ pub struct PlayerEntity {
     pub food_level: i32,
     // PlayerCapabilities
     pub flying: bool,
+    pub disable_damage: bool,
     pub allow_flying: bool,
     pub creative: bool,
     pub fly_speed: f32,
@@ -158,6 +159,7 @@ impl PlayerEntity {
             fly_toggle_timer: 0,
             food_level: 20,
             flying: false,
+            disable_damage: false,
             allow_flying: false,
             creative: false,
             fly_speed: 0.05,

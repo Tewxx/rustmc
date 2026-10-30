@@ -505,6 +505,7 @@ impl App {
                 }
                 C::PlayerAbilitiesS(a) => {
                     // handlePlayerAbilities
+                    self.entity.disable_damage = a.flags & 1 != 0;
                     self.entity.flying = a.flags & 2 != 0;
                     self.entity.creative = a.flags & 8 != 0;
                     self.entity.allow_flying = a.flags & 4 != 0;
