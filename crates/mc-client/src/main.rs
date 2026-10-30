@@ -7,6 +7,7 @@
 //! E inventory, F5 perspective, mouse break/place/pick, T chat, / commands, Esc pause.
 
 mod bench;
+mod client_packs;
 mod auth;
 mod chat;
 mod entities;

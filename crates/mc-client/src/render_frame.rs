@@ -342,6 +342,7 @@ impl App {
 
     /// Builds this frame's GUI batch.
     pub(crate) fn build_gui(&mut self) -> Scaled {
+        self.sync_pack_ui();
         let sr = self.scaled();
         let (mx, my) = self.mouse_gui();
         self.batch.clear();

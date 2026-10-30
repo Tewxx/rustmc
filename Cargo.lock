@@ -1325,6 +1325,7 @@ dependencies = [
  "image",
  "mc-assets",
  "mc-core",
+ "serde_json",
 ]
 
 [[package]]
