@@ -351,6 +351,17 @@ mod tests {
     }
 
     #[test]
+    fn malformed_asset_hashes_are_ignored() {
+        let dir = std::env::temp_dir().join(format!("rustmc-sound-index-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("indexes")).unwrap();
+        std::fs::write(dir.join("indexes/1.8.json"), br#"{"objects":{"short":{"hash":"a"},"invalid":{"hash":"../not-a-hash"}}}"#).unwrap();
+        let read = index_reader(&dir, "1.8").unwrap();
+        assert!(read("short").is_none());
+        assert!(read("invalid").is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn packs_append_unless_replace() {
         let base = r#"{"x.hit":{"category":"block","sounds":["a","b"]},"y":{"category":"music","sounds":["m"]}}"#;
         let m = events(&[base, r#"{"x.hit":{"category":"hostile","sounds":["c"]},"z":{"sounds":["n"]}}"#]);
@@ -386,7 +397,11 @@ pub fn index_reader(assets_dir: &std::path::Path, index: &str) -> Option<impl Fn
     let map: HashMap<String, String> = idx["objects"]
         .as_object()?
         .iter()
-        .filter_map(|(k, v)| Some((k.clone(), v["hash"].as_str()?.to_string())))
+        .filter_map(|(k, v)| {
+            let hash = v["hash"].as_str()?;
+            (hash.len() == 40 && hash.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+                .then(|| (k.clone(), hash.to_owned()))
+        })
         .collect();
     let dir = assets_dir.join("objects");
     Some(move |path: &str| {

@@ -18,6 +18,7 @@ impl App {
             self.process_net();
         }
         self.poll_connecting();
+        self.poll_asset_download();
         self.poll_disconnect();
         self.flush_window();
         for (cell, rgba) in self.skins.poll() {

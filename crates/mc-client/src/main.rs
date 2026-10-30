@@ -7,6 +7,7 @@
 //! In game: WASD, Space jump, Shift sneak, Ctrl sprint; double-tap Space for creative flight.
 //! E inventory, F5 perspective, mouse break/place/pick, T chat, / commands, Esc pause.
 
+mod asset_download;
 mod bench;
 mod client_packs;
 mod auth;
@@ -191,6 +192,9 @@ fn main() {
         } else {
             eprintln!("sound: .minecraft/assets with the 1.8 index not found; running silent");
         }
+    }
+    if args.assets_dir.is_none() && args.screenshot.is_none() {
+        app.auto_assets_dir = minecraft_dir().map(|d| d.join("assets"));
     }
     app.name = args.name.clone();
     app.ui.player_name = app.name.clone();

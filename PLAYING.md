@@ -33,16 +33,11 @@ movement/anti-cheat audit. Server resource packs
 work: the first offer shows the vanilla Yes/No prompt, accepted packs download with SHA-1
 verification, apply immediately (models, atlases, font, GUI and a full world remesh), and are
 cached and re-applied on later joins. `--pack-mode enabled|disabled|prompt` overrides the
-remembered per-server choice. Pack sound overrides are not loaded yet (sounds come from
-`.minecraft/assets`).
+remembered per-server choice. Selected resource packs can override sounds. Standalone Microsoft sign-in also starts a background sync of missing 1.8 assets, verifies their hashes, and initializes sound when the sync finishes. Prism supplies its own assets.
 
 ## Joining real servers
 
-The title screen's **Multiplayer** button opens the direct-connect screen: type `host[:port]`,
-edit the username (prefilled from `--name`), then **Join Server** for offline-mode servers or
-**Join (Microsoft)** for online-mode servers. The client relaunches itself with the matching
-`--connect`/`--online` flags; the saved-server list and in-process server switching are not
-ported yet.
+The title screen's **Multiplayer** button opens the saved-server list, with direct connect and server editing. Joining and disconnecting happen in the same process. Prism supplies its authenticated session; standalone online connections use Microsoft sign-in.
 
 Offline-mode (cracked) servers accept any name:
 

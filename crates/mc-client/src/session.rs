@@ -43,12 +43,19 @@ impl App {
         let stage = Arc::new(AtomicU8::new(screens::STAGE_CONNECTING));
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = channel();
+        let asset = if self.asset_download.is_none() {
+            self.auto_assets_dir.clone().map(|dir| {
+                let (sender, receiver) = channel();
+                self.asset_download = Some(receiver);
+                (dir, sender)
+            })
+        } else { None };
         let socket = Arc::new(std::sync::Mutex::new(None));
         let t_socket = socket.clone();
         let (t_stage, t_cancel, prism, name) = (stage.clone(), cancel.clone(), self.session.clone(), name.to_string());
         let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed) + 1;
         let spawned = std::thread::Builder::new().name(format!("Server Connector #{id}")).spawn(move || {
-            let outcome = connect_blocking(&addr, &name, online, prism, &t_stage, &t_socket, &t_cancel);
+            let outcome = connect_blocking(&addr, &name, online, prism, &t_stage, &t_socket, &t_cancel, asset);
             if t_cancel.load(Ordering::Relaxed) {
                 // Aborted while connecting: close the socket, nobody is waiting for the result.
                 if let Ok((mut n, _)) = outcome {
@@ -240,7 +247,7 @@ impl App {
 }
 
 /// The connector thread's work: resolve the session, then connect and log in.
-fn connect_blocking(addr: &mc_protocol::status::Address, name: &str, online: bool, prism: Option<auth::Session>, stage: &AtomicU8, socket: &std::sync::Mutex<Option<std::net::TcpStream>>, cancel: &AtomicBool) -> Outcome {
+fn connect_blocking(addr: &mc_protocol::status::Address, name: &str, online: bool, prism: Option<auth::Session>, stage: &AtomicU8, socket: &std::sync::Mutex<Option<std::net::TcpStream>>, cancel: &AtomicBool, asset: Option<(PathBuf, std::sync::mpsc::Sender<Result<PathBuf, String>>)>) -> Outcome {
     let session = if prism.is_some() {
         prism
     } else if online {
@@ -254,6 +261,7 @@ fn connect_blocking(addr: &mc_protocol::status::Address, name: &str, online: boo
     } else {
         None
     };
+    if session.is_some() { if let Some((dir, tx)) = asset { crate::asset_download::start(dir, tx); } }
     let name = session.as_ref().map_or(name.to_string(), |s| s.name.clone());
     let forge = match std::env::var("RUSTMC_FORGE").as_deref() {
         Ok("1") => true,
@@ -447,7 +455,7 @@ mod tests {
         let addr = mc_protocol::status::Address { host: "127.0.0.1".into(), port };
         let cancel = AtomicBool::new(false);
         let socket = std::sync::Mutex::new(None);
-        let (mut n, _) = connect_blocking(&addr, "ProbeAuto", false, None, &AtomicU8::new(0), &socket, &cancel).unwrap();
+        let (mut n, _) = connect_blocking(&addr, "ProbeAuto", false, None, &AtomicU8::new(0), &socket, &cancel, None).unwrap();
         let start = Instant::now();
         let mut joined = false;
         while start.elapsed() < Duration::from_secs(20) && !joined {

@@ -95,6 +95,8 @@ pub(crate) struct App {
     /// Screenshot cases show the player list without the key held.
     pub(crate) force_tab: bool,
     pub(crate) sound: Option<mc_sound::SoundManager>,
+    pub(crate) auto_assets_dir: Option<PathBuf>,
+    pub(crate) asset_download: Option<std::sync::mpsc::Receiver<Result<PathBuf, String>>>,
     /// `PlayerControllerMP.stepSoundTickCounter`
     pub(crate) step_sound_counter: f32,
     /// `objectMouseOver` when it is an entity.
@@ -236,6 +238,8 @@ impl App {
             highlight_stack: None,
             force_tab: false,
             sound: None,
+            auto_assets_dir: None,
+            asset_download: None,
             step_sound_counter: 0.,
             pointed_entity: None,
             pointed_hit: mc_core::Vec3::new(0., 0., 0.),

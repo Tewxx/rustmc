@@ -57,7 +57,7 @@ impl App {
     }
 
     /// The pack paths to stack under the server pack, lowest priority first.
-    fn selected_pack_paths(&self) -> Vec<PathBuf> {
+    pub(crate) fn selected_pack_paths(&self) -> Vec<PathBuf> {
         let s = &self.ui.settings;
         repository::selected_paths(&s.game_dir().join("resourcepacks"), &s.resource_packs, &s.incompatible_resource_packs)
     }
