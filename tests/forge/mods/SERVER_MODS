@@ -1,0 +1,3 @@
+# mods copied into the oracle server mods/ dir (client gets every jar except ftoptifine)
+ftcommon
+ftnet

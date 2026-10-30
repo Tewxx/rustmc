@@ -39,3 +39,4 @@ desktop.ini
 CLAUDE.local.md
 /.mc-tools
 __pycache__/
+/tests/forge/build
