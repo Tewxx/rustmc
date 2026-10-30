@@ -1,0 +1,19 @@
+{"seq":1,"test":"LC-01","event":"constructor","instanceInjected":false}
+{"seq":2,"test":"LC-01","event":"FMLConstructionEvent","instanceInjected":true}
+{"seq":3,"test":"LC-09","event":"mod2.constructor"}
+{"seq":4,"test":"LC-02","event":"FMLPreInitializationEvent","instanceIsThis":true,"proxyClass":"ft.lifecycle.ClientProxy","side":"CLIENT","configDir":"config","suggestedConfig":"ftlifecycle.cfg","activeContainer":"ftlifecycle","state":"PREINITIALIZATION"}
+{"seq":5,"test":"LC-07","event":"metadata","sameAsField":true,"modId":"ftlifecycle","name":"FT Lifecycle (from mcmod.info)","version":"1.2.3","description":"Lifecycle order, IMC, proxies and metadata test.","authors":["rustmc","second author"],"url":"https://example.invalid/ftlifecycle","credits":"Original test code"}
+{"seq":6,"test":"LC-07","event":"container","modId":"ftlifecycle","name":"FT Lifecycle (from mcmod.info)","version":"1.2.3","displayVersion":"1.2.3","mcversion":"present"}
+{"seq":7,"test":"LC-03","event":"proxy.preInit","impl":"ClientProxy"}
+{"seq":8,"test":"LC-09","event":"mod2.preInit","active":"ftlifecycle2"}
+{"seq":9,"test":"LC-03","event":"FMLInitializationEvent","state":"INITIALIZATION"}
+{"seq":10,"test":"LC-03","event":"proxy.init","impl":"ClientProxy"}
+{"seq":11,"test":"LC-09","event":"mod2.init"}
+{"seq":12,"test":"LC-04","event":"IMCEvent","messages":["ftlifecycle:ping=from-preInit","ftlifecycle:ping2=second","ftlifecycle2:from2=hello"]}
+{"seq":13,"test":"LC-04","event":"runtimeMessages","count":0}
+{"seq":14,"test":"LC-05","event":"FMLPostInitializationEvent"}
+{"seq":15,"test":"LC-06","event":"modList","ids":["mcp","FML","Forge","ftcommon","ftlifecycle","ftlifecycle2"],"isLoaded2":true,"isLoadedBogus":false}
+{"seq":16,"test":"LC-06","event":"versions","mc":"1.8.9","forge":"11.15.1.2318","mcString":"Minecraft 1.8.9"}
+{"seq":17,"test":"LC-09","event":"mod2.postInit"}
+{"seq":18,"test":"LC-05","event":"FMLLoadCompleteEvent","state":"AVAILABLE"}
+{"seq":19,"test":"LC-09","event":"mod2.loadComplete"}

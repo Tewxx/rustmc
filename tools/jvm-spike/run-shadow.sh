@@ -4,7 +4,7 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/../forgetest/env.sh"
 "$HERE/build.sh" >/dev/null
-"$FT_HERE/build.sh" ftshadow >/dev/null
+"$FT_HERE/build.sh" ftshadow ftlifecycle ftlifecycle2 >/dev/null
 SHADOW=${1:-$FT_BUILD/shadow-probe.jar}
 [ -f "$SHADOW" ] || { echo "missing generated shadow jar: $SHADOW (run tools/shadow/build.sh first)" >&2; exit 1; }
 SHADOW=$(cd "$(dirname "$SHADOW")" && pwd)/$(basename "$SHADOW")
@@ -24,11 +24,16 @@ mkdir -p "$D/shadow-tools"
 unzip -p "$SHADOW" net/minecraft/util/MathHelper.class > "$D/pristine.class"
 [ -s "$D/pristine.class" ] || { echo 'shadow MathHelper missing' >&2; exit 1; }
 for mode in control hooked; do
-  mkdir -p "$D/$mode"
+  mkdir -p "$D/$mode/mods"
+  cp "$FT_BUILD/mods/ftcommon.jar" "$FT_BUILD/mods/ftlifecycle.jar" "$FT_BUILD/mods/ftlifecycle2.jar" "$D/$mode/mods/"
   if [ "$mode" = control ]; then flag=0; arg=shadow-control; else flag=1; arg=shadow; fi
   if ! (cd "$D/$mode" && RUSTMC_SHADOW_JAR="$SHADOW" RUSTMC_SHADOW_MIXIN="$flag" \
       CARGO_TARGET_DIR="$FT_BUILD/jvm-spike/cargo-target" cargo run --quiet --manifest-path "$FT_REPO/Cargo.toml" --release -p jvm-spike -- "$JVM" "$CP" bridgeprobe/ShadowRun 100000 "$arg") > "$D/$mode.log" 2>&1; then
     tail -60 "$D/$mode.log" >&2; exit 1
+  fi
+  cmp "$FT_REPO/tests/forge/oracle/lifecycle-client-subset.jsonl" "$D/$mode/ft-trace/lifecycle.jsonl" || { echo "lifecycle trace differs from Forge oracle" >&2; exit 1; }
+  if grep -Eq 'SEVERE:|unsupported headless client call|Unable to read a class file correctly|An unexpected exception' "$D/$mode.log"; then
+    echo "FML lifecycle reported an error; see $D/$mode.log" >&2; exit 1
   fi
   cmp "$D/pristine.class" "$D/$mode/selected-MathHelper.class"
   "$FT_JAVA" -cp "$D/shadow-tools:$ASM" MethodDiff "$D/pristine.class" "$D/$mode/final-MathHelper.class" > "$D/$mode.diff"
@@ -40,4 +45,4 @@ for mode in control hooked; do
   fi
   grep 'shadow_mode=' "$D/$mode.log"
 done
-echo 'selected bytes match the shadow; final chain diff finds target and injection; control is unchanged'
+echo 'lifecycle traces match the Forge oracle subset; selected bytes match the shadow; final chain diff finds target and injection; control is unchanged'

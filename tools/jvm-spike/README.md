@@ -25,6 +25,12 @@ tools/jvm-spike/run-shadow.sh tests/forge/build/shadow-probe.jar
 The probe embeds JDK 8, runs the real FML client tweaker and LaunchClassLoader,
 and loads the project's `ftshadow` coremod and Mixin. A headless entrypoint replaces
 the Minecraft game entrypoint; no game window, third-party mod or account is used.
+It boots vanilla registries and runs the real FML lifecycle with a small headless
+client delegate and the project's `ftcommon`, `ftlifecycle`, and `ftlifecycle2`
+test mods. Both modes must match the 19-line Forge client oracle fixture in
+`tests/forge/oracle/lifecycle-client-subset.jsonl`; its mod list is narrowed to
+the three test mods and Forge built-ins present in this run. Unsupported client
+delegate calls and event-dispatch errors fail the probe.
 The selector inserts the local shadow `MathHelper` bytes after Forge's patcher and
 before the Mixin transformers. A final transformer saves the bytes passed to class
 definition. The script compares the selected bytes to the shadow jar, then compares
@@ -45,8 +51,9 @@ is an experiment, not a production loader or whole-graph solution. Substituting
 all shadow classes at this position would discard any earlier transformations,
 and classes loaded before the selector is registered would bypass it. Forge reports
 a signature warning in this environment, and Mixin reports
-initialization during a tweak constructor; both remain to be resolved. The probe
-does not start full FML mod lifecycle, instantiate the Minecraft client, nativise
-world subsystems, synchronize game fields, or demonstrate arbitrary-mod behavior.
+initialization during a tweak constructor; both remain to be resolved. The probe does not instantiate the Minecraft client, nativise world subsystems,
+synchronize game fields, or demonstrate arbitrary-mod behavior. The lifecycle
+uses vanilla registry bootstrap and a stubbed client delegate, so it does not
+prove Rust ownership of game state or support for mods that need client services.
 A single local warm run measured about 320 ns/control and 347 ns/hooked dispatch;
 these are noisy microbenchmarks and do not establish game or cross-platform cost.
