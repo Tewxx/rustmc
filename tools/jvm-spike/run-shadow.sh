@@ -27,7 +27,7 @@ for mode in control hooked; do
   mkdir -p "$D/$mode"
   if [ "$mode" = control ]; then flag=0; arg=shadow-control; else flag=1; arg=shadow; fi
   if ! (cd "$D/$mode" && RUSTMC_SHADOW_JAR="$SHADOW" RUSTMC_SHADOW_MIXIN="$flag" \
-      cargo run --quiet --manifest-path "$FT_REPO/Cargo.toml" --release -p jvm-spike -- "$JVM" "$CP" bridgeprobe/ShadowRun 100000 "$arg") > "$D/$mode.log" 2>&1; then
+      CARGO_TARGET_DIR="$FT_BUILD/jvm-spike/cargo-target" cargo run --quiet --manifest-path "$FT_REPO/Cargo.toml" --release -p jvm-spike -- "$JVM" "$CP" bridgeprobe/ShadowRun 100000 "$arg") > "$D/$mode.log" 2>&1; then
     tail -60 "$D/$mode.log" >&2; exit 1
   fi
   cmp "$D/pristine.class" "$D/$mode/selected-MathHelper.class"
