@@ -30,7 +30,8 @@ client delegate and the project's `ftcommon`, `ftbus`, `ftlifecycle`, and `ftlif
 test mods. Both modes must match the 19-line Forge client oracle fixture in
 `tests/forge/oracle/lifecycle-client-subset.jsonl`; its mod list is narrowed to
 the four test mods and Forge built-ins present in this run. The 35 event-bus
-records also match `tests/forge/oracle/bus-client.jsonl`, covering priorities,
+records match either `tests/forge/oracle/bus-client.jsonl` or the dedicated-server
+instance-first trace `tests/forge/oracle/bus-server-instance.jsonl`, covering priorities,
 cancellation, results, registration, inheritance, and error cases. Unsupported client
 delegate calls and event-dispatch errors fail the probe.
 The first two runs insert only the local shadow `MathHelper` bytes after Forge's
@@ -68,9 +69,11 @@ prove Rust ownership of game state or support for mods that need client services
 A single local warm run measured about 320 ns/control and 347 ns/hooked dispatch;
 these are noisy microbenchmarks and do not establish game or cross-platform cost.
 
-The event-bus oracle comparison is strict. A repeated graph run once emitted an
-extra EV-05 instance-handler record: Forge dispatched the instance handler before
-a same-priority static handler that then threw `IncompatibleClassChangeError`.
-Another ordering throws first. The probe preserves its raw logs and trace in the
-printed directory; repeated real-client oracle sessions are needed to determine
-whether both orders are valid before changing the comparison.
+The event-bus comparison accepts exactly two complete traces. Four headless real
+Forge dedicated-server runs of the original test mod with `clientSideOnly` disabled
+produced both EV-05 variants: the instance handler may run before the same-priority
+static handler throws `IncompatibleClassChangeError`. Forge enumerates handlers
+using `Class.getMethods()`, whose order is unspecified. Apart from that one record
+and subsequent sequence numbers, the server variant matches the captured client
+trace exactly. This establishes the behavior on the server side; it does not replace
+repeated client oracle sessions. Raw logs and traces stay in the probe directory.

@@ -36,7 +36,10 @@ for mode in control hooked graph-control graph-hooked; do
       CARGO_TARGET_DIR="$FT_BUILD/jvm-spike/cargo-target" cargo run --quiet --manifest-path "$FT_REPO/Cargo.toml" --release -p jvm-spike -- "$JVM" "$CP" bridgeprobe/ShadowRun 100000 "$arg") > "$D/$mode.log" 2>&1; then
     tail -60 "$D/$mode.log" >&2; exit 1
   fi
-  cmp "$FT_REPO/tests/forge/oracle/bus-client.jsonl" "$D/$mode/ft-trace/bus.jsonl" || { echo "event bus trace differs from Forge oracle" >&2; exit 1; }
+  if ! cmp -s "$FT_REPO/tests/forge/oracle/bus-client.jsonl" "$D/$mode/ft-trace/bus.jsonl" &&
+     ! cmp -s "$FT_REPO/tests/forge/oracle/bus-server-instance.jsonl" "$D/$mode/ft-trace/bus.jsonl"; then
+    echo "event bus trace differs from both Forge oracles: $D/$mode/ft-trace/bus.jsonl" >&2; exit 1
+  fi
   cmp "$FT_REPO/tests/forge/oracle/lifecycle-client-subset.jsonl" "$D/$mode/ft-trace/lifecycle.jsonl" || { echo "lifecycle trace differs from Forge oracle" >&2; exit 1; }
   if grep -Eq 'SEVERE:|unsupported headless client call|shadow missing available class|Unable to read a class file correctly|An unexpected exception' "$D/$mode.log"; then
     echo "FML lifecycle reported an error; see $D/$mode.log" >&2; exit 1
