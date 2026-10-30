@@ -29,3 +29,7 @@ creating another view creates a distinct object. The probe exercises both
 ways through a test mod and checks identity and replacement. This is not yet
 connected to a Rust player or input loop; it does not mirror player, world,
 settings or arbitrary fields, and the caller must choose synchronization points.
+
+## API stubs
+
+Rust-dispatched stubs of the whole mod API plus real vanilla GUI/event classes, and the loader that runs `@Mod` jars on them: see `docs/FORGE_STUBS.md` (build, run, implement a method, discover what to implement, test against a real mod).

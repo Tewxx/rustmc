@@ -384,9 +384,11 @@ impl App {
         }
         #[cfg(feature = "wasm-mods")]
         if hud_visible && !self.ui.settings.hide_gui { self.mod_hud(sr, mx, my); }
+        self.forge_frame_begin(self.tick_accum);
         if let Some(s) = &mut self.screen {
             s.draw(&mut self.ui, &mut self.batch, sr.width, sr.height, mx, my);
         }
+        self.forge_frame_end(mx, my, self.tick_accum);
         if self.screen.as_ref().is_some_and(|s| s.is_chat()) {
             if let Some(hover) = self.chat_piece_under_mouse().and_then(|p| p.hover) {
                 self.chat_hover(&hover, mx, my, sr);

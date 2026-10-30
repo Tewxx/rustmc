@@ -20,6 +20,7 @@ impl App {
         self.grab(false);
         self.keys.clear();
         self.buttons.clear();
+        self.forge_open_native();
     }
 
     /// `EntityPlayerSP.respawnPlayer`: request respawn from the server.
@@ -40,6 +41,8 @@ impl App {
         } else if self.in_game {
             self.grab(true);
         }
+        // The parent's Java twin was dropped when the child opened; rebuild it so mods re-add their buttons.
+        self.forge_open_native();
     }
 
     /// `displayGuiScreen(null)`: drops the screen and its parents; leaving `GuiChat` resets
@@ -53,6 +56,7 @@ impl App {
         if self.in_game {
             self.grab(true);
         }
+        self.forge_open_native();
     }
 
     /// `GuiChat.getChatComponent(Mouse.getX(), Mouse.getY())`

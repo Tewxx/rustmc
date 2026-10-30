@@ -3,6 +3,12 @@
 use crate::*;
 
 pub(crate) struct App {
+    /// The embedded JVM is running Forge mods (see `forge_ui.rs`).
+    pub(crate) forge_on: bool,
+    /// A Java-opened screen is the client's current screen.
+    pub(crate) forge_mod_screen: bool,
+    /// The Java `Minecraft.session` last applied to the client: (name, uuid, token).
+    pub(crate) forge_session: Option<(String, String, String)>,
     #[cfg(feature = "wasm-mods")]
     pub(crate) mods: Option<mc_mods::worker::ModWorker>,
     pub(crate) entity: player::Player,
@@ -165,6 +171,9 @@ impl App {
         entity.prev_yaw = -45.;
         entity.prev_pitch = 20.;
         Self {
+            forge_on: false,
+            forge_mod_screen: false,
+            forge_session: None,
             #[cfg(feature = "wasm-mods")]
             mods: None,
             entity,

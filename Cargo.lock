@@ -1554,6 +1554,7 @@ dependencies = [
  "mc-core",
  "mc-data",
  "mc-entity",
+ "mc-forge",
  "mc-gen",
  "mc-gui",
  "mc-logic",
@@ -1602,6 +1603,7 @@ name = "mc-forge"
 version = "0.1.0"
 dependencies = [
  "jni 0.21.1",
+ "mc-core",
 ]
 
 [[package]]

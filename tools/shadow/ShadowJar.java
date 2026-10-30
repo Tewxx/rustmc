@@ -39,7 +39,7 @@ public class ShadowJar {
         }
         for (Map.Entry<String, byte[]> e : forgeClasses.entrySet()) {
             String n = e.getKey();
-            if (!n.startsWith("net/minecraftforge/") && !n.startsWith("paulscode") && !n.startsWith("ibxm")) classes.putIfAbsent(n, e.getValue());
+            if ((Boolean.getBoolean("shadow.forge") || !n.startsWith("net/minecraftforge/")) && !n.startsWith("paulscode") && !n.startsWith("ibxm")) classes.putIfAbsent(n, e.getValue());
         }
         for (byte[] bytes : classes.values()) ForgeSpec.indexNotch(ForgeSpec.parse(bytes));
         for (byte[] bytes : forgeClasses.values()) ForgeSpec.indexNotch(ForgeSpec.parse(bytes));

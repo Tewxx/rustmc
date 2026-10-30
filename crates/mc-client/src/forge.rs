@@ -62,6 +62,36 @@ pub fn validate_runtime(data: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Starts the embedded JVM when `RUSTMC_FORGE_STUBS` names the jar built by `tools/shadow/stubs.sh`, then runs
+/// every `@Mod` in `mods-forge/*.jar`. `RUSTMC_FORGE_CP` adds Minecraft's libraries (guava, log4j, ...) to the class
+/// path. Returns whether mods are running; any failure leaves the client running without Java mods.
+/// Mods see the player's name and UUID, never the access token.
+pub fn start_runtime(font: &mc_gui::font::FontRenderer, name: &str, uuid: Option<&str>) -> bool {
+    let Some(stubs) = std::env::var_os("RUSTMC_FORGE_STUBS") else { return false };
+    let Some(libjvm) = mc_forge::runtime::find_libjvm() else {
+        eprintln!("forge runtime disabled: set JAVA_HOME to a JDK 8 or RUSTMC_JVM to its libjvm");
+        return false;
+    };
+    let jars: Vec<_> = std::fs::read_dir("mods-forge").into_iter().flatten().flatten().map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "jar")).collect();
+    let mut classpath = vec![std::path::PathBuf::from(stubs)];
+    classpath.extend(jars.iter().cloned());
+    classpath.extend(std::env::var_os("RUSTMC_FORGE_CP").iter().flat_map(std::env::split_paths));
+    if let Err(e) = mc_forge::runtime::start(&libjvm, &classpath, &jars) {
+        eprintln!("forge runtime disabled: {e}");
+        return false;
+    }
+    let font = font.clone();
+    mc_forge::impls::set_text_width(move |s| font.width(s));
+    mc_forge::impls::set_clipboard(mc_gui::clipboard::get, mc_gui::clipboard::set);
+    mc_forge::impls::set_session(name, uuid.unwrap_or(""));
+    match mc_forge::runtime::load_mods(&jars) {
+        Ok(ids) => eprintln!("forge runtime started; mods: {ids:?}"),
+        Err(e) => eprintln!("forge mods failed to load: {e}"),
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

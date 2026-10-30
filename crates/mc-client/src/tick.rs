@@ -40,6 +40,9 @@ impl App {
             if let Some(sc) = &mut self.screen {
                 sc.tick();
             }
+            // Minecraft.runTick fires ClientTickEvent and the screen's updateScreen in menus too (a mod's login screen
+            // polls its sign-in progress there).
+            self.forge_tick();
             // Minecraft.runTick: the music ticker runs in menus and in game.
             if let Some(s) = &mut self.sound {
                 let kind = if !self.in_game {

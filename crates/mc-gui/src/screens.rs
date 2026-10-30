@@ -221,6 +221,11 @@ pub trait Screen {
     fn entity_preview(&self) -> Option<(i32, i32, i32)> {
         None
     }
+    /// The vanilla Java screen this one stands for (`"main_menu"`, `"multiplayer"`, `"ingame_menu"`), so Forge mods
+    /// can add buttons to it.
+    fn java_screen(&self) -> Option<&'static str> {
+        None
+    }
     /// `doesGuiPauseGame`
     fn pauses(&self) -> bool {
         true
@@ -285,6 +290,9 @@ pub struct MainMenu {
 }
 
 impl Screen for MainMenu {
+    fn java_screen(&self) -> Option<&'static str> {
+        Some("main_menu")
+    }
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let t = |k: &str| ui.lang.get(k);
         let j = h / 4 + 48;
@@ -465,6 +473,9 @@ pub struct PauseMenu {
 }
 
 impl Screen for PauseMenu {
+    fn java_screen(&self) -> Option<&'static str> {
+        Some("ingame_menu")
+    }
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let t = |k: &str| ui.lang.get(k);
         let i = -16;

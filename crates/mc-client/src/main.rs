@@ -14,6 +14,7 @@ mod auth;
 mod chat;
 mod entities;
 mod forge;
+mod forge_ui;
 mod music;
 mod net;
 mod pack;
@@ -212,5 +213,6 @@ fn main() {
             app.wait_connect();
         }
     }
+    app.forge_on = forge::start_runtime(&app.ui.font, &app.name, app.session.as_ref().map(|s| s.uuid.as_str()));
     event_loop.run_app(&mut app).expect("run app");
 }

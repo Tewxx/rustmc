@@ -10,6 +10,8 @@ Static analysis only. No mod code was executed, loaded in a JVM, or contacted ov
 The scanner parses class files itself (constant pool, annotations) and shells out to `javap -c -p` (JDK 8, disassembler
 only) for call-site counts. Raw JSON for the corpus lives in `.mc-tools/scan/` (gitignored).
 
+See `docs/FORGE_STUBS.md` for the generated stub layer and how to implement and discover methods.
+
 ## Architecture recap
 
 rustmc embeds HotSpot (Java 8) via JNI and loads Forge 1.8.9 mods against stand-in `net.minecraft.*`,

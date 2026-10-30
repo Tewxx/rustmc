@@ -117,6 +117,7 @@ impl ApplicationHandler for App {
                 if let Some(scr) = &mut self.screen {
                     scr.init(&self.ui, sr.width, sr.height);
                 }
+                if self.forge_on && !self.forge_mod_screen { self.forge_open_native(); }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_px = (position.x, position.y);
@@ -135,6 +136,9 @@ impl ApplicationHandler for App {
                                     return;
                                 }
                             }
+                        }
+                        if button == MouseButton::Left && self.forge_click(mx, my) {
+                            return;
                         }
                         if let Some(s) = &mut self.screen {
                             let a = match button {
@@ -193,14 +197,16 @@ impl ApplicationHandler for App {
                 if event.state == ElementState::Released {
                     self.keys.remove(&code);
                     self.ui.shift_down = self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
-                    self.ui.ctrl_down = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+                    self.ui.ctrl_down = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight)
+                        || (cfg!(target_os = "macos") && (self.keys.contains(&KeyCode::SuperLeft) || self.keys.contains(&KeyCode::SuperRight)));
                     return;
                 }
                 if matches!(code, KeyCode::ShiftLeft | KeyCode::ShiftRight) {
                     self.keys.insert(code);
                     self.ui.shift_down = true;
                 }
-                if matches!(code, KeyCode::ControlLeft | KeyCode::ControlRight) {
+                // Command acts as Control on macOS, as Minecraft treats it.
+                if matches!(code, KeyCode::ControlLeft | KeyCode::ControlRight) || (cfg!(target_os = "macos") && matches!(code, KeyCode::SuperLeft | KeyCode::SuperRight)) {
                     self.keys.insert(code);
                     self.ui.ctrl_down = true;
                 }

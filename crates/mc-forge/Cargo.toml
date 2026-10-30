@@ -4,4 +4,5 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-jni = "0.21.1"
+jni = { version = "0.21.1", features = ["invocation"] }
+mc-core = { path = "../mc-core" }

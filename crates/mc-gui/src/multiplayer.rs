@@ -729,6 +729,9 @@ fn draw_scan(ui: &mut Ui, b: &mut GuiBatch, screen_w: i32, y: i32, slot_h: i32) 
 }
 
 impl Screen for MultiplayerScreen {
+    fn java_screen(&self) -> Option<&'static str> {
+        Some("multiplayer")
+    }
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         (self.w, self.h) = (w, h);
         self.process_mailbox();

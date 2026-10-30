@@ -1,4 +1,10 @@
 //! JNI dispatch for the supported Forge events. The caller owns JVM startup and tick timing.
+pub use jni;
+pub mod game;
+pub mod impls;
+pub mod runtime;
+pub mod stubs;
+
 use jni::{errors::Result, objects::{GlobalRef, JClass, JStaticMethodID, JValue}, signature::{Primitive, ReturnType}, JNIEnv};
 
 pub struct ClientTickBridge {
