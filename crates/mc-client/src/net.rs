@@ -669,6 +669,7 @@ mod tests {
             "place_blocked_by_entity",
             "place_through_item",
             "creative_actions",
+            "boat_input",
             "vehicle_using_item",
             "vehicle_input",
             "server_replies",
@@ -791,6 +792,10 @@ mod tests {
                     }
                     Some("join") => {
                         app.handle_packet(PlayClientbound::JoinGame(JoinGame { entity_id: 1, game_mode: 0, hardcore: false, dimension: 0, difficulty: 2, max_players: 20, level_type: "default".into(), reduced_debug_info: false }), &mut Vec::new());
+                    }
+                    Some("mountboat") => {
+                        app.remote.map.insert(77, crate::entities::Remote::new(77, crate::entities::Kind::Object(1), 16, 2048, 16, ((num(&tk["a"][0]) * 256 / 360) as u8) as i8, 0));
+                        app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());
                     }
                     Some("mount") => {
                         app.remote.map.insert(77, crate::entities::Remote::new(77, crate::entities::Kind::Object(10), 16, 2048, 16, 0, 0));

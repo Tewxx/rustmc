@@ -314,6 +314,9 @@ final class DumpPackets {
             } else if ("mount".equals(t.op)) {
                 net.minecraft.entity.item.EntityMinecartEmpty cart = new net.minecraft.entity.item.EntityMinecartEmpty(world, 0.5, 64.0, 0.5);
                 cart.setEntityId(77); world.ents.add(cart); p.mountEntity(cart);
+            } else if ("mountboat".equals(t.op)) {
+                net.minecraft.entity.item.EntityBoat boat = new net.minecraft.entity.item.EntityBoat(world, 0.5, 64.0, 0.5);
+                boat.setEntityId(77); boat.rotationYaw = t.arg[0]; boat.prevRotationYaw = t.arg[0]; world.ents.add(boat); p.mountEntity(boat);
             } else if ("dismount".equals(t.op)) {
                 p.mountEntity(null);
             } else if ("openwindow".equals(t.op)) {
@@ -445,6 +448,10 @@ final class DumpPackets {
         s = new Sc("join_replies").floor();
         s.language = "fr_FR";
         s.op("join").op("settings", 5, 1, 0, 21, 1).op("settings", 12, 0, 1, 127, 0).idle(2);
+        l.add(s);
+
+        s = new Sc("boat_input").floor();
+        s.idle(2).op("mountboat", 90).keys(3, F).keys(2, L | F | J).keys(2, S | R).look(33.5f, 8f).idle(2).op("dismount").idle(3);
         l.add(s);
 
         s = new Sc("vehicle_using_item").floor().item(0, "iron_sword", 1);
