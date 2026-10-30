@@ -25,6 +25,7 @@ pub(crate) struct App {
     /// `NetHandlerPlayClient.avRandomizer`, separate from `world.rand` like vanilla.
     pub(crate) av_rand: mc_core::random::JavaRandom,
     /// Integrated server tick state (singleplayer).
+    #[cfg(feature = "singleplayer")]
     pub(crate) server: server::Server,
     /// Q presses since the last tick (with Ctrl held: whole stack).
     pub(crate) drop_presses: Vec<bool>,
@@ -166,6 +167,7 @@ impl App {
             rand: mc_core::random::JavaRandom::new(0x5DEECE66D),
             particles: particles::Particles::default(),
             av_rand: mc_core::random::JavaRandom::new(0x2545F4914F6CDD1D),
+            #[cfg(feature = "singleplayer")]
             server: server::Server::default(),
             drop_presses: Vec::new(),
             info: level::WorldInfo::new(0, BlockPos::new(spawn.x.floor() as i32, spawn.y.floor() as i32, spawn.z.floor() as i32)),
@@ -246,6 +248,11 @@ impl App {
             base_packs: Vec::new(),
         }
     }
+    /// Running the world locally (integrated server). Always false without the `singleplayer` feature.
+    pub(crate) fn is_local(&self) -> bool {
+        cfg!(feature = "singleplayer") && self.net.is_none()
+    }
+
     /// `KeyBinding.isKeyDown`: keyboard codes against held keys, negative codes against mouse buttons.
     pub(crate) fn bound_down(&self, name: &str) -> bool {
         let code = self.ui.settings.key(name);

@@ -11,5 +11,6 @@ else
   [ -x target/release/rustmc ] || cargo build --release --offline --bin rustmc || exit 1
   BIN=target/release/rustmc
 fi
-if [ -n "$JAR" ]; then exec "$BIN" --play --jar "$JAR" "$@"; fi
-exec "$BIN" --play "$@"
+# Opens the title screen (singleplayer is a build feature, off by default).
+if [ -n "$JAR" ]; then exec "$BIN" --jar "$JAR" "$@"; fi
+exec "$BIN" "$@"

@@ -122,11 +122,16 @@ impl App {
         if !boxes.is_empty() {
             return false;
         }
+        // PlayerControllerMP.onPlayerRightClick: the client predicts the placement itself; only the
+        // integrated server runs the full block logic.
+        #[cfg(feature = "singleplayer")]
         let placed = if self.net.is_none() {
             self.with_level(|lv| mc_logic::Level::set_state(lv, p, state, mc_logic::flags::DEFAULT))
         } else {
             self.world.set_block(p, block.id, meta)
         };
+        #[cfg(not(feature = "singleplayer"))]
+        let placed = self.world.set_block(p, block.id, meta);
         if placed {
             self.tiles.placed(p, state);
             if !self.entity.creative {
@@ -291,7 +296,7 @@ impl App {
             }
             self.item_in_use_count -= 1;
             // Only the integrated server finishes on its own; a remote server sends status 9.
-            if self.item_in_use_count == 0 && self.net.is_none() {
+            if self.item_in_use_count == 0 && self.is_local() {
                 self.on_item_use_finish();
             }
         } else {
@@ -329,7 +334,7 @@ impl App {
         let creative = self.entity.creative;
         let dec = |s: mc_gui::ItemStack| mc_gui::ItemStack { count: s.count.saturating_sub(1), ..s };
         let result = if item.is_some_and(|i| i.is_a("ItemFood")) {
-            if self.net.is_none() {
+            if self.is_local() {
                 // The integrated server's half: food stats and the burp everyone hears.
                 let heal = item.map_or(0., |i| i.num("healAmount")) as i32;
                 self.player.food = (self.player.food + heal).min(20);
@@ -347,7 +352,7 @@ impl App {
                 } else {
                     if let Some(b) = self.catalogue.index_of(374, 0) {
                         let bottle = self.catalogue.stack(b, 1);
-                        commands::add_to_inventory(&mut self.ui, &self.catalogue, bottle, 1, false);
+                        self.add_to_inventory(bottle, 1);
                     }
                     Some(left)
                 }

@@ -133,6 +133,7 @@ Commits cbf3425 … 5bc480a. New since the table above:
 
 Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_SCORE=1`, `MOCK_PARTICLES=1`, `MOCK_WATER=1`, `MOCK_RPACK=<url>` + `MOCK_RPACK_HASH=<sha1>`)
 then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
+In-game screenshot screens (`hud`, `debug`, `chat`, `pause`, ...) and `--bench` run through this same path in the default build.
 
 ## Session log — particles (Oct 2026)
 
@@ -250,7 +251,8 @@ while the old window is open. The active window does not automatically receive c
 The user explicitly rejected further foundation-only progress while the app remained a spectator
 viewer. The current checkpoint adds a real local player, visible hand/body, a creative inventory,
 world editing and commands. **Keep playability first.** Read `PLAYING.md` for controls and limits;
-double-click `Play-RustMC.cmd` or launch `rustmc --play` to enter directly.
+double-click `Play-RustMC.cmd` to open the title screen. (Superseded: singleplayer is now behind the
+off-by-default `singleplayer` cargo feature; the default build is multiplayer-only. See Testing below.)
 
 Tests exercise ground/wall/ceiling collisions, jump, slab steps, sneak edges, flight, selection,
 menu-to-hotbar operations, command mutation/error atomicity, break/place/pick and preventing placement
@@ -266,14 +268,17 @@ this full parity or claim the new controller has Java golden validation. Next wo
 player traces against Java and extend persistent gameplay and real block/item interaction before
 returning to unrelated foundations.
 
-Run: `cargo run --release --bin rustmc -- --radius 8`
-Screenshot any screen headless: `rustmc --screenshot out.png --screen title|pause|options|video|controls|hud|debug|chat`
+Run: `cargo run --release --bin rustmc` (title screen; Singleplayer greyed out). Add `--features singleplayer` to
+build with the integrated server, worldgen and `--play` / `--world` / `--seed` / `--radius` / `--pos`.
+Screenshot a menu screen headless (no world needed): `rustmc --screenshot out.png --screen title|options|video|controls`.
+Screenshot an in-game screen: start the mock server (`cargo run --release -p mc-protocol --example mock_server -- 25599`) and
+add `--connect 127.0.0.1:25599`, e.g. `rustmc --connect 127.0.0.1:25599 --screenshot out.png --screen hud|debug|chat|pause|net`.
 Tests: `cargo test --release --workspace --offline` (77 tests). Golden/real-jar tests skip when their
 inputs are missing; the local verification used all inputs. New dumps: `models.json` (7806 mappings),
 `colors.json` (7806 states with mixed-biome neighborhoods), `biomes.json` (61 profiles, 200 samples each).
 `geometry.json` replays 37,506 scenes covering every state, 487,578 rays and 112,518 masked collision
 list queries, including 300 moving-piston tile-entity scenes.
-Benchmark: `rustmc --radius 8 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
+Benchmark (needs the mock server, see BENCH.md): `rustmc --connect 127.0.0.1:25599 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
 Golden data: `tools/extract/extract.sh` (needs a JDK 8 and MCP's
 compiled `bin/minecraft`; writes `golden/`, which is gitignored because it's derived from Mojang code).
 

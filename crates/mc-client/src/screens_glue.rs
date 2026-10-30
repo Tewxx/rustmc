@@ -174,12 +174,8 @@ impl App {
                     self.tab_complete = Some((prefix.clone(), Vec::new()));
                     self.send(mc_protocol::packets::PlayServerbound::TabCompleteC(mc_protocol::packets::TabCompleteC { text: prefix, looking_at: self.target.map(|t| t.pos) }));
                 } else {
-                    let list = commands::complete(&prefix, &self.ui.lang, self.target.map(|t| t.pos));
-                    if let Some(screen) = &mut self.screen {
-                        if let Some(line) = screen.autocomplete(&mut self.ui, list) {
-                            self.hud.add_chat(line);
-                        }
-                    }
+                    #[cfg(feature = "singleplayer")]
+                    self.local_tab_complete(&prefix);
                 }
             }
             Action::PrintChat(line) => self.hud.add_chat(line),

@@ -264,6 +264,10 @@ pub(crate) fn click_buttons(buttons: &mut [Button], ui: &mut Ui, mx: i32, my: i3
 
 // ---------------------------------------------------------------- title screen
 
+/// Whether the host client can start a local world. When false the title screen shows the
+/// Singleplayer button disabled, like vanilla greys out unavailable buttons.
+pub static SINGLEPLAYER_AVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Default)]
 pub struct MainMenu {
     buttons: Vec<Button>,
@@ -273,8 +277,12 @@ impl Screen for MainMenu {
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let t = |k: &str| ui.lang.get(k);
         let j = h / 4 + 48;
+        let mut single = Button::new(1, w / 2 - 100, j, t("menu.singleplayer"));
+        if !SINGLEPLAYER_AVAILABLE.load(std::sync::atomic::Ordering::Relaxed) {
+            single = single.disabled();
+        }
         self.buttons = vec![
-            Button::new(1, w / 2 - 100, j, t("menu.singleplayer")),
+            single,
             Button::new(2, w / 2 - 100, j + 24, t("menu.multiplayer")),
             Button::new(14, w / 2 - 100, j + 48, t("menu.online")).disabled(),
             Button::sized(0, w / 2 - 100, j + 72 + 12, 98, 20, t("menu.options")),

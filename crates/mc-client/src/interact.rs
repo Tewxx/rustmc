@@ -120,6 +120,7 @@ impl App {
     }
 
     /// Runs world logic through the integrated server and applies what it produced.
+    #[cfg(feature = "singleplayer")]
     pub(crate) fn with_level<R>(&mut self, f: impl FnOnce(&mut server::Lv) -> R) -> R {
         let mut fx = server::Effects::default();
         let r = f(&mut server::Lv {
@@ -155,14 +156,19 @@ impl App {
             return;
         }
         let state = self.world.state_at(pos.x, pos.y, pos.z);
+        // PlayerControllerMP.onPlayerDestroyBlock: the client removes the block itself in
+        // multiplayer; only the integrated server runs the full block logic.
+        #[cfg(feature = "singleplayer")]
         let removed = if self.net.is_none() {
             self.with_level(|lv| mc_logic::Level::set_state(lv, pos, mc_data::StateId::AIR, mc_logic::flags::DEFAULT))
         } else {
             self.world.set_block(pos, 0, 0)
         };
+        #[cfg(not(feature = "singleplayer"))]
+        let removed = self.world.set_block(pos, 0, 0);
         if removed {
             self.block_break_sound(state, pos);
-            if self.net.is_none() && !self.entity.creative && tools::can_harvest(self.held_registry_item(), state.block()) {
+            if self.is_local() && !self.entity.creative && tools::can_harvest(self.held_registry_item(), state.block()) {
                 for (id, meta, count) in tools::drops(state, &mut self.rand) {
                     if let Some(i) = self.catalogue.index_of(id, meta) {
                         let id = self.alloc_entity_id();
@@ -318,7 +324,7 @@ impl App {
 
     /// `EntityPlayer.dropItem(stack, false, true)`
     pub(crate) fn throw_stack(&mut self, stack: mc_gui::ItemStack) {
-        if self.net.is_some() {
+        if !self.is_local() {
             // The server spawns the item: creative throws use sendPacketDropItem (C10 slot -1);
             // survival throws already went out as window clicks.
             if self.entity.creative {
@@ -366,7 +372,7 @@ impl App {
         }
         let reach = self.entity.bb.expand(1.0, 0.5, 1.0);
         for it in &mut items {
-            if self.net.is_none() && !it.dead && !self.entity.dead && it.pickup_delay == 0 && reach.intersects_with(&it.bb) {
+            if self.is_local() && !it.dead && !self.entity.dead && it.pickup_delay == 0 && reach.intersects_with(&it.bb) {
                 let pitch = ((rand_f64() as f32 - rand_f64() as f32) * 0.7 + 1.0) * 2.0;
                 let p = it.pos;
                 if let Some(s) = &mut self.sound {
@@ -499,7 +505,7 @@ impl App {
         self.hitting.map(|p| (p, (self.block_damage * 10.) as i32 - 1)).filter(|(_, s)| *s >= 0)
     }
 
-    /// `NetHandlerPlayServer.processChatMessage` on the integrated server.
+    /// `GuiScreen.sendChatMessage`; without a connection only the singleplayer build handles it.
     pub(crate) fn send_chat(&mut self, msg: &str) {
         if let Some(n) = &mut self.net {
             // GuiScreen.sendChatMessage: C01 carries at most 100 characters.
@@ -507,6 +513,13 @@ impl App {
             n.send(mc_protocol::packets::PlayServerbound::ChatMessage(mc_protocol::packets::ChatMessage { message: m }));
             return;
         }
+        #[cfg(feature = "singleplayer")]
+        self.local_chat(msg);
+    }
+
+    /// Singleplayer chat: the integrated server's command handler (`CommandHandler`).
+    #[cfg(feature = "singleplayer")]
+    fn local_chat(&mut self, msg: &str) {
         let msg = commands::normalize_space(msg);
         if !msg.starts_with('/') {
             let line = self.ui.lang.format("chat.type.text", &["Player", &msg]);
@@ -547,6 +560,16 @@ impl App {
         self.sync_view();
         if self.entity.dead && !was_dead {
             self.open(Box::new(screens::DeathScreen::new(false, self.net.is_some(), 0)), false);
+        }
+    }
+    /// Singleplayer tab completion from the local command table.
+    #[cfg(feature = "singleplayer")]
+    pub(crate) fn local_tab_complete(&mut self, prefix: &str) {
+        let list = commands::complete(prefix, &self.ui.lang, self.target.map(|t| t.pos));
+        if let Some(screen) = &mut self.screen {
+            if let Some(line) = screen.autocomplete(&mut self.ui, list) {
+                self.hud.add_chat(line);
+            }
         }
     }
     pub(crate) fn refresh_edits(&mut self, edits: &[BlockPos]) {
