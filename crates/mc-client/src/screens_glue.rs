@@ -240,19 +240,14 @@ impl App {
 
     pub(crate) fn remesh(&mut self, smooth: bool) {
         let _z = crate::bench::zone(crate::bench::Phase::Mesh);
-        let Some(r) = &mut self.renderer else { return };
-        let t = Instant::now();
+        if self.renderer.is_none() { return; }
         let jobs: Vec<_> = self.world.chunks.keys().flat_map(|&(cx, cz)| (0..16).map(move |sy| (cx, sy, cz))).collect();
-        let mut quads = 0;
-        for ((cx, sy, cz), m) in mesh_parallel(&self.world, &self.models, &jobs, smooth, self.ui.settings.fancy_graphics) {
-            quads += m.indices.len() / 6;
-            r.upload_section(cx, sy, cz, &m);
+        if self.force_sync_mesh || self.screenshot.is_some() {
+            let meshes = mesh_parallel(&self.world, &self.models, &jobs, smooth, self.ui.settings.fancy_graphics);
+            if let Some(r) = &mut self.renderer { for ((cx, sy, cz), m) in meshes { r.upload_section(cx, sy, cz, &m); } }
+        } else {
+            self.schedule_meshes(jobs);
         }
-        println!(
-            "meshed {} chunks ({quads} quads) in {:.1} ms",
-            self.world.chunks.len(),
-            t.elapsed().as_secs_f64() * 1e3
-        );
     }
 
     pub(crate) fn grab(&mut self, on: bool) {

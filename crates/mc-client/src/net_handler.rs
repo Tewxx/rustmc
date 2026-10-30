@@ -883,13 +883,14 @@ impl App {
     pub(crate) fn unload_chunk(&mut self, x: i32, z: i32) {
         self.tiles.unload_chunk(x, z);
         if self.world.remove(x, z).is_some() {
+            if let Some(pool) = &mut self.mesh_workers { for sy in 0..16 { pool.invalidate((x, sy, z), false); } }
             if let Some(r) = &mut self.renderer {
                 let empty = mc_render::mesh::ChunkMesh::default();
                 for sy in 0..16 {
                     r.upload_section(x, sy, z, &empty);
                 }
             }
-            for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
                 for sy in 0..16 {
                     self.world.dirty.insert((x.wrapping_add(dx), sy, z.wrapping_add(dz)));
                 }

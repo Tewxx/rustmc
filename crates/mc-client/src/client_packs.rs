@@ -70,6 +70,7 @@ impl App {
         let selected = self.selected_pack_paths();
         let stack = |s: &Self| repository::build_stack(&s.jar, &s.base_packs, &selected, server.as_deref()).map_err(|e| format!("{}: {e}", s.jar.display()));
         self.assets = stack(self)?;
+        self.mesh_workers = None;
         self.models = BlockModels::load(&self.assets);
         self.catalogue = Arc::new(inventory::Catalogue::load(&self.assets, &self.models));
         self.ui.reload(&self.assets);

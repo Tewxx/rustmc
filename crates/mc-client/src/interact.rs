@@ -594,16 +594,17 @@ impl App {
         let t1 = Instant::now();
         let n = dirty.len();
         let _ = &n;
-        let Some(r) = &mut self.renderer else {
-            return;
-        };
+        if self.renderer.is_none() { return; }
         let jobs: Vec<_> = dirty.into_iter().filter(|&(x, sy, z)| self.world.chunks.contains_key(&(x, z)) && (0..16).contains(&sy)).collect();
-        let smooth = self.ui.settings.ambient_occlusion != 0;
-        for ((x, sy, z), m) in mesh_parallel(&self.world, &self.models, &jobs, smooth, self.ui.settings.fancy_graphics) {
-            r.upload_section(x, sy, z, &m);
+        if self.force_sync_mesh || self.screenshot.is_some() {
+            let smooth = self.ui.settings.ambient_occlusion != 0;
+            let meshes = mesh_parallel(&self.world, &self.models, &jobs, smooth, self.ui.settings.fancy_graphics);
+            if let Some(r) = &mut self.renderer { for ((x, sy, z), m) in meshes { r.upload_section(x, sy, z, &m); } }
+        } else {
+            self.schedule_meshes(jobs);
         }
         if std::env::var_os("RUSTMC_TIMING").is_some() {
-            eprintln!("edit: light {:?}, mesh {n} sections {:?}", t1 - t0, t1.elapsed());
+            eprintln!("edit: light {:?}, mesh scheduling {n} sections {:?}", t1 - t0, t1.elapsed());
         }
     }
     pub(crate) fn eye(&self, pt: f32) -> Vec3 {

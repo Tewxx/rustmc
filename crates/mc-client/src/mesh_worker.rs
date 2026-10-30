@@ -1,0 +1,208 @@
+//! Bounded asynchronous section meshing. The main thread snapshots and owns the world;
+//! workers only read immutable snapshots and never touch the GPU.
+use crate::*;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{mpsc, Mutex};
+
+pub(crate) type Key = (i32, i32, i32);
+struct Job { key: Key, revision: u64, world: World, smooth: bool, fancy: bool }
+struct Done { key: Key, revision: u64, mesh: Option<mesh::ChunkMesh> }
+
+pub(crate) struct MeshWorkers {
+    tx: mpsc::SyncSender<Job>,
+    rx: mpsc::Receiver<Done>,
+    revisions: HashMap<Key, u64>,
+    pending: HashMap<Key, u64>,
+    order: VecDeque<Key>,
+    next_revision: u64,
+    in_flight: usize,
+    capacity: usize,
+}
+
+impl MeshWorkers {
+    pub(crate) fn new(models: &BlockModels) -> Self {
+        let count = std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, 8);
+        let capacity = count * 2;
+        let (tx, rx) = mpsc::sync_channel::<Job>(capacity);
+        let rx = Arc::new(Mutex::new(rx));
+        let (done_tx, done_rx) = mpsc::channel();
+        let models = Arc::new(models.mesh_snapshot());
+        for i in 0..count {
+            let (rx, tx, models) = (rx.clone(), done_tx.clone(), models.clone());
+            std::thread::Builder::new().name(format!("section-mesh-{i}")).spawn(move || {
+                loop {
+                    let job = match rx.lock().unwrap().recv() { Ok(job) => job, Err(_) => break };
+                    let (x, sy, z) = job.key;
+                    let mut geometry = BlockGeometry::new();
+                    let mesh = std::panic::catch_unwind(std::panic::AssertUnwindSafe(||
+                        mesh::build_section(&job.world, &models, x, sy, z, job.smooth, job.fancy, &mut geometry))).ok();
+                    if tx.send(Done { key: job.key, revision: job.revision, mesh }).is_err() { break; }
+                }
+            }).expect("spawn mesh worker");
+        }
+        Self { tx, rx: done_rx, revisions: HashMap::new(), pending: HashMap::new(), order: VecDeque::new(), next_revision: 0, in_flight: 0, capacity }
+    }
+
+    pub(crate) fn invalidate(&mut self, key: Key, schedule: bool) {
+        self.next_revision = self.next_revision.wrapping_add(1);
+        let rev = self.next_revision;
+        if schedule {
+            self.revisions.insert(key, rev);
+            if self.pending.insert(key, rev).is_none() { self.order.push_back(key); }
+        } else {
+            self.revisions.remove(&key);
+            self.pending.remove(&key);
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.next_revision = self.next_revision.wrapping_add(1);
+        self.revisions.clear(); self.pending.clear(); self.order.clear();
+    }
+
+    pub(crate) fn poll(&mut self, world: &World, smooth: bool, fancy: bool) -> Vec<(Key, mesh::ChunkMesh)> {
+        let mut ready = Vec::new();
+        while let Ok(done) = self.rx.try_recv() {
+            self.in_flight -= 1;
+            if self.revisions.get(&done.key) == Some(&done.revision) && world.is_chunk_loaded(done.key.0, done.key.2) {
+                if let Some(mesh) = done.mesh { ready.push((done.key, mesh)); }
+                else { eprintln!("mesh worker failed for {:?}", done.key); }
+            }
+        }
+        let mut dispatched = 0;
+        while self.in_flight < self.capacity && dispatched < 4 {
+            let Some(key) = self.order.pop_front() else { break };
+            let Some(revision) = self.pending.remove(&key) else { continue };
+            if !world.is_chunk_loaded(key.0, key.2) { continue; }
+            let job = Job { key, revision, world: world.mesh_snapshot(key.0, key.1, key.2), smooth, fancy };
+            match self.tx.try_send(job) {
+                Ok(()) => { self.in_flight += 1; dispatched += 1; },
+                Err(mpsc::TrySendError::Full(_)) => { self.pending.insert(key, revision); self.order.push_front(key); break; }
+                Err(mpsc::TrySendError::Disconnected(_)) => { eprintln!("mesh workers disconnected"); break; }
+            }
+        }
+        ready
+    }
+}
+
+impl App {
+    pub(crate) fn schedule_meshes(&mut self, keys: Vec<Key>) {
+        if self.renderer.is_none() { return; }
+        let cx = (self.camera.pos.x.floor() as i32) >> 4;
+        let cz = (self.camera.pos.z.floor() as i32) >> 4;
+        let (mut nonempty, empty): (Vec<_>, Vec<_>) = keys.into_iter().partition(|&(x, sy, z)|
+            self.world.chunks.get(&(x, z)).and_then(|c| c.sections[sy as usize].as_ref()).is_some());
+        if let Some(pool) = &mut self.mesh_workers { for &key in &empty { pool.invalidate(key, false); } }
+        if let Some(renderer) = &mut self.renderer {
+            let mesh = mesh::ChunkMesh::default();
+            for (x, sy, z) in empty { renderer.upload_section(x, sy, z, &mesh); }
+        }
+        if !nonempty.is_empty() {
+            nonempty.sort_by_key(|&(x, _, z)| (x as i64 - cx as i64).abs() + (z as i64 - cz as i64).abs());
+            let pool = self.mesh_workers.get_or_insert_with(|| MeshWorkers::new(&self.models));
+            for key in nonempty { pool.invalidate(key, true); }
+        }
+    }
+
+    pub(crate) fn poll_meshes(&mut self) {
+        let Some(pool) = &mut self.mesh_workers else { return };
+        let ready = pool.poll(&self.world, self.ui.settings.ambient_occlusion != 0, self.ui.settings.fancy_graphics);
+        if let Some(renderer) = &mut self.renderer {
+            for ((x, sy, z), mesh) in ready { renderer.upload_section(x, sy, z, &mesh); }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mc_world::chunk::Chunk;
+
+    fn models() -> Option<BlockModels> {
+        let Some(jar) = crate::find_jar() else {
+            assert_ne!(std::env::var("RUSTMC_REQUIRE_GOLDEN").as_deref(), Ok("1"), "mesh tests need the vanilla jar");
+            return None;
+        };
+        let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
+        Some(BlockModels::load(&assets))
+    }
+
+    fn world() -> World {
+        let mut world = World::default();
+        for cx in -1..=1 { for cz in -1..=1 {
+            let mut c = Chunk::new(cx, cz);
+            for &(x,y,z,id,meta) in &[(0,31,0,1,0),(15,32,15,2,0),(0,32,15,9,0),
+                (15,33,0,53,0),(8,34,8,20,0),(0,47,0,85,0),(15,48,15,9,1)] {
+                c.set(x,y,z,id,meta);
+            }
+            if cx == 0 && cz == 0 {
+                c.set(2, 33, 2, 140, 0);
+                c.tile_entities.insert(BlockPos::new(2, 33, 2), [
+                    ("id".into(), mc_core::nbt::Tag::String("FlowerPot".into())),
+                    ("Item".into(), mc_core::nbt::Tag::String("minecraft:tallgrass".into())),
+                    ("Data".into(), mc_core::nbt::Tag::Int(2)),
+                ].into());
+            }
+            c.biomes.fill(if (cx + cz) % 2 == 0 { 1 } else { 2 });
+            c.generate_height_map();
+            world.insert(c);
+        }}
+        world
+    }
+
+    fn equal_mesh(a: &mesh::ChunkMesh, b: &mesh::ChunkMesh) {
+        assert_eq!(a.indices, b.indices);
+        let bits = |m: &mesh::ChunkMesh| m.vertices.iter().map(|v| (v.pos.map(f32::to_bits), v.uv.map(f32::to_bits), v.color, v.light)).collect::<Vec<_>>();
+        assert_eq!(bits(a), bits(b));
+    }
+
+    #[test]
+    fn section_snapshot_matches_full_world_and_is_immutable() {
+        let Some(models) = models() else { return };
+        let mut world = world();
+        for key in [(0, 1, 0), (0, 2, 0), (0, 3, 0), (-1, 2, -1)] {
+            let snapshot = world.mesh_snapshot(key.0, key.1, key.2);
+            let mut a = BlockGeometry::new(); let mut b = BlockGeometry::new();
+            let full = mesh::build_section(&world, &models, key.0, key.1, key.2, true, true, &mut a);
+            let compact = mesh::build_section(&snapshot, &models.mesh_snapshot(), key.0, key.1, key.2, true, true, &mut b);
+            equal_mesh(&full, &compact);
+        }
+        let snapshot = world.mesh_snapshot(0, 2, 0);
+        let before = snapshot.get(15, 32, 15);
+        world.chunks.get_mut(&(0, 0)).unwrap().set(15, 32, 15, 4, 0);
+        assert_eq!(snapshot.get(15, 32, 15), before);
+        assert_ne!(world.get(15, 32, 15), before);
+    }
+
+    #[test]
+    fn stale_results_are_discarded_after_edit_and_reload() {
+        let Some(models) = models() else { return };
+        let mut world = world();
+        let key = (0, 2, 0);
+        let mut workers = MeshWorkers::new(&models);
+        workers.invalidate(key, true);
+        assert!(workers.poll(&world, true, true).is_empty());
+        world.remove(0, 0);
+        workers.invalidate(key, false);
+        let mut replacement = Chunk::new(0, 0);
+        replacement.set(4, 32, 4, 4, 0);
+        replacement.generate_height_map();
+        world.insert(replacement);
+        workers.invalidate(key, true);
+        let mut geometry = BlockGeometry::new();
+        let expected = mesh::build_section(&world, &models, 0, 2, 0, true, true, &mut geometry);
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut got = None;
+        while std::time::Instant::now() < end {
+            for (k, result) in workers.poll(&world, true, true) {
+                assert_eq!(k, key);
+                assert!(got.is_none(), "stale result was returned");
+                got = Some(result);
+            }
+            if workers.in_flight == 0 && workers.pending.is_empty() { break; }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        equal_mesh(&got.expect("worker timed out"), &expected);
+        assert_eq!(workers.in_flight, 0);
+    }
+}

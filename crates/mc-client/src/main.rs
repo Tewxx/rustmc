@@ -52,6 +52,7 @@ mod screenshot;
 mod sound_glue;
 mod tick;
 mod world_load;
+mod mesh_worker;
 #[cfg(test)]
 mod tests;
 

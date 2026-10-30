@@ -9,6 +9,12 @@ frame/cpu percentiles (p50/p99/p99.9/max), hitch counts (>16.7 ms, >33 ms) and, 
 `bench.csv` gets one row per frame (`frame_ms,cpu_ms,net_ms,mesh_ms,world_ms,entities_ms,gui_ms,present_ms`).
 Note `cpu_ms` is the whole `update + draw_frame`, so it **includes time blocked in `get_current_texture` / present**.
 
+## Asynchronous mesh workers
+
+Client remeshing uses a bounded persistent worker pool. Each job captures three vertical sections from each of the 3×3 neighboring columns, their biomes, heightmaps and nearby tile entities; revisions discard results invalidated by later changes or unloads. The main thread creates at most four snapshots per frame and performs GPU uploads. The current AO code can read two blocks past a face, so an 18³ snapshot would not preserve the current results without changing its sampling semantics. This is a larger snapshot than the R1 target, and incremental lighting still runs on the main thread.
+
+No before/after FPS, frame-time, image-parity, or cross-platform GPU measurements have been made for this change. The baseline below predates it.
+
 ## Busy scenarios (mock server, `crates/mc-protocol/examples/mock_server.rs`)
 
 ```

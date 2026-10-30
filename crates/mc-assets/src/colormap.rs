@@ -2,6 +2,7 @@
 
 use crate::AssetSource;
 
+#[derive(Clone)]
 pub struct ColorMap {
     pixels: Vec<u32>,
 }

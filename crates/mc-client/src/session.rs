@@ -162,6 +162,7 @@ impl App {
         let mut world = World::default();
         world.track_dirty = true;
         self.world = world;
+        if let Some(pool) = &mut self.mesh_workers { pool.clear(); }
         if let Some(r) = &mut self.renderer {
             r.clear_sections();
         }

@@ -71,7 +71,9 @@ impl ApplicationHandler for App {
         self.apply_settings();
 
         if let Some((path, which)) = self.screenshot.take() {
+            self.force_sync_mesh = true;
             self.take_screenshot(&path, &which);
+            self.force_sync_mesh = false;
             el.exit();
             return;
         }

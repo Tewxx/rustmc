@@ -13,6 +13,7 @@ use mc_data::{Block, BlockAccess, StateId};
 use mc_world::World;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct BlockEntry {
     /// Weighted alternatives in vanilla's sorted order.
     pub models: Vec<(i32, BakedModel)>,
@@ -58,6 +59,7 @@ const BUILTIN_TEXTURES: &[&str] = &[
     "items/empty_armor_slot_boots",
 ];
 
+#[derive(Clone)]
 pub struct BlockColors {
     grass: Option<ColorMap>,
     foliage: Option<ColorMap>,
@@ -79,6 +81,13 @@ impl Colorizer for BlockColors {
 }
 
 impl BlockModels {
+    /// Immutable data needed by mesh workers; no atlas pixels or item models are copied.
+    pub fn mesh_snapshot(&self) -> Self {
+        Self { atlas: self.atlas.mesh_snapshot(), entries: self.entries.clone(), baked: self.baked.clone(),
+            state_particles: Vec::new(), missing: Vec::new(), colors: self.colors.clone(),
+            items: crate::items::ItemModels::default(), item_frame: None, item_frame_map: None }
+    }
+
     pub fn load(assets: &AssetSource) -> Self {
         let mut loader = ModelLoader::new(assets);
         let mut definitions: HashMap<String, Option<BlockStateDef>> = HashMap::new();

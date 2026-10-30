@@ -62,6 +62,7 @@ impl App {
                 self.run_tick();
             }
         }
+        self.poll_meshes();
         self.ui.ticks = self.hud.update_counter as f32 + self.tick_accum;
         if self.in_game && self.bench.is_none() {
             self.sync_view();
