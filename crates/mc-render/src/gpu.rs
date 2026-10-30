@@ -28,6 +28,8 @@ struct GpuChunk {
     index_count: u32,
     solid_count: u32,
     transparent: Vec<([u32; 6], Vec3)>,
+    /// Camera position the translucent quads were last sorted/uploaded for (NaN = never).
+    sorted_at: Vec3,
     bind_group: wgpu::BindGroup,
     min: Vec3,
     max: Vec3,
@@ -468,6 +470,7 @@ impl Renderer {
                 index_count: mesh.indices.len() as u32,
                 solid_count,
                 transparent,
+                sorted_at: Vec3::NAN,
                 bind_group,
                 min: lo + o,
                 max: hi + o,
@@ -739,6 +742,11 @@ impl Renderer {
         translucent.sort_by(|a, b| b.1.total_cmp(&a.1));
         for &(key, _) in &translucent {
             let c = self.chunks.get_mut(&key).unwrap();
+            // Vanilla re-sorts translucent quads only after the camera moved more than a block.
+            if c.sorted_at.is_finite() && (cam.pos - c.sorted_at).length_squared() <= 1.0 {
+                continue;
+            }
+            c.sorted_at = cam.pos;
             let relative = cam.pos - Vec3::new((key.0 * 16) as f32, 0., (key.2 * 16) as f32);
             c.transparent
                 .sort_by(|a, b| (b.1 - relative).length_squared().total_cmp(&(a.1 - relative).length_squared()));
