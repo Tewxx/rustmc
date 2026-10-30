@@ -658,6 +658,7 @@ mod tests {
             "join_replies",
             "place_blocked_by_entity",
             "place_through_item",
+            "creative_actions",
             "vehicle_using_item",
             "vehicle_input",
             "server_replies",
@@ -744,9 +745,34 @@ mod tests {
             let (mut net, srv) = loopback(usize::MAX);
             net.entity_id = 1;
             app.net = Some(net);
+            if name == "creative_actions" { app.sync_creative(); }
             let mut inventory_screen = None;
             for tk in script {
                 match tk["op"].as_str() {
+                    Some("creative-set") => {
+                        let a = tk["a"].as_array().unwrap();
+                        let slot = num(&a[0]) as usize; let id = num(&a[1]);
+                        app.ui.inventory[slot] = if id < 0 { None } else {
+                            let index = app.catalogue.index_of(id as u16, num(&a[3]) as u16).unwrap();
+                            Some(app.catalogue.stack(index, num(&a[2]) as u8))
+                        };
+                        app.sync_creative();
+                    }
+                    Some("creative-armor") => {
+                        let a = tk["a"].as_array().unwrap();
+                        let slot = num(&a[0]) as usize; let id = num(&a[1]);
+                        app.ui.armor[slot] = if id < 0 { None } else {
+                            let index = app.catalogue.index_of(id as u16, num(&a[3]) as u16).unwrap();
+                            Some(app.catalogue.stack(index, num(&a[2]) as u8))
+                        };
+                        app.sync_creative();
+                    }
+                    Some("creative-drop") => {
+                        let a = tk["a"].as_array().unwrap();
+                        let index = app.catalogue.index_of(num(&a[0]) as u16, num(&a[2]) as u16).unwrap();
+                        let stack = app.catalogue.stack(index, num(&a[1]) as u8);
+                        app.throw_stack(stack);
+                    }
                     Some("settings") => {
                         let a = tk["a"].as_array().unwrap();
                         app.ui.settings.render_distance = num(&a[0]) as i32;

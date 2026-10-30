@@ -287,6 +287,17 @@ final class DumpPackets {
                 p.dropOneItem(t.arg[0] != 0);
             } else if ("respawn".equals(t.op)) {
                 p.respawnPlayer();
+            } else if ("creative-set".equals(t.op)) {
+                int slot = t.arg[0], itemId = t.arg[1];
+                ItemStack stack = itemId < 0 ? null : new ItemStack(Item.getItemById(itemId), t.arg[2], t.arg[3]);
+                p.inventory.setInventorySlotContents(slot, stack);
+                pc.sendSlotPacket(stack, slot < 9 ? slot + 36 : slot);
+            } else if ("creative-armor".equals(t.op)) {
+                ItemStack stack = t.arg[1] < 0 ? null : new ItemStack(Item.getItemById(t.arg[1]), t.arg[2], t.arg[3]);
+                p.inventory.armorInventory[3 - t.arg[0]] = stack;
+                pc.sendSlotPacket(stack, 5 + t.arg[0]);
+            } else if ("creative-drop".equals(t.op)) {
+                pc.sendPacketDropItem(new ItemStack(Item.getItemById(t.arg[0]), t.arg[1], t.arg[2]));
             } else if ("settings".equals(t.op)) {
                 gs.renderDistanceChunks = t.arg[0];
                 gs.chatVisibility = net.minecraft.entity.player.EntityPlayer.EnumChatVisibility.getEnumChatVisibility(t.arg[1]);
@@ -448,6 +459,13 @@ final class DumpPackets {
 
         s = new Sc("respawn").floor();
         s.idle(2).op("respawn").idle(2);
+        l.add(s);
+
+        s = new Sc("creative_actions").floor();
+        s.mode = "creative";
+        s.idle(2).op("creative-set", 0, 1, 64, 0).op("creative-set", 9, 3, 7, 0)
+         .op("creative-set", 0, -1, 0, 0).op("creative-armor", 0, 310, 1, 0)
+         .op("creative-armor", 0, -1, 0, 0).op("creative-drop", 1, 2, 0).idle(2);
         l.add(s);
 
         s = new Sc("creative_fly_toggle").floor();
