@@ -557,6 +557,29 @@ mod star_tests {
     use super::*;
 
     #[test]
+    fn night_sky_encodes_on_headless_gpu() {
+        let Some(jar) = mc_testutil::jar() else { return };
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else { return };
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
+        let renderer = SkyRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets);
+        let texture = |format, usage| device.create_texture(&wgpu::TextureDescriptor {
+            label: None, size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
+            mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+            format, usage, view_formats: &[],
+        });
+        let color = texture(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::RENDER_ATTACHMENT);
+        let depth = texture(wgpu::TextureFormat::Depth32Float, wgpu::TextureUsages::RENDER_ATTACHMENT);
+        let camera = Camera { pos: Vec3::new(0., 80., 0.), yaw: 0., pitch: -45., fov_deg: 70., bob: Mat4::IDENTITY };
+        let sky = Sky::overworld(18000, 0., 0.8, 8);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        renderer.encode(&queue, &mut encoder, &color.create_view(&Default::default()), &depth.create_view(&Default::default()), &camera, 1., 128., &sky);
+        queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
+    }
+
+    #[test]
     fn star_vertices_match_java() {
         let expected: Vec<[i32; 3]> = serde_json::from_str(include_str!("../tests/data/stars.json")).unwrap();
         let actual: Vec<_> = star_quads().iter().flatten().collect();
