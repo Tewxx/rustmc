@@ -98,7 +98,9 @@ impl App {
             self.send_pack_status(hash, R::FailedDownload);
             return;
         };
-        match self.apply_resource_pack(&path) {
+        // A corrupt or hostile pack (bad PNG, broken model JSON) must not take the client down.
+        let applied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.apply_resource_pack(&path))).unwrap_or_else(|_| Err("pack failed to load".into()));
+        match applied {
             Ok(()) => {
                 self.packs.applied = Some((hash.to_string(), path));
                 self.send_pack_status(hash, R::SuccessfullyLoaded);
