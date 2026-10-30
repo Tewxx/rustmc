@@ -1,0 +1,15 @@
+# name world x y z yaw pitch time [gui]   (xyz = eye position; yaw 0 = +z)
+grid_overview grid 0.5 67.0 -7.5 0 35 6000
+grid_close grid -4.5 63.2 -3.5 20 25 6000
+grid_back grid 0.5 66.0 24.5 180 30 6000
+grid_water grid -7.5 64.0 9.5 0 40 6000
+cave_low grid 48.0 44.5 -2.0 0 10 6000
+cave_shaft grid 48.5 52.0 0.5 90 -20 6000
+grid_sunset grid 0.5 67.0 -7.5 0 35 12800
+grid_night grid 0.5 67.0 -7.5 0 35 18000
+terrain_a terrain 0.5 auto 0.5 45 5 6000
+terrain_b terrain 80.5 auto 40.5 200 -5 6000
+title_main title 0 0 0 0 0 0 main
+title_options title 0 0 0 0 0 0 options
+gui_inventory grid 0.5 67.0 -7.5 0 35 6000 inventory
+gui_chat grid 0.5 67.0 -7.5 0 35 6000 chat

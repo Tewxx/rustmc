@@ -3,6 +3,53 @@
 use crate::*;
 
 impl App {
+    /// Same-camera comparison with the vanilla harness (`tools/visual`): `RUSTMC_VISUAL=1` pins the
+    /// settings the harness uses, `RUSTMC_CAM="x y z yaw pitch"` places the eye, `RUSTMC_TIME` sets
+    /// the world time. Unset, the screenshot path is unchanged.
+    fn apply_visual_fixture(&mut self, which: &str) {
+        if std::env::var_os("RUSTMC_VISUAL").is_none() {
+            return;
+        }
+        let st = &mut self.ui.settings;
+        st.render_distance = 16;
+        st.gui_scale = 2;
+        st.fov = 70.;
+        st.view_bobbing = false;
+        st.clouds = 0;
+        st.fancy_graphics = true;
+        st.ambient_occlusion = 2;
+        st.gamma = 0.;
+        st.hide_gui = which == "hud" || which == "scene";
+        self.ui.splash = "Hello world!".into();
+        self.apply_settings();
+    }
+
+    /// Over a connection, put the camera where the vanilla harness had it (`/tp`, `/time set`; the
+    /// player needs op) and wait for the chunks around it. `RUSTMC_CAM` is the EYE position.
+    fn visual_teleport(&mut self) {
+        let Ok(c) = std::env::var("RUSTMC_CAM") else { return };
+        let v: Vec<f64> = c.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+        if v.len() != 5 {
+            return;
+        }
+        self.entity.flying = true;
+        let name = self.name.clone();
+        self.send_chat(&format!("/tp {name} {} {} {} {} {}", v[0], v[1] - 1.62, v[2], v[3], v[4]));
+        if let Ok(t) = std::env::var("RUSTMC_TIME") {
+            self.send_chat(&format!("/time set {t}"));
+        }
+        let (mut last, mut stable) = (self.world.chunks.len(), Instant::now());
+        let t = Instant::now();
+        while t.elapsed() < Duration::from_secs(30) && stable.elapsed() < Duration::from_secs(3) {
+            self.process_net();
+            std::thread::sleep(Duration::from_millis(50));
+            if self.world.chunks.len() != last {
+                last = self.world.chunks.len();
+                stable = Instant::now();
+            }
+        }
+    }
+
     /// `--screenshot`: set up the requested screen, render once off-screen, exit.
     pub(crate) fn take_screenshot(&mut self, path: &Path, which: &str) {
         let in_game = !matches!(which, "title" | "title-options" | "connecting" | "disconnected" | "connect-failed") && !which.starts_with("multiplayer") && !which.starts_with("mp-");
@@ -15,6 +62,7 @@ impl App {
                 self.process_net();
                 std::thread::sleep(Duration::from_millis(20));
             }
+            self.visual_teleport();
             for _ in 0..40 {
                 self.process_net();
                 self.run_tick();
@@ -34,6 +82,20 @@ impl App {
             self.entity.update_equipped(current);
         }
         self.tick_accum = 1.;
+        self.apply_visual_fixture(which);
+        if std::env::var_os("RUSTMC_VISUAL").is_some() && in_game {
+            assert!(self.net.is_some(), "visual scene requires a server connection");
+            let cam = std::env::var("RUSTMC_CAM").expect("visual scene needs RUSTMC_CAM");
+            let v: Vec<f64> = cam.split_whitespace().map(|x| x.parse().expect("invalid camera coordinate")).collect();
+            assert!(v.len() == 5 && v.iter().all(|x| x.is_finite()), "expected five finite camera values");
+            let eye_height = self.entity.eye_height() as f64;
+            self.entity.pos = mc_core::Vec3::new(v[0], v[1] - eye_height, v[2]);
+            self.entity.prev_pos = self.entity.pos;
+            self.entity.yaw = v[3] as f32;
+            self.entity.prev_yaw = self.entity.yaw;
+            self.entity.pitch = v[4] as f32;
+            self.entity.prev_pitch = self.entity.pitch;
+        }
         self.sync_view();
         match which {
             "glass" => {
