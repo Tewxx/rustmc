@@ -226,6 +226,7 @@ pub struct AvatarRenderer {
     particle_scratch: Vec<ParticleInstance>,
     entity_scratch: Vec<EntityInstance>,
     damage_pipeline: wgpu::RenderPipeline,
+    sign_text_pipeline: wgpu::RenderPipeline,
     vertices: [wgpu::Buffer; 3],
     bind_group: wgpu::BindGroup,
     steve: PlayerModel,
@@ -410,6 +411,20 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             }),
             multiview: None,
             cache: None,
+        });
+        let sign_text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sign text"), layout: Some(&pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4] }] },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
         });
         let particle_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("particle globals"), entries: &[wgpu::BindGroupLayoutEntry {
@@ -664,7 +679,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             particle_capacity,
             use_particle_instancing: std::env::var_os("RUSTMC_NO_PARTICLE_INSTANCING").is_none(),
             particle_scratch: Vec::new(), entity_scratch: Vec::new(),
-            damage_pipeline,
+            damage_pipeline, sign_text_pipeline,
             vertices,
             bind_group,
             steve: PlayerModel::new(false),
@@ -718,6 +733,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     ) {
         let mut verts = Vec::new();
         let mut damage = Vec::new();
+        let mut sign_text_range = None;
         let mut particles = std::mem::take(&mut self.particle_scratch);
         let mut entities = std::mem::take(&mut self.entity_scratch);
         particles.clear(); entities.clear();
@@ -752,6 +768,24 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 self.tile(&mut verts, &mut entities, self.use_entity_instancing, t, world_vp, cam.pos);
                 record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
+            let sign_start = verts.len();
+            for tile in &frame.tiles {
+                let crate::tile::TileFrame::Sign { pos, standing, meta, glyphs, .. } = tile else { continue };
+                let m = world_vp * Mat4::from_translation(-cam.pos) * crate::tile::sign_transform(*pos, *standing, *meta)
+                    * Mat4::from_translation(Vec3::new(0., 0.5 * (2. / 3.), 0.07 * (2. / 3.)))
+                    * Mat4::from_scale(Vec3::new(1. / 96., -1. / 96., 1. / 96.));
+                let r = self.mob_atlas.get("font_ascii").copied().unwrap_or([0.; 4]);
+                for glyph in glyphs {
+                    let color = glyph.color.map(|v| v as f32 / 255.);
+                    for i in [0, 1, 2, 0, 2, 3] {
+                        let [x,y] = glyph.pos[i]; let [u,v] = glyph.uv[i];
+                        verts.push(Vertex { clip: (m * Vec3::new(x,y,0.).extend(1.)).to_array(),
+                            uv: [r[0] + u*r[2], r[1] + v*r[3]], color,
+                            kind: if glyph.textured { MOB } else { LINE }, overlay: [0.; 4] });
+                    }
+                }
+            }
+            if verts.len() > sign_start { sign_text_range = Some(sign_start..verts.len()); }
             for b in &frame.billboards {
                 // RenderSnowball: translate, scale 0.5, rotate(-playerViewY, Y),
                 // rotate(playerViewX, X), then the item's GROUND transform.
@@ -876,6 +910,15 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.set_pipeline(&self.pipeline);
             pass.set_vertex_buffer(0, buf.slice(..));
             start = at;
+        }
+        if let Some(range) = sign_text_range {
+            let first = (split as usize + range.start).min(end as usize) as u32;
+            let last = (split as usize + range.end).min(end as usize) as u32;
+            pass.draw(start..first, 0..1);
+            pass.set_pipeline(&self.sign_text_pipeline);
+            pass.draw(first..last, 0..1);
+            pass.set_pipeline(&self.pipeline);
+            start = last;
         }
         if particle_count == 0 {
             pass.draw(start..additive_start.min(end), 0..1);
@@ -1750,13 +1793,25 @@ mod particle_instance_tests {
         frame.objects.push(crate::objects::ObjectFrame::ArmorStand { pos: Vec3::new(0.3, -1., 3.), yaw: 30., head_yaw: 10., pitch: 5., flags: 0, light: [1.;3], body_rot: (5., 10., 15.) });
         frame.tiles.push(crate::tile::TileFrame::Chest { pos: Vec3::new(-0.5, -1., 3.), meta: 2, large: false,
             skin: crate::tile::ChestSkin::Normal, x_shift: false, z_shift: false, lid: 0.5, light: [1.;3] });
-        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(0.3, -1., 2.5), standing: true, meta: 3, light: [1.;3] });
-        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 3.), standing: false, meta: 2, light: [1.;3] });
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(0.3, -1., 2.5), standing: true, meta: 3, light: [1.;3], glyphs: Vec::new() });
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 3.), standing: false, meta: 2, light: [1.;3], glyphs: Vec::new() });
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
         assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "objects and tiles must be visible");
         assert_eq!(old, new);
         frame.objects.clear(); frame.tiles.clear();
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 2.), standing: true, meta: 8, light: [1.;3], glyphs: Vec::new() });
+        let blank = render(&mut renderer, &frame, true);
+        if let crate::tile::TileFrame::Sign { glyphs, .. } = &mut frame.tiles[0] {
+            glyphs.push(crate::tile::SignGlyph { pos: [[-8.,-8.],[-8.,8.],[8.,8.],[8.,-8.]],
+                uv: [[8./128.,32./128.], [8./128.,40./128.], [16./128.,40./128.], [16./128.,32./128.]],
+                color: [0,0,0,255], textured: true });
+        }
+        let legacy = render(&mut renderer, &frame, false);
+        let instanced = render(&mut renderer, &frame, true);
+        assert_ne!(blank, instanced, "sign text must be visible on the board");
+        assert_eq!(legacy, instanced);
+        frame.tiles.clear();
         frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);

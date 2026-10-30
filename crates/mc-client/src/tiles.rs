@@ -244,7 +244,7 @@ impl Tiles {
             if matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign") {
                 let (sky, block) = world.light(pos.x, pos.y, pos.z);
                 out.push(TileFrame::Sign { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
-                    standing: state.block().name == "minecraft:standing_sign", meta: state.meta(), light: color(sky, block) });
+                    standing: state.block().name == "minecraft:standing_sign", meta: state.meta(), light: color(sky, block), glyphs: Vec::new() });
                 continue;
             }
             let Some(kind) = Kind::of(state) else { continue };
@@ -290,6 +290,26 @@ impl Tiles {
         }
         out
     }
+}
+
+pub fn sign_glyphs(raw: &str, line: usize, font: &mut mc_gui::font::FontRenderer, lang: &mc_gui::lang::Lang, chat_colors: bool) -> Vec<mc_render::tile::SignGlyph> {
+    let component = crate::chat::parse(raw, lang);
+    let first = mc_gui::component::split_text(&component, 90, font, false, true, chat_colors)
+        .into_iter().next().map_or(String::new(), |line| line.formatted());
+    let mut batch = mc_gui::batch::GuiBatch::new();
+    let x = -(font.width(&first) / 2) as f32;
+    font.draw(&mut batch, &first, x, (line as i32 * 10 - 20) as f32, 0);
+    let mut glyphs = Vec::new();
+    for item in batch.items {
+        let mc_gui::batch::Item::Draw(draw) = item else { continue };
+        // shortcut: Unicode page textures are not in the entity atlas; add dynamic font pages to render them.
+        let textured = match draw.texture.as_deref() { Some("textures/font/ascii.png") => true, None => false, _ => continue };
+        for quad in draw.vertices.chunks_exact(4) {
+            glyphs.push(mc_render::tile::SignGlyph { pos: std::array::from_fn(|i| quad[i].pos),
+                uv: std::array::from_fn(|i| quad[i].uv), color: quad[0].color, textured });
+        }
+    }
+    glyphs
 }
 
 /// `TileEntityChestRenderer`'s calendar check: December 24th-26th.
@@ -424,6 +444,20 @@ mod tests {
         assert_eq!(got, vec![(1, false, Normal, 3), (3, true, Normal, 2), (6, false, Trapped, 5), (8, false, Ender, 4)]);
         // `i == 2 && adjacentChestXPos != null` shifts the wide model by one block.
         assert!(frames.iter().any(|f| matches!(f, mc_render::tile::TileFrame::Chest { pos, x_shift: true, .. } if pos.x == 3.)));
+    }
+
+    #[test]
+    fn sign_text_formats_centers_and_limits_the_first_line() {
+        let Some(jar) = mc_testutil::jar() else { return };
+        let mut assets = mc_assets::AssetSource::new(); assets.push(&jar).unwrap();
+        let mut font = mc_gui::font::FontRenderer::load(&assets);
+        let lang = mc_gui::lang::Lang::default();
+        let glyphs = sign_glyphs(r#"{"text":"A","color":"red"}"#, 1, &mut font, &lang, true);
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!(glyphs[0].color, [255, 85, 85, 255]);
+        assert!(glyphs[0].pos[0][0] < 0. && glyphs[0].pos[0][1] == -10.);
+        let long = sign_glyphs(&format!("\"{}\"", "A".repeat(100)), 0, &mut font, &lang, true);
+        assert!(long.len() < 100 && !long.is_empty());
     }
 
     #[test]

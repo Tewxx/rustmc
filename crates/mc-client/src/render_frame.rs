@@ -263,7 +263,17 @@ impl App {
                     let i = (sky as usize * 16 + block as usize) * 4;
                     [table[i] as f32 / 255., table[i + 1] as f32 / 255., table[i + 2] as f32 / 255.]
                 };
-                self.tiles.frames(&self.world, pt, self.camera.pos.to_array(), self.christmas, &color)
+                let mut frames = self.tiles.frames(&self.world, pt, self.camera.pos.to_array(), self.christmas, &color);
+                for tile in &mut frames {
+                    let mc_render::tile::TileFrame::Sign { pos, glyphs, .. } = tile else { continue };
+                    let p = mc_core::BlockPos::new(pos.x as i32, pos.y as i32, pos.z as i32);
+                    for line in 0..4 {
+                        let raw = self.signs.get(&p).map(|lines| lines[line].as_str()).or_else(||
+                            self.world.tile_entity(p).and_then(|nbt| nbt.get(&format!("Text{}", line + 1))).and_then(mc_core::nbt::Tag::as_str)).unwrap_or("\"\"");
+                        glyphs.extend(crate::tiles::sign_glyphs(raw, line, &mut self.ui.font, &self.ui.lang, self.ui.settings.chat_colors));
+                    }
+                }
+                frames
             },
             objects: self.object_frames(pt),
             billboards: self.billboards(pt),

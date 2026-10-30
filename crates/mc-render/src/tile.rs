@@ -97,10 +97,13 @@ impl Default for ChestModels {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SignGlyph { pub pos: [[f32; 2]; 4], pub uv: [[f32; 2]; 4], pub color: [u8; 4], pub textured: bool }
+
 /// One tile-entity draw.
 #[derive(Clone, Debug)]
 pub enum TileFrame {
-    Sign { pos: Vec3, standing: bool, meta: u8, light: [f32; 3] },
+    Sign { pos: Vec3, standing: bool, meta: u8, light: [f32; 3], glyphs: Vec<SignGlyph> },
     /// `TileEntityChestRenderer.renderTileEntityAt`
     Chest {
         /// The tile's block position in world space.
@@ -128,16 +131,20 @@ impl TileFrame {
     }
 }
 
+pub fn sign_transform(pos: Vec3, standing: bool, meta: u8) -> Mat4 {
+    let mut m = Mat4::from_translation(pos + Vec3::new(0.5, 0.5, 0.5));
+    let rotation = if standing { meta as f32 * 360. / 16. } else { match meta { 2 => 180., 4 => 90., 5 => -90., _ => 0. } };
+    m *= Mat4::from_rotation_y((-rotation).to_radians());
+    if !standing { m *= Mat4::from_translation(Vec3::new(0., -0.3125, -0.4375)); }
+    m
+}
+
 /// `TileEntityChestRenderer.renderTileEntityAt`. `pos` is world space; the caller subtracts the
 /// camera before projecting, matching `TileEntityRendererDispatcher.staticPlayer*`.
 pub fn render(f: &TileFrame, models: &ChestModels, out: &mut dyn FnMut(&Layer, Mat4, &ModelQuad)) {
     match f {
         TileFrame::Sign { pos, standing, meta, .. } => {
-            let mut m = Mat4::from_translation(*pos + Vec3::new(0.5, 0.5, 0.5));
-            let rotation = if *standing { *meta as f32 * 360. / 16. } else { match meta { 2 => 180., 4 => 90., 5 => -90., _ => 0. } };
-            m *= Mat4::from_rotation_y((-rotation).to_radians());
-            if !standing { m *= Mat4::from_translation(Vec3::new(0., -0.3125, -0.4375)); }
-            m *= Mat4::from_scale(Vec3::new(2. / 3., -2. / 3., -2. / 3.));
+            let m = sign_transform(*pos, *standing, *meta) * Mat4::from_scale(Vec3::new(2. / 3., -2. / 3., -2. / 3.));
             let layer = Layer { tex: Tex::Mob("sign"), tint: [1.; 3], overlay: None, additive: false, glint: false };
             models.sign_board.render(m, &mut |pm, q| out(&layer, pm, q));
             if *standing { models.sign_stick.render(m, &mut |pm, q| out(&layer, pm, q)); }
@@ -199,7 +206,7 @@ mod tests {
     #[test]
     fn sign_models_follow_java_board_and_stick_visibility() {
         for (standing, expected) in [(true, 12), (false, 6)] {
-            let frame = TileFrame::Sign { pos: Vec3::ZERO, standing, meta: 0, light: [1.;3] };
+            let frame = TileFrame::Sign { pos: Vec3::ZERO, standing, meta: 0, light: [1.;3], glyphs: Vec::new() };
             let mut count = 0;
             render(&frame, &ChestModels::default(), &mut |layer, _, _| { assert!(matches!(layer.tex, Tex::Mob("sign"))); count += 1; });
             assert_eq!(count, expected);
