@@ -6,6 +6,7 @@ pub mod atlas;
 pub mod blockstate;
 pub mod colormap;
 pub mod model;
+pub mod repository;
 
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -44,20 +45,49 @@ impl AssetSource {
 
     /// Reads `assets/minecraft/<path>` from the highest layer that has it.
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
+        self.read_root(&format!("assets/minecraft/{path}"))
+    }
+
+    /// Reads a file by its full path inside the layers (`pack.png`, `pack.mcmeta`).
+    pub fn read_root(&self, full: &str) -> Option<Vec<u8>> {
+        self.layers.iter().rev().find_map(|l| read_layer(l, full))
+    }
+
+    /// A root file of the lowest layer only (the default pack's `pack.png`).
+    pub fn read_base(&self, full: &str) -> Option<Vec<u8>> {
+        self.layers.first().and_then(|l| read_layer(l, full))
+    }
+
+    /// `IResourceManager.getAllResources`: every layer's copy of `assets/minecraft/<path>`,
+    /// lowest layer first.
+    pub fn read_all(&self, path: &str) -> Vec<Vec<u8>> {
         let full = format!("assets/minecraft/{path}");
-        self.layers.iter().rev().find_map(|l| match l {
-            Layer::Dir(d) => std::fs::read(d.join(&full)).ok(),
-            Layer::Zip(z) => {
-                let mut z = z.lock().unwrap();
-                let mut f = z.by_name(&full).ok()?;
-                let mut buf = Vec::with_capacity(f.size() as usize);
-                f.read_to_end(&mut buf).ok()?;
-                Some(buf)
-            }
-        })
+        self.layers.iter().filter_map(|l| read_layer(l, &full)).collect()
+    }
+
+    /// Number of layers (jar included).
+    pub fn len(&self) -> usize {
+        self.layers.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.layers.is_empty()
     }
 
     pub fn read_json(&self, path: &str) -> Option<serde_json::Value> {
         serde_json::from_slice(&self.read(path)?).ok()
+    }
+}
+
+fn read_layer(l: &Layer, full: &str) -> Option<Vec<u8>> {
+    match l {
+        Layer::Dir(d) => std::fs::read(d.join(full)).ok(),
+        Layer::Zip(z) => {
+            let mut z = z.lock().unwrap();
+            let mut f = z.by_name(full).ok()?;
+            let mut buf = Vec::with_capacity(f.size() as usize);
+            f.read_to_end(&mut buf).ok()?;
+            Some(buf)
+        }
     }
 }

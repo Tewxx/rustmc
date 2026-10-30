@@ -212,8 +212,13 @@ Liquids have no blockstate model in 1.8 (`render_type == 1`), which is why water
   the loaded world remeshed. Measured ~0.6 s for the mock world. A pack that replaces a font
   and `grass_top` recolours both (`shots/pack2.png`, `shots/pack_blocks.png`); a cached pack is
   pre-applied during startup on the next join.
-- **Still missing:** sounds are read from `.minecraft/assets`, not the pack stack, so pack sound
-  overrides are ignored; the pack list UI (`options.resourcepack`) is not ported.
+- **Client packs (RP1):** `Options -> Resource Packs...` opens `mc_gui::resource_packs::ResourcePacks`
+  (`GuiScreenResourcePacks`). Packs come from `<gameDir>/resourcepacks/` (`mc_assets::repository`),
+  the selection persists as `resourcePacks` / `incompatibleResourcePacks` in options.txt, and Done
+  runs `App::reload_resources` (`client_packs.rs`), the single reload path also used by server packs
+  (stack: jar, `--pack`s, selected packs bottom to top, server pack). Pack `sounds.json` files merge
+  per vanilla (`replace`), sound files come from the highest pack, then the asset index.
+  Not done: sounds in non-`minecraft` domains, dropping sound entries whose file is missing at load.
 
 ## User priority: playable game (latest steering)
 

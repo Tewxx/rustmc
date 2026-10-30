@@ -232,6 +232,7 @@ impl App {
             "skinopts" => self.open(Box::new(screens::OptionList::skin()), false),
             "sounds" => self.open(Box::new(screens::SoundSettings::default()), false),
             "controls" => self.open(Box::new(screens::Controls::default()), false),
+            "resourcepacks" | "resourcepacks-hover" => self.open(Box::new(mc_gui::resource_packs::ResourcePacks::default()), false),
             "chat" => {
                 self.hud.add_chat("<Player> hello from rustmc");
                 self.hud
@@ -258,6 +259,10 @@ impl App {
             (sr.width / 2) as f64 * sr.factor as f64,
             (sr.height / 4 + 48 + 5) as f64 * sr.factor as f64,
         );
+        if which == "resourcepacks-hover" {
+            // Second selected entry, upper right quarter: the "move up" arrow.
+            self.mouse_px = (((sr.width / 2 + 4 + 24) * sr.factor) as f64, (85 + 8) as f64 * sr.factor as f64);
+        }
         if which == "net-inv-tip" || which == "armor-tip" {
             // Hover the first hotbar slot of GuiInventory.
             let (left, top) = (self.ui.effect_gui_left(sr.width, 176), (sr.height - 166) / 2);

@@ -107,6 +107,17 @@ impl Opt {
     }
 }
 
+/// `gson.fromJson(value, List<String>)`; anything unparsable is an empty list.
+fn parse_list(v: &str) -> Vec<String> {
+    serde_json::from_str(v).unwrap_or_default()
+}
+
+/// `gson.toJson(List<String>)`: compact, with Gson's HTML-safe escapes.
+fn gson_list(l: &[String]) -> String {
+    let s = serde_json::to_string(l).unwrap_or_else(|_| "[]".into());
+    s.replace('<', "\\u003c").replace('>', "\\u003e").replace('&', "\\u0026").replace('=', "\\u003d").replace('\'', "\\u0027")
+}
+
 /// `Options.snapToStep`
 fn snap(v: f32, step: f32) -> f32 {
     if step > 0.0 { step * (v / step).round() } else { v }
@@ -157,6 +168,10 @@ pub struct Settings {
     pub held_item_tooltips: bool,
     /// `soundCategory_<name>` volumes (missing = 1.0).
     pub sound_volumes: std::collections::BTreeMap<String, f32>,
+    /// `resourcePacks`: the selected pack names, lowest priority first.
+    pub resource_packs: Vec<String>,
+    /// `incompatibleResourcePacks`: selected packs whose `pack_format` is not 1.
+    pub incompatible_resource_packs: Vec<String>,
     path: Option<PathBuf>,
 }
 
@@ -199,6 +214,8 @@ impl Default for Settings {
             advanced_item_tooltips: false,
             held_item_tooltips: true,
             sound_volumes: Default::default(),
+            resource_packs: Vec::new(),
+            incompatible_resource_packs: Vec::new(),
             path: None,
         }
     }
@@ -258,6 +275,8 @@ impl Settings {
                 "chatWidth" => s.chat_width = f.unwrap_or(s.chat_width),
                 "chatHeightFocused" => s.chat_height_focused = f.unwrap_or(s.chat_height_focused),
                 "chatHeightUnfocused" => s.chat_height_unfocused = f.unwrap_or(s.chat_height_unfocused),
+                "resourcePacks" => s.resource_packs = parse_list(v),
+                "incompatibleResourcePacks" => s.incompatible_resource_packs = parse_list(v),
                 _ if k.starts_with("key_") => {
                     if let Some(i) = i {
                         s.key_codes.insert(k[4..].to_string(), i);
@@ -317,6 +336,8 @@ impl Settings {
             ("chatWidth", self.chat_width.to_string()),
             ("chatHeightFocused", self.chat_height_focused.to_string()),
             ("chatHeightUnfocused", self.chat_height_unfocused.to_string()),
+            ("resourcePacks", gson_list(&self.resource_packs)),
+            ("incompatibleResourcePacks", gson_list(&self.incompatible_resource_packs)),
         ];
         let part_keys: Vec<String> = MODEL_PARTS.iter().map(|p| format!("modelPart_{p}")).collect();
         for (i, k) in part_keys.iter().enumerate() {
@@ -338,6 +359,15 @@ impl Settings {
             .collect();
         out.extend(ours.iter().map(|(k, v)| format!("{k}:{v}")));
         let _ = std::fs::write(path, out.join("\n") + "\n");
+    }
+
+    /// The game directory: where `options.txt` lives (`Minecraft.mcDataDir`). `resourcepacks/`
+    /// and `server-resource-packs/` are inside it.
+    pub fn game_dir(&self) -> PathBuf {
+        match self.path.as_deref().and_then(Path::parent) {
+            Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+            _ => PathBuf::from("."),
+        }
     }
 
     /// A binding's key code (`KeyBinding.getKeyCode`).
@@ -479,6 +509,30 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resource_pack_lists_round_trip() {
+        let dir = std::env::temp_dir().join(format!("rustmc-opts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("options.txt");
+        std::fs::write(&path, "fov:0.5\nresourcePacks:[\"a.zip\",\"b\"]\nincompatibleResourcePacks:[\"b\"]\nother:keep\n").unwrap();
+        let mut s = Settings::load(&path);
+        assert_eq!(s.resource_packs, ["a.zip", "b"]);
+        assert_eq!(s.incompatible_resource_packs, ["b"]);
+        assert_eq!(s.game_dir(), dir);
+        s.resource_packs = vec!["it's=<x>.zip".into(), "c".into()];
+        s.incompatible_resource_packs.clear();
+        s.save();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("resourcePacks:[\"it\\u0027s\\u003d\\u003cx\\u003e.zip\",\"c\"]\n"), "{text}");
+        assert!(text.contains("incompatibleResourcePacks:[]\n") && text.contains("other:keep\n"));
+        let back = Settings::load(&path);
+        assert_eq!(back.resource_packs, ["it's=<x>.zip", "c"]);
+        assert!(back.incompatible_resource_packs.is_empty());
+        // Vanilla's default (no keys) and malformed lists.
+        std::fs::write(&path, "resourcePacks:oops\n").unwrap();
+        assert!(Settings::load(&path).resource_packs.is_empty());
+    }
 
     #[test]
     fn slider_snapping() {

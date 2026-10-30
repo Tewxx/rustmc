@@ -10,6 +10,7 @@ pub mod font;
 pub mod hud;
 pub mod keys;
 pub mod lang;
+pub mod resource_packs;
 pub mod screens;
 pub mod settings;
 pub mod text_field;
@@ -130,6 +131,13 @@ pub struct Ui {
     pub sounds: Vec<&'static str>,
     /// `thePlayer.getActivePotionEffects()` in iteration order.
     pub effects: Vec<EffectView>,
+    /// The default pack's `pack.png` (`DefaultResourcePack.getPackImage`).
+    pub pack_icon: Option<Vec<u8>>,
+    /// Set by `GuiScreenResourcePacks` when Done applies a changed selection: the client runs
+    /// `Minecraft.refreshResources`.
+    pub pack_reload: bool,
+    /// Set by the "Open resource pack folder" button.
+    pub open_folder: Option<std::path::PathBuf>,
 }
 
 impl Ui {
@@ -145,6 +153,9 @@ impl Ui {
             ticks: 0.0,
             sounds: Vec::new(),
             effects: Vec::new(),
+            pack_icon: assets.read_base("pack.png"),
+            pack_reload: false,
+            open_folder: None,
         }
     }
 
@@ -154,6 +165,7 @@ impl Ui {
         self.font = FontRenderer::load(assets);
         self.lang = Lang::load(assets, "en_US");
         self.splash = random_splash(assets);
+        self.pack_icon = assets.read_base("pack.png");
     }
 
     /// `InventoryEffectRenderer.updateActivePotionEffects`: the container moves right to make room.

@@ -114,41 +114,10 @@ impl App {
         if self.packs.applied.as_ref().is_some_and(|(_, p)| p == path) {
             return Ok(());
         }
-        // Rebuild the stack instead of appending: `resourcePackRepository` has exactly one
-        // server pack, so resources that a new pack removes must disappear again.
-        let mut assets = AssetSource::new();
-        assets.push(&self.jar).map_err(|e| format!("{}: {e}", self.jar.display()))?;
-        for p in &self.base_packs {
-            if let Err(e) = assets.push(p) {
-                eprintln!("skipping pack {}: {e}", p.display());
-            }
-        }
-        assets.push(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        self.assets = assets;
-        let t = Instant::now();
-        self.models = BlockModels::load(&self.assets);
-        self.catalogue = Arc::new(inventory::Catalogue::load(&self.assets, &self.models));
-        self.ui.reload(&self.assets);
-        // The renderer owns every GPU texture and bind group built from the old stack.
-        if let Some(win) = self.window.clone() {
-            self.renderer = None;
-            let renderer = pollster::block_on(Renderer::new(win, &self.models, &self.assets));
-            for (cell, rgba) in self.skins.cells() {
-                renderer.upload_skin(cell, &rgba);
-            }
-            self.renderer = Some(renderer);
-        }
-        if let Some(r) = &mut self.renderer {
-            r.clear_sections();
-        }
-        for &(x, z) in self.world.chunks.keys() {
-            for sy in 0..16 {
-                self.world.dirty.insert((x, sy, z));
-            }
-        }
-        self.refresh_edits(&[]);
-        println!("resource pack applied in {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
-        Ok(())
+        // The stack is rebuilt (`client_packs::reload_resources`) instead of appended to:
+        // `resourcePackRepository` has exactly one server pack, so resources that a new pack
+        // removes must disappear again.
+        self.reload_resources(Some(path.to_path_buf()))
     }
 
 }

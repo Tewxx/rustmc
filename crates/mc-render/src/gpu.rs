@@ -397,6 +397,11 @@ impl Renderer {
         self.avatar.upload_skin(&self.queue, cell, rgba);
     }
 
+    /// A pack icon (or any runtime image) as a GUI texture under `path`.
+    pub fn register_gui_texture(&mut self, path: &str, w: u32, h: u32, rgba: &[u8]) {
+        self.gui.register_rgba(&self.device, &self.queue, path, w, h, rgba);
+    }
+
     /// Drops every uploaded chunk mesh. Used after a resource-pack reload, where all baked
     /// atlas UVs change and the world must be remeshed.
     pub fn clear_sections(&mut self) {

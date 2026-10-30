@@ -231,7 +231,7 @@ pub fn default_background(ui: &Ui, b: &mut GuiBatch, w: i32, h: i32) {
 }
 
 /// `drawBackground` / `GuiSlot.overlayBackground`: tiled options texture, gray-tinted.
-fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) {
+pub(crate) fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) {
     let c = [gray, gray, gray, 255];
     let f = 32.0;
     b.quad(
@@ -248,14 +248,14 @@ fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) 
     );
 }
 
-fn draw_buttons(buttons: &mut [Button], ui: &mut Ui, b: &mut GuiBatch, mx: i32, my: i32) {
+pub(crate) fn draw_buttons(buttons: &mut [Button], ui: &mut Ui, b: &mut GuiBatch, mx: i32, my: i32) {
     for btn in buttons {
         btn.draw(ui, b, mx, my);
     }
 }
 
 /// `GuiScreen.mouseClicked`: first button hit wins.
-fn click_buttons(buttons: &mut [Button], ui: &mut Ui, mx: i32, my: i32) -> Option<i32> {
+pub(crate) fn click_buttons(buttons: &mut [Button], ui: &mut Ui, mx: i32, my: i32) -> Option<i32> {
     buttons.iter_mut().find_map(|btn| btn.press(ui, mx, my).then_some(btn.id))
 }
 
@@ -575,7 +575,7 @@ impl Screen for Options {
             Button::sized(100, w / 2 + 5, h / 6 + 96 - 6, 150, 20, t("options.controls")),
             Button::sized(102, w / 2 - 155, h / 6 + 120 - 6, 150, 20, t("options.language")).disabled(),
             Button::sized(103, w / 2 + 5, h / 6 + 120 - 6, 150, 20, t("options.chat.title")),
-            Button::sized(105, w / 2 - 155, h / 6 + 144 - 6, 150, 20, t("options.resourcepack")).disabled(),
+            Button::sized(105, w / 2 - 155, h / 6 + 144 - 6, 150, 20, t("options.resourcepack")),
             Button::sized(104, w / 2 + 5, h / 6 + 144 - 6, 150, 20, t("options.snooper.view")).disabled(),
             Button::new(200, w / 2 - 100, h / 6 + 168, t("gui.done")),
         ];
@@ -599,6 +599,7 @@ impl Screen for Options {
             Some(103) => Action::Open(Box::new(OptionList::chat())),
             Some(110) => Action::Open(Box::new(OptionList::skin())),
             Some(100) => Action::Open(Box::new(Controls::default())),
+            Some(105) => Action::Open(Box::new(crate::resource_packs::ResourcePacks::default())),
             Some(_) => {
                 self.dirty = true;
                 Action::None
