@@ -561,9 +561,9 @@ mod star_tests {
 
     #[test]
     fn night_sky_encodes_on_headless_gpu() {
-        let Some(jar) = mc_testutil::jar() else { return };
+        let Some(jar) = crate::gpu_test_jar() else { return };
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else { return };
+        let Some(adapter) = crate::headless_adapter(&instance) else { return };
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
         let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
         let mut renderer = SkyRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets);

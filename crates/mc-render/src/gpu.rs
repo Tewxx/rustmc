@@ -1210,10 +1210,7 @@ mod arena_tests {
     #[test]
     fn chunk_pipeline_validates_on_headless_gpu() {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
-            eprintln!("no headless adapter; GPU pipeline test skipped");
-            return;
-        };
+        let Some(adapter) = crate::headless_adapter(&instance) else { return };
         let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
         for (source, stride, attributes) in [
             (include_str!("shader.wgsl"), std::mem::size_of::<PackedVertex>(), &CHUNK_ATTRIBUTES),
