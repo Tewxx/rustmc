@@ -44,3 +44,4 @@ __pycache__/
 /crates/mc-mods/tests/guest/target
 # Native WASM guest build output
 /mods/wasm/target/
+/mods/wasm/harness/target/

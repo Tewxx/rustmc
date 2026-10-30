@@ -1,0 +1,55 @@
+package rustmc:plugin@1.0.0;
+
+/// Reserved for interactive mods; the initial host does not dispatch these callbacks.
+interface events {
+  enum screen-kind { chat, inventory, container, pause, options, controls, multiplayer, other, mod-screen }
+  /// LWJGL key code; modifiers: bit 0 Shift, bit 1 Ctrl, bit 2 Alt, bit 3 Super.
+  record key-event { code: s32, down: bool, repeat: bool, modifiers: u8, %char: u32 }
+  record mouse-event { x: s32, y: s32, button: s8, down: bool, wheel: s32 }
+  on-key: func(e: key-event) -> bool;
+  on-mouse: func(e: mouse-event) -> bool;
+  on-screen-open: func(kind: screen-kind, title: string);
+  on-screen-close: func(kind: screen-kind);
+}
+
+interface screens {
+  enum parent-screen { title, multiplayer }
+  record slider-spec { value: f32, steps: u32 }
+  record text-spec { text: string, max-len: u32, placeholder: string }
+  variant widget-kind { button(bool), toggle(bool), slider(slider-spec), text-field(text-spec), label }
+  record widget { id: u32, x: s32, y: s32, w: s32, h: s32, kind: widget-kind, label: string }
+  variant value { b(bool), f(f32), s(string), click }
+  register: func(id: string, title: string);
+  add-entry: func(parent: parent-screen, id: string, label: string);
+  refresh: func(id: string);
+  open: func(id: string);
+  close: func();
+}
+
+interface screen-handlers {
+  use screens.{widget, value};
+  use types.{frame-ctx};
+  init: func(id: string, w: s32, h: s32) -> list<widget>;
+  on-widget: func(id: string, widget: u32, v: value);
+  draw: func(id: string, ctx: frame-ctx);
+  on-close: func(id: string);
+}
+
+interface input {
+  monotonic-ms: func() -> u64;
+  screen-open: func() -> bool;
+  player-using-item: func() -> option<bool>;
+}
+
+world input-mod {
+  include client-mod;
+  import input;
+  export events;
+}
+
+world interactive-mod {
+  include input-mod;
+  import accounts;
+  import screens;
+  export screen-handlers;
+}

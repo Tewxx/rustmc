@@ -4,10 +4,11 @@ These are partial ports. They are not replacements for either source mod yet. Th
 `.rmod` built by `lunarforge/build.sh` implements only the FPS HUD slice; selecting
 that separate package enables it, while the original FPS module defaults off.
 The current draw layout is provisional: it needs the host font-width API and Lunar
-HUD positioning/settings before claiming visual parity. CPS and coordinate helpers
-are tested native Rust logic but have no input/clock/config/draw bindings yet.
-AccountManager is credential-free interaction logic, not a runnable component:
-its screen, secure account service, add/login flows and host integration are missing.
+HUD positioning/settings before claiming visual parity. A separate CPS component
+now consumes the reserved input/clock interface; its host implementation remains
+missing. AccountManager has a component implementing its account screen and
+requests to a host-owned account service, tested against a mock host. The current
+runtime cannot link these interactive interfaces or authenticate/switch accounts.
 
 ## Artifact identity and method
 
@@ -27,14 +28,17 @@ its screen, secure account service, add/login flows and host integration are mis
   and shadow. Reverse setting and exact centered positioning are not yet wired.
 - CPS: left/right mouse-down in a rolling 1000 ms window, ignored while a screen
   is open; separate left count while the player is not using an item. Label,
-  reverse and right-click text logic are tested. Host mouse and millisecond clock
-  inputs, config, and rendering remain to be connected.
+  reverse and right-click text logic are tested. The CPS guest uses reserved mouse
+  and millisecond-clock imports; the production host and configuration remain open.
 - Coordinates: eight-direction yaw conversion is tested; coordinates display,
   biome, culling counters, child layout and copy key remain unported.
 - Account Manager: selection, Shift+arrow reorder requests, activate/delete,
   launch-session restore eligibility, pending operations, ban status parsing and
-  labels are represented without storing credentials. These are guest-independent
-  state transitions; no account, file, token, cookie or session API is connected.
+  labels are represented without storing credentials. The component implements
+  screen registration, list, activation, removal, restore, add-mode requests,
+  scrolling, keyboard selection and reordering against reserved host APIs. A mock
+  Wasmtime host exercises selection, activation, reorder and token-add requests.
+  The real host has no account service, screens, event dispatch or permission flow yet.
 
 ## Remaining LunarForge modules
 
@@ -76,3 +80,8 @@ hooks, chat/packets, world overlays, animations, cosmetics, Lunar network servic
 and GUI. Each needs the corresponding WIT and host behavior before it can run.
 Security-sensitive network/auth features need explicit user-controlled host APIs;
 no credentials or third-party network requests are made by the current port.
+
+Run `mods/wasm/verify.sh` to build both pending guests and test them using a
+no-WASI mock Wasmtime host. The generated `.rmod` files request the reserved
+`accounts`, `screens` or `input_read` capabilities, so the current production
+loader deliberately rejects them until those capabilities are implemented.

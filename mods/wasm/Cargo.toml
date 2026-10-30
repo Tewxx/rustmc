@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["lunarforge", "accountmanager"]
+members = ["lunarforge-core", "lunarforge", "lunarforge-input", "accountmanager"]

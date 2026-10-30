@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "accountmanager-port"
 version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
 
 [[package]]
 name = "ahash"
@@ -100,9 +103,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "lunarforge-core"
+version = "0.1.0"
+
+[[package]]
+name = "lunarforge-cps-port"
+version = "0.1.0"
+dependencies = [
+ "lunarforge-core",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "lunarforge-port"
 version = "0.1.0"
 dependencies = [
+ "lunarforge-core",
  "wit-bindgen",
 ]
 

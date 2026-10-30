@@ -5,7 +5,7 @@ cd "$(dirname "$0")/../../.."
 ROOT=$PWD
 if [ ! -f crates/mc-mods/wit/rustmc.wit ]; then echo 'The mc-mods host/SDK is required to componentize this guest.' >&2; exit 1; fi
 cmp -s mods/wasm/lunarforge/wit/rustmc.wit crates/mc-mods/wit/rustmc.wit || { echo 'Guest WIT differs from the host; reconcile the ABI before building.' >&2; exit 1; }
-cargo build --locked --manifest-path mods/wasm/Cargo.toml -p lunarforge-port --target wasm32-unknown-unknown --release
+cargo build --locked --target-dir "$ROOT/mods/wasm/target" --manifest-path mods/wasm/Cargo.toml -p lunarforge-port --target wasm32-unknown-unknown --release
 OUT=${1:-$ROOT/mods/wasm/target/lunarforge_fps.rmod}
 COMPONENT=$ROOT/mods/wasm/target/lunarforge_fps.component.wasm
 cargo run -p mc-mods --example componentize -- "$ROOT/mods/wasm/target/wasm32-unknown-unknown/release/lunarforge_port.wasm" "$COMPONENT"
