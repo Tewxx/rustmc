@@ -1098,9 +1098,11 @@ impl AvatarRenderer {
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
             let overlay = l.overlay.map_or([0.; 4], |o| [o[0] * light[0], o[1] * light[1], o[2] * light[2], o[3]]);
             let target = if l.additive { &mut *additive } else { &mut *out };
+            let mvp = vp * pm;
+            let clip = q.pos.map(|p| (mvp * p.extend(1.)).to_array());
             for i in [0, 1, 2, 0, 2, 3] {
                 let [u, v] = q.uv[i];
-                target.push(Vertex { clip: (vp * pm * q.pos[i].extend(1.)).to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay });
+                target.push(Vertex { clip: clip[i], uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay });
             }
         });
         if let (Some(item), Some(m)) = (&f.held, held) {
@@ -1351,8 +1353,10 @@ fn model_quad(out: &mut Vec<Vertex>, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f
     let n = Mat3::from_mat4(m).inverse().transpose() * q.normal;
     let shade = standard_lighting(n, lights);
     let c = [tint[0] * shade * light[0], tint[1] * shade * light[1], tint[2] * shade * light[2], 1.];
+    let mvp = proj * m;
+    let clip = q.pos.map(|p| (mvp * p.extend(1.)).to_array());
     for i in [0, 1, 2, 0, 2, 3] {
-        out.push(Vertex { clip: (proj * m * q.pos[i].extend(1.)).to_array(), uv: q.uv[i], color: c, kind, overlay: [0.; 4] });
+        out.push(Vertex { clip: clip[i], uv: q.uv[i], color: c, kind, overlay: [0.; 4] });
     }
 }
 
