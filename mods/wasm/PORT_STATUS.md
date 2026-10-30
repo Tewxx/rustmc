@@ -30,8 +30,12 @@ runtime cannot link these interactive interfaces or authenticate/switch accounts
   is open; separate left count while the player is not using an item. Label,
   reverse and right-click text logic are tested. The CPS guest uses reserved mouse
   and millisecond-clock imports; the production host and configuration remain open.
-- Coordinates: eight-direction yaw conversion is tested; coordinates display,
-  biome, culling counters, child layout and copy key remain unported.
+- Coordinates: eight-direction yaw conversion, integer HUD flooring and the
+  distinct truncation used by the clipboard shortcut are tested as core logic;
+  display, biome, culling counters, child layout and clipboard wiring remain open.
+- Zoom: the state machine covers hold/toggle, variable-scroll bounds, smooth FOV
+  interpolation and restoring smooth camera; it has no guest or host camera/keybind
+  integration yet and is not a runnable feature.
 - Account Manager: selection, Shift+arrow reorder requests, activate/delete,
   launch-session restore eligibility, pending operations, ban status parsing and
   labels are represented without storing credentials. The component implements

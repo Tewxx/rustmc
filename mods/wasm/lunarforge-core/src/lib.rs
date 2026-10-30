@@ -67,6 +67,86 @@ pub fn direction(yaw: f32) -> Option<&'static str> {
     ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].get(index).copied()
 }
 
+/// The coordinates HUD floors each displayed axis, including negative positions.
+pub fn coordinate_blocks(pos: [f64; 3]) -> Option<[i32; 3]> {
+    let mut result = [0; 3];
+    for (out, value) in result.iter_mut().zip(pos) {
+        if !value.is_finite() || value.floor() < i32::MIN as f64 || value.floor() > i32::MAX as f64 { return None; }
+        *out = value.floor() as i32;
+    }
+    Some(result)
+}
+
+/// The source's clipboard shortcut uses Java integer casts (truncation), unlike its HUD.
+pub fn copy_coordinates(pos: [f64; 3]) -> Option<String> {
+    if pos.iter().any(|v| !v.is_finite()) { return None; }
+    Some(format!("X: {} Y: {} Z: {}", pos[0] as i32, pos[1] as i32, pos[2] as i32))
+}
+
+/// LunarForge's zoom settings. Host-controlled keybind and smooth-camera effects are separate.
+#[derive(Clone, Copy, Debug)]
+pub struct ZoomOptions {
+    pub toggle: bool,
+    pub smooth_camera: bool,
+    pub smooth_zoom: bool,
+    pub variable: bool,
+    pub scroll_speed: f32,
+    pub divisor: u8,
+    pub sensitivity: f32,
+}
+impl Default for ZoomOptions {
+    fn default() -> Self { Self { toggle: false, smooth_camera: true, smooth_zoom: true, variable: false, scroll_speed: 1.0, divisor: 4, sensitivity: 1.0 } }
+}
+#[derive(Clone, Copy, Debug)]
+pub struct ZoomTick { pub active: bool, pub smooth_camera: bool, pub invalidate_renderer: bool }
+#[derive(Debug)]
+pub struct Zoom {
+    active: bool, down: bool, saved_smooth: bool, variable_factor: f32, previous: f32, current: f32,
+}
+impl Default for Zoom {
+    fn default() -> Self { Self { active: false, down: false, saved_smooth: false, variable_factor: 1.0, previous: 1.0, current: 1.0 } }
+}
+impl Zoom {
+    fn divisor(&self, opts: ZoomOptions) -> f32 {
+        opts.divisor.clamp(2, 10) as f32 * if opts.variable { self.variable_factor } else { 1.0 }
+    }
+    /// Called at the start of a client tick. `smooth_camera` is the current user setting.
+    pub fn tick(&mut self, opts: ZoomOptions, enabled: bool, world: bool, screen_open: bool, key_down: bool, smooth_camera: bool) -> ZoomTick {
+        let pressed = enabled && world && !screen_open && key_down;
+        let mut next = if opts.toggle { if pressed && !self.down { !self.active } else { self.active } } else { pressed };
+        if !enabled || !world || screen_open { next = false; }
+        self.down = pressed;
+        let changed = next != self.active;
+        let mut camera = smooth_camera;
+        if changed {
+            if next { self.saved_smooth = smooth_camera; }
+            else { camera = self.saved_smooth; self.variable_factor = 1.0; }
+            self.active = next;
+        }
+        if self.active { camera = opts.smooth_camera || self.saved_smooth; }
+        self.previous = self.current;
+        let target = if self.active { 1.0 / self.divisor(opts) } else { 1.0 };
+        self.current = if opts.smooth_zoom { self.current + (target - self.current) * 0.75 } else { target };
+        ZoomTick { active: self.active, smooth_camera: camera, invalidate_renderer: changed }
+    }
+    /// Returns whether the scroll event should be consumed.
+    pub fn scroll(&mut self, opts: ZoomOptions, enabled: bool, screen_open: bool, wheel: i32) -> bool {
+        if !enabled || !self.active || !opts.variable || screen_open || wheel == 0 { return false; }
+        let lower = 1.4 / opts.divisor.clamp(2, 10) as f32;
+        self.variable_factor = (self.variable_factor + wheel.signum() as f32 * opts.scroll_speed.clamp(0.25, 5.0) * 0.5).clamp(lower, 10.0);
+        true
+    }
+    pub fn fov(&self, opts: ZoomOptions, enabled: bool, original: f32, partial_ticks: f32) -> f32 {
+        if !enabled { return original; }
+        let factor = if opts.smooth_zoom { self.previous + (self.current - self.previous) * partial_ticks }
+            else if self.active { 1.0 / self.divisor(opts) } else { 1.0 };
+        original * factor
+    }
+    pub fn sensitivity(&self, opts: ZoomOptions, enabled: bool, original: f32) -> f32 {
+        if enabled && self.active { original * opts.sensitivity.clamp(0.1, 2.0) } else { original }
+    }
+}
+
 /// RMD1 output for the currently supported FPS HUD slice. Its layout is provisional until
 /// the host exposes text measurement and the LunarForge HUD editor/config interfaces.
 pub fn fps_draw_stream(fps: u32) -> Vec<u8> {
@@ -116,6 +196,37 @@ mod tests {
         let opts = CpsOptions { right_click: true, reverse: true, ..CpsOptions::default() };
         assert_eq!(cps_text(&mut counter, 1000, opts), "CPS 1  1");
         assert_eq!(cps_text(&mut counter, 1000, CpsOptions { show_text: false, ..opts }), "1  1");
+    }
+    #[test]
+    fn coordinates_floor_but_copy_truncates_toward_zero() {
+        let pos = [-1.9, 64.9, -0.1];
+        assert_eq!(coordinate_blocks(pos), Some([-2, 64, -1]));
+        assert_eq!(copy_coordinates(pos).as_deref(), Some("X: -1 Y: 64 Z: 0"));
+        assert_eq!(coordinate_blocks([f64::NAN, 0., 0.]), None);
+    }
+    #[test]
+    fn zoom_interpolates_and_restores_camera() {
+        let mut zoom = Zoom::default();
+        let opts = ZoomOptions::default();
+        let start = zoom.tick(opts, true, true, false, true, false);
+        assert!(start.active && start.smooth_camera && start.invalidate_renderer);
+        assert_eq!(zoom.fov(opts, true, 100.0, 0.5), 71.875);
+        let end = zoom.tick(opts, true, true, true, true, true);
+        assert!(!end.active && !end.smooth_camera && end.invalidate_renderer);
+        assert_eq!(zoom.fov(opts, false, 100.0, 1.0), 100.0);
+    }
+    #[test]
+    fn zoom_toggle_and_variable_scroll_follow_edges() {
+        let mut zoom = Zoom::default();
+        let opts = ZoomOptions { toggle: true, variable: true, smooth_zoom: false, ..Default::default() };
+        assert!(zoom.tick(opts, true, true, false, true, false).active);
+        assert!(zoom.tick(opts, true, true, false, true, true).active);
+        assert!(zoom.scroll(opts, true, false, 120));
+        assert!((zoom.fov(opts, true, 90.0, 1.0) - 15.0).abs() < 0.0001);
+        assert!(!zoom.scroll(opts, true, true, 120));
+        zoom.tick(opts, true, true, false, false, true);
+        assert!(!zoom.tick(opts, true, true, false, true, true).active);
+        assert!(!zoom.scroll(opts, true, false, 120));
     }
     #[test]
     fn draw_stream_has_fixed_bounds_and_text() {
