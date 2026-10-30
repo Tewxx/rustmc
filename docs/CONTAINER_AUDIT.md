@@ -15,6 +15,6 @@ Known outstanding parity work:
 
 - Furnace shift-click routing, fuel acceptance and bucket limits now use rules extracted from Java. Other specialized containers need their own `transferStackInSlot` and slot validation.
 - Crafting and other result slots have pickup callbacks and can regenerate their contents. Prediction currently does not model those callbacks or repeated shift-clicks.
-- Drag splitting (mode 5), double-click collection (mode 6), middle-click cloning (mode 3), and drop key interactions (mode 4) need input handling and Java traces.
+- Drop key (mode 4) and double-click collection (mode 6) have basic Java traces; shift-double-click remains unimplemented. Drag splitting (mode 5) and middle-click cloning (mode 3) need input handling and Java traces.
 - Exercise NBT, full inventories, damaged items, all armor and crafting cases, and transaction rejection/resynchronization against a server and the Java oracle.
 - The creative screen follows a separate code path and is not covered by these survival-container traces.

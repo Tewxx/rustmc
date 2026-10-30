@@ -17,6 +17,7 @@ final class DumpContainers {
     static final class Player extends EntityPlayer {
         Player() { super(new DumpMovement.MoveWorld(), new GameProfile(new UUID(0, 1), "fixture")); }
         public boolean isSpectator() { return false; }
+        public net.minecraft.entity.item.EntityItem dropPlayerItemWithRandomChoice(ItemStack stack, boolean unused) { return null; }
     }
     static JsonElement stack(ItemStack s) {
         if (s == null) return JsonNull.INSTANCE;
@@ -53,6 +54,9 @@ final class DumpContainers {
         a.add(run("number key chest", "minecraft:chest", new int[][] {{0, 4, 5, 0}, {54, 1, 7, 0}}, new int[][] {{0, 0, 2}}));
         a.add(run("failed shift", "minecraft:chest", full, new int[][] {{0,0,1}}));
         a.add(run("armor slots", "player", new int[][] {{36,1,5,0}, {37,306,1,0}}, new int[][] {{36,0,0},{5,0,0},{36,0,0},{37,0,1},{5,0,2}}));
+        a.add(run("drop items", "minecraft:chest", new int[][] {{0,1,4,0},{1,4,3,0}}, new int[][] {{0,0,4},{1,1,4},{0,0,0},{0,0,4}}));
+        a.add(run("collect double click", "minecraft:chest", new int[][] {{0,1,8,0},{1,1,64,0},{2,1,32,0},{3,1,2,0}}, new int[][] {{0,0,0},{0,0,6}}));
+        a.add(run("collect reverse", "minecraft:chest", new int[][] {{0,1,20,0},{1,1,32,0},{2,1,10,0}}, new int[][] {{0,1,0},{3,1,6}}));
         a.add(run("furnace routing", "minecraft:furnace", new int[][] {{30,15,12,0},{31,263,8,0},{32,1,5,0}}, new int[][] {{30,0,1},{31,0,1},{32,0,1},{0,0,1},{1,0,1}}));
         a.add(run("furnace fuel validation", "minecraft:furnace", new int[][] {{30,1,8,0},{31,325,1,0},{32,263,4,0}}, new int[][] {{30,0,0},{1,0,0},{30,0,0},{31,0,0},{1,0,0},{1,0,0},{31,0,0},{32,0,0},{1,0,0}}));
         return a;

@@ -166,6 +166,7 @@ impl Screen for ResourcePackPrompt {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
     Inventory,
+    Drop,
     Number(usize),
     Escape,
     Enter,

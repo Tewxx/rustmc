@@ -21,6 +21,9 @@ pub(crate) fn map_key(code: KeyCode, settings: &mc_gui::settings::Settings, ctrl
     if lw != 0 && lw == settings.key("key.inventory") {
         return Key::Inventory;
     }
+    if lw != 0 && lw == settings.key("key.drop") {
+        return Key::Drop;
+    }
     if let Some(n) = (0..9).find(|&i| lw != 0 && settings.key(&format!("key.hotbar.{}", i + 1)) == lw) {
         return Key::Number(n);
     }

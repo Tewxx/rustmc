@@ -104,6 +104,7 @@ pub struct ContainerScreen {
     hover: Option<usize>,
     /// `GuiInventory` (an `InventoryEffectRenderer`) rather than a plain `GuiContainer`.
     is_player: bool,
+    last_click: Option<(usize, bool, std::time::Instant)>,
 }
 
 struct Layout {
@@ -120,7 +121,7 @@ struct Layout {
 
 impl ContainerScreen {
     pub fn new(window: Arc<Mutex<Window>>, catalogue: Arc<Catalogue>) -> Self {
-        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false }
+        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None }
     }
 
     fn layout(w: &Window) -> Layout {
@@ -372,6 +373,35 @@ impl ContainerScreen {
                 }
                 None
             }
+            4 if w.cursor.is_none() => {
+                if let Some(stack) = item {
+                    let count = if button == 0 { 1 } else { stack.count };
+                    w.set(ui, i, (stack.count > count).then_some(ItemStack { count: stack.count - count, ..stack }));
+                }
+                None
+            }
+            6 => {
+                if item.is_none() {
+                    if let Some(mut cursor) = w.cursor {
+                        let max = self.max(cursor);
+                        for pass in 0..2 {
+                            let mut indices: Vec<usize> = (0..w.total()).collect();
+                            if button != 0 { indices.reverse(); }
+                            for index in indices {
+                                if index == 0 && (w.kind == "player" || w.kind == "minecraft:crafting_table") { continue; }
+                                let Some(stack) = w.get(ui, index).and_then(|v| *v) else { continue };
+                                if !stack.stacks_with(&cursor) || (pass == 0 && stack.count == self.max(stack)) { continue; }
+                                let take = stack.count.min(max.saturating_sub(cursor.count));
+                                if take == 0 { break; }
+                                cursor.count += take;
+                                w.set(ui, index, (stack.count > take).then_some(ItemStack { count: stack.count - take, ..stack }));
+                            }
+                        }
+                        w.cursor = Some(cursor);
+                    }
+                }
+                None
+            }
             _ => None,
         };
         w.clicks.push(Click { slot: i as i16, button, mode, item: returned });
@@ -382,7 +412,13 @@ impl ContainerScreen {
         let outside = mx < self.left || my < self.top || mx >= self.left + l.w || my >= self.top + l.h;
         let button = right as i8;
         match self.at(&l, mx, my) {
-            Some(i) => self.click_slot(ui, i, button, if ui.shift_down { 1 } else { 0 }),
+            Some(i) => {
+                let now = std::time::Instant::now();
+                let double = !right && !ui.shift_down && self.last_click.is_some_and(|(slot, previous_right, at)|
+                    slot == i && !previous_right && now.duration_since(at).as_millis() < 250);
+                self.last_click = if double { None } else { Some((i, right, now)) };
+                self.click_slot(ui, i, button, if double { 6 } else if ui.shift_down { 1 } else { 0 });
+            }
             None if outside => {
                 // Slot -999: drop the cursor stack (or one item).
                 let mut w = self.window.lock().unwrap();
@@ -487,6 +523,16 @@ impl Screen for ContainerScreen {
                 self.window.lock().unwrap().closed = true;
                 Action::Close
             }
+            Key::Drop => {
+                if self.window.lock().unwrap().cursor.is_none() {
+                    if let Some(i) = self.hover {
+                        if self.window.lock().unwrap().get(ui, i).is_some_and(|slot| slot.is_some()) {
+                            self.click_slot(ui, i, ui.ctrl_down as i8, 4);
+                        }
+                    }
+                }
+                Action::None
+            }
             Key::Number(n) => {
                 if self.window.lock().unwrap().cursor.is_none() {
                     if let Some(i) = self.hover {
@@ -545,6 +591,33 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn screen_double_click_and_drop_key_queue_vanilla_modes() {
+        let Some(jar) = crate::find_jar() else { return };
+        let mut assets = mc_assets::AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = mc_render::models::BlockModels::load(&assets);
+        let cat = Arc::new(Catalogue::load(&assets, &models));
+        let stone = cat.index_of(1, 0).unwrap();
+        let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
+        let window = Arc::new(Mutex::new(Window::new(2, "minecraft:chest", String::new(), 27)));
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(stone, 8, 0));
+        window.lock().unwrap().slots[1] = Some(ItemStack::new(stone, 10, 0));
+        let mut screen = ContainerScreen::new(window.clone(), cat);
+        screen.mouse(&mut ui, 9, 19, false);
+        screen.mouse(&mut ui, 9, 19, false);
+        assert_eq!(window.lock().unwrap().cursor.unwrap().count, 18);
+        assert_eq!(window.lock().unwrap().clicks.last().unwrap().mode, 6);
+        window.lock().unwrap().cursor = None;
+        window.lock().unwrap().slots[1] = Some(ItemStack::new(stone, 10, 0));
+        screen.hover = Some(1);
+        ui.ctrl_down = true;
+        screen.key(&mut ui, Key::Drop);
+        let win = window.lock().unwrap();
+        assert_eq!((win.clicks.last().unwrap().mode, win.clicks.last().unwrap().button), (4, 1));
+        assert!(win.slots[1].is_none());
     }
 
     #[test]
