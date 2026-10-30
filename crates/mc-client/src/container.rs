@@ -568,10 +568,29 @@ impl ContainerScreen {
         w.clicks.push(Click { slot: i as i16, button, mode, item: returned });
     }
 
+    fn beacon_buttons(w: &Window) -> Vec<(i32, i32, i16, i16)> {
+        let mut buttons = vec![(53, 22, 1, 0), (77, 22, 3, 0), (53, 47, 11, 1), (77, 47, 8, 1), (65, 72, 5, 2), (144, 47, 10, 3)];
+        if w.props[1] > 0 { buttons.push((168, 47, w.props[1], 3)); }
+        buttons
+    }
+
     fn mouse(&mut self, ui: &mut Ui, mx: i32, my: i32, right: bool) -> Action {
         let l = Self::layout(&self.window.lock().unwrap());
         if !right {
-            let w = self.window.lock().unwrap();
+            let mut w = self.window.lock().unwrap();
+            if w.kind == "minecraft:beacon" {
+                let x = mx - self.left; let y = my - self.top;
+                if (164..186).contains(&x) && (107..129).contains(&y) && w.slots[0].is_some() && w.props[1] > 0 {
+                    return Action::Beacon { window_id: w.id, primary: w.props[1] as i32, secondary: w.props[2] as i32 };
+                }
+                if (190..212).contains(&x) && (107..129).contains(&y) { w.closed = true; return Action::Close; }
+                for (bx, by, effect, tier) in Self::beacon_buttons(&w) {
+                    if (bx..bx + 22).contains(&x) && (by..by + 22).contains(&y) {
+                        if tier < w.props[0] { w.props[if tier < 3 { 1 } else { 2 }] = effect; }
+                        return Action::None;
+                    }
+                }
+            }
             if w.kind == "minecraft:enchanting_table" {
                 for choice in 0..3 {
                     if (self.left + 60..self.left + 168).contains(&mx) && (self.top + 14 + 19 * choice..self.top + 33 + 19 * choice).contains(&my) {
@@ -698,6 +717,33 @@ impl Screen for ContainerScreen {
             }
             None => b.textured_rect(l.texture, x, y, 0, 0, l.w, l.h),
         }
+        if win.kind == "minecraft:beacon" {
+            for (bx, by, effect, tier) in Self::beacon_buttons(&win) {
+                let enabled = tier < win.props[0];
+                let selected = win.props[if tier < 3 { 1 } else { 2 }] == effect;
+                let hover = (x + bx..x + bx + 22).contains(&mx) && (y + by..y + by + 22).contains(&my);
+                let u = if !enabled { 44 } else if selected { 22 } else if hover { 66 } else { 0 };
+                b.textured_rect(l.texture, x + bx, y + by, u, 219, 22, 22);
+                if let Some(p) = mc_data::potion::POTIONS.iter().find(|p| p.id == effect as u8) {
+                    b.textured_rect("textures/gui/container/inventory.png", x + bx + 2, y + by + 2, p.icon % 8 * 18, 198 + p.icon / 8 * 18, 18, 18);
+                }
+            }
+            for (bx, icon, enabled) in [(164, 90, win.slots[0].is_some() && win.props[1] > 0), (190, 112, true)] {
+                let hover = (x + bx..x + bx + 22).contains(&mx) && (y + 107..y + 129).contains(&my);
+                let u = if !enabled { 44 } else if hover { 66 } else { 0 };
+                b.textured_rect(l.texture, x + bx, y + 107, u, 219, 22, 22);
+                b.textured_rect(l.texture, x + bx + 2, y + 109, icon, 220, 18, 18);
+            }
+            for (n, id) in [388, 264, 266, 265].iter().enumerate() {
+                if let Some(item) = self.catalogue.index_of(*id, 0) {
+                    self.catalogue.draw(ui, b, ItemStack::new(item, 1, 0), x + 42 + n as i32 * 22, y + 109);
+                }
+            }
+            let primary = ui.lang.get("tile.beacon.primary");
+            let secondary = ui.lang.get("tile.beacon.secondary");
+            ui.font.draw_centered(b, &primary, x + 62, y + 10, 0xffe0e0e0);
+            ui.font.draw_centered(b, &secondary, x + 169, y + 10, 0xffe0e0e0);
+        }
         if win.kind == "minecraft:enchanting_table" {
             for choice in 0..3 {
                 let cost = win.props[choice];
@@ -732,7 +778,7 @@ impl Screen for ContainerScreen {
         if win.kind == "player" {
             // GuiInventory: only "Crafting" above the grid.
             ui.font.draw(b, &title, (x + 86) as f32, (y + 16) as f32, 0xff404040);
-        } else {
+        } else if win.kind != "minecraft:beacon" {
             ui.font.draw(b, &title, (x + title_x) as f32, (y + 6) as f32, 0xff404040);
             let inv = ui.lang.get("container.inventory");
             ui.font.draw(b, &inv, (x + 8) as f32, (y + l.h - 96 + 2) as f32, 0xff404040);
@@ -860,6 +906,28 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn beacon_selection_respects_pyramid_level_and_payment() {
+        let Some(jar) = crate::find_jar() else { return };
+        let mut assets = mc_assets::AssetSource::new(); assets.push(&jar).unwrap();
+        let models = mc_render::models::BlockModels::load(&assets);
+        let cat = Arc::new(Catalogue::load(&assets, &models));
+        let payment = cat.index_of(265, 0).unwrap();
+        let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
+        let w = Arc::new(Mutex::new(Window::new(7, "minecraft:beacon", String::new(), 0)));
+        let mut screen = ContainerScreen::new(w.clone(), cat);
+        w.lock().unwrap().props[0] = 1;
+        screen.mouse(&mut ui, 54, 48, false);
+        assert_eq!(w.lock().unwrap().props[1], 0);
+        screen.mouse(&mut ui, 54, 23, false);
+        assert_eq!(w.lock().unwrap().props[1], 1);
+        assert!(matches!(screen.mouse(&mut ui, 165, 108, false), Action::None));
+        w.lock().unwrap().slots[0] = Some(ItemStack::new(payment, 1, 0));
+        w.lock().unwrap().props[0] = 4;
+        screen.mouse(&mut ui, 145, 48, false);
+        assert!(matches!(screen.mouse(&mut ui, 165, 108, false), Action::Beacon { window_id: 7, primary: 1, secondary: 10 }));
     }
 
     #[test]

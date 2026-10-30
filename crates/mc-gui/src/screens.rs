@@ -31,6 +31,7 @@ pub enum Action {
     PrintChat(String),
     Respawn,
     Enchant { window_id: u8, choice: u8 },
+    Beacon { window_id: u8, primary: i32, secondary: i32 },
     /// `GuiYesNo` answer for the pending `S48PacketResourcePackSend`.
     ResourcePackDecision(bool),
     /// Join a server from the multiplayer screens (`GuiConnecting`).

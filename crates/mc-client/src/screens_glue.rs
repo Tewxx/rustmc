@@ -106,6 +106,19 @@ impl App {
     pub(crate) fn handle(&mut self, action: Action, el: &ActiveEventLoop) {
         match action {
             Action::None => {}
+            Action::Beacon { window_id, primary, secondary } => {
+                self.flush_window();
+                let mut data = Vec::with_capacity(8);
+                data.extend_from_slice(&primary.to_be_bytes());
+                data.extend_from_slice(&secondary.to_be_bytes());
+                self.send(mc_protocol::packets::PlayServerbound::PluginMessageC(mc_protocol::packets::PluginMessageC { channel: "MC|Beacon".into(), data }));
+                if let Some(w) = &self.open_window {
+                    let mut w = w.lock().unwrap();
+                    if w.id == window_id { w.closed = true; }
+                }
+                self.flush_window();
+                self.close_all();
+            }
             Action::Enchant { window_id, choice } => {
                 self.flush_window();
                 self.send(mc_protocol::packets::PlayServerbound::EnchantItem(mc_protocol::packets::EnchantItem { window_id, enchantment: choice }));
