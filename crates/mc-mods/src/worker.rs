@@ -1,8 +1,10 @@
 //! Run compilation and guest calls off the game thread. Frame/tick queues are bounded.
-use crate::{draw::{self, Draw}, FrameCtx, ModInstance, Package, Snapshot};
+use crate::{draw::{self, Draw}, FrameCtx, KeyEvent, MouseEvent, ModInstance, Package, Snapshot};
 use std::{path::Path, sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, Ordering}, mpsc::{self, SyncSender}}, thread};
 
-enum Event { Tick(u64, Snapshot), Frame }
+enum Input { Key(KeyEvent), Mouse(MouseEvent) }
+enum Event { Tick(u64, Snapshot), Input(u64, Input, std::time::Instant, bool, Option<bool>), Frame }
+enum Work { Tick(Snapshot), Input(Input, std::time::Instant, bool, Option<bool>), Frame(FrameCtx) }
 struct Output { generation: u64, revision: u64, commands: Vec<Draw> }
 
 pub struct ModWorker {
@@ -47,30 +49,38 @@ impl ModWorker {
             let mut active_generation = 0;
             while let Ok(event) = rx.recv() {
                 if worker_overflow.load(Ordering::Acquire) {
-                    eprintln!("WASM mods disabled: tick queue overflow");
+                    eprintln!("WASM mods disabled: ordered event queue overflow");
                     break;
                 }
                 let event = match event {
-                    Event::Tick(g, snapshot) => Some((g, Some(snapshot), None)),
+                    Event::Tick(g, snapshot) => Some((g, Work::Tick(snapshot))),
+                    Event::Input(g, input, at, screen, using) => Some((g, Work::Input(input, at, screen, using))),
                     Event::Frame => {
                         let frame = worker_frame_slot.lock().ok().and_then(|mut f| f.take());
                         worker_frame_pending.store(false, Ordering::Release);
-                        frame.map(|(g, f)| (g, None, Some(f)))
+                        frame.map(|(g, f)| (g, Work::Frame(f)))
                     }
                 };
-                let Some((event_generation, snapshot, frame)) = event else { continue; };
+                let Some((event_generation, work)) = event else { continue; };
                 if event_generation != worker_generation.load(Ordering::Acquire) { continue; }
                 if event_generation != active_generation {
                     for m in &mut mods { m.reset_snapshot(); }
                     active_generation = event_generation;
                 }
-                if let Some(snapshot) = snapshot {
-                    mods.retain_mut(|m| {
+                match work {
+                  Work::Tick(snapshot) => { mods.retain_mut(|m| {
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| m.tick(snapshot.clone()))) {
                             Ok(Ok(())) => true, Ok(Err(e)) => { eprintln!("WASM tick: {e:#}"); false }, Err(_) => { eprintln!("WASM tick: host panic"); false }
                         }
-                    });
-                } else if let Some(frame) = frame {
+                    }); },
+                  Work::Input(input, at, screen, using) => { mods.retain_mut(|m| {
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &input {
+                            Input::Key(e) => m.key(e.clone(), at, screen, using),
+                            Input::Mouse(e) => m.mouse(e.clone(), at, screen, using),
+                        }));
+                        match result { Ok(Ok(())) => true, Ok(Err(e)) => { eprintln!("WASM input: {e:#}"); false }, Err(_) => { eprintln!("WASM input: host panic"); false } }
+                    }); },
+                  Work::Frame(frame) => {
                         let gen = event_generation;
                         if gen != worker_generation.load(Ordering::Acquire) { continue; }
                         let mut commands = Vec::new();
@@ -84,17 +94,24 @@ impl ModWorker {
                         if gen == worker_generation.load(Ordering::Acquire) {
                             if let Ok(mut out) = worker_output.lock() { out.generation = gen; out.revision = out.revision.wrapping_add(1); out.commands = commands; }
                         }
+                  }
                 }
             }
         }).ok()?;
         Some(Self { tx, generation, output, overflow, frame_pending, frame_slot, last_revision: 0, stale_frames: 0 })
     }
-    pub fn tick(&self, snapshot: Snapshot) {
-        if matches!(self.tx.try_send(Event::Tick(self.generation.load(Ordering::Acquire), snapshot)), Err(mpsc::TrySendError::Full(_)))
-            && !self.overflow.swap(true, Ordering::AcqRel) {
-            // Missing a tick corrupts guest state; retire the worker instead of continuing silently.
+    fn ordered(&self, event: Event) {
+        if matches!(self.tx.try_send(event), Err(mpsc::TrySendError::Full(_))) && !self.overflow.swap(true, Ordering::AcqRel) {
+            // Losing an ordered event corrupts guest state; retire the worker instead.
             self.clear();
         }
+    }
+    pub fn tick(&self, snapshot: Snapshot) { self.ordered(Event::Tick(self.generation.load(Ordering::Acquire), snapshot)); }
+    pub fn key(&self, event: KeyEvent, screen: bool, using: Option<bool>) {
+        self.ordered(Event::Input(self.generation.load(Ordering::Acquire), Input::Key(event), std::time::Instant::now(), screen, using));
+    }
+    pub fn mouse(&self, event: MouseEvent, screen: bool, using: Option<bool>) {
+        self.ordered(Event::Input(self.generation.load(Ordering::Acquire), Input::Mouse(event), std::time::Instant::now(), screen, using));
     }
     pub fn frame(&self, frame: FrameCtx) {
         let Ok(mut slot) = self.frame_slot.try_lock() else { return };

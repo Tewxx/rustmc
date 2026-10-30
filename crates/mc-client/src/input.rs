@@ -121,6 +121,8 @@ impl ApplicationHandler for App {
             },
             WindowEvent::MouseInput { state, button, .. } => {
                 let (mx, my) = self.mouse_gui();
+                #[cfg(feature = "wasm-mods")]
+                self.mod_mouse_event(mx, my, match button { MouseButton::Left => 0, MouseButton::Right => 1, MouseButton::Middle => 2, _ => -1 }, state == ElementState::Pressed, 0);
                 match state {
                     ElementState::Pressed => {
                         if button == MouseButton::Left && self.screen.as_ref().is_some_and(|s| s.is_chat()) {
@@ -159,6 +161,8 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::LineDelta(_, y) => y.signum() as i32,
                     MouseScrollDelta::PixelDelta(p) => p.y.signum() as i32,
                 };
+                #[cfg(feature = "wasm-mods")]
+                { let (mx, my) = self.mouse_gui(); self.mod_mouse_event(mx, my, -1, false, d); }
                 if self.screen.as_ref().is_some_and(|s| s.is_chat()) {
                     // GuiChat.handleMouseInput: one line with shift, seven without.
                     if d != 0 {
@@ -180,6 +184,8 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let PhysicalKey::Code(code) = event.physical_key else { return };
+                #[cfg(feature = "wasm-mods")]
+                self.mod_key_event(code, event.state == ElementState::Pressed, event.repeat, event.text.as_ref().and_then(|t| t.chars().next()));
                 if event.state == ElementState::Released {
                     self.keys.remove(&code);
                     self.ui.shift_down = self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
