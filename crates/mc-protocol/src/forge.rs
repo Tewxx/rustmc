@@ -112,7 +112,7 @@ impl Multipart {
     /// Returns the reassembled channel and payload only after all declared bytes arrive.
     pub fn push(&mut self, part: &[u8]) -> Result<Option<(String, Vec<u8>)>, String> {
         let (&number, payload) = part.split_first().ok_or("empty Forge multipart packet")?;
-        if number != self.next || payload.is_empty() || payload.len() > self.length.saturating_sub(self.data.len()) {
+        if self.next >= self.parts || number != self.next || payload.is_empty() || payload.len() > self.length.saturating_sub(self.data.len()) {
             return Err("invalid Forge multipart sequence or length".into());
         }
         self.data.extend_from_slice(payload);
@@ -195,6 +195,7 @@ mod tests {
         let mut m = Multipart::new(&preamble("FML|HS", 2, 5)).unwrap();
         assert_eq!(m.push(&[0, 1, 2]).unwrap(), None);
         assert_eq!(m.push(&[1, 3, 4, 5]).unwrap(), Some(("FML|HS".into(), vec![1, 2, 3, 4, 5])));
+        assert!(m.push(&[2, 6]).is_err());
         assert!(Multipart::new(&preamble("FML|MP", 1, 1)).is_err());
         assert!(Multipart::new(&preamble("FML", 0, 1)).is_err());
         assert!(Multipart::new(&preamble("FML", 1, MAX_MULTIPART_BYTES as i32 + 1)).is_err());
