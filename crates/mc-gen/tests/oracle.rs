@@ -1,18 +1,17 @@
 //! Byte-for-byte comparisons against vanilla dumps made by `tools/oracle/run.sh`.
-//! Each test is skipped when its dump is missing (the oracle needs Java 8 and the MCP classes).
+//! Dumps live in `golden/oracle/` (generate with the command in each test's doc line, as
+//! `tools/oracle/run.sh <args> <abs path>/golden/oracle/<file>`).
+//! Scope: biome layers and `provide_chunk` output (terrain + biomes) only. NOT compared:
+//! population (`Oracle populated` mode), structures (villages, mineshafts, ...).
+//! A missing dump skips the test, or fails it under RUSTMC_REQUIRE_GOLDEN=1.
 
 use mc_gen::Generator;
-use std::path::PathBuf;
+use std::path::Path;
 
 fn dump(name: &str) -> Option<Vec<u8>> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/oracle").join(name);
-    match std::fs::read(&p) {
-        Ok(v) => Some(v),
-        Err(_) => {
-            eprintln!("skipping: no oracle dump {}", p.display());
-            None
-        }
-    }
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/oracle").join(name);
+    let p = mc_testutil::require(&p, p.is_file())?;
+    std::fs::read(p).ok()
 }
 
 fn be_i32(b: &[u8]) -> i32 {
