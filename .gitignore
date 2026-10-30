@@ -42,3 +42,5 @@ __pycache__/
 /tests/forge/build
 
 /crates/mc-mods/tests/guest/target
+# Native WASM guest build output
+/mods/wasm/target/
