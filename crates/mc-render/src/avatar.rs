@@ -1718,6 +1718,19 @@ mod particle_instance_tests {
         let new = render(&mut renderer, &frame, true);
         assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "player must be visible");
         assert_eq!(old, new);
+        let held_model = ItemModel { quads: vec![mc_assets::model::BakedQuad {
+            pos: [[0.,0.,0.],[0.,1.,0.],[1.,1.,0.],[1.,0.,0.]], uv: [[0.,1.],[0.,0.],[1.,0.],[1.,1.]],
+            face: mc_core::Facing::North, cullface: None, tint_index: -1, shade: 1. }],
+            gui3d: false, builtin: false, transforms: Default::default() };
+        frame.others[0].held = Some(HeldItem { model: Arc::new(held_model), tints: [0xffffff; 4], entity_block: false, glint: false });
+        frame.mobs.push(MobFrame { mob: crate::mobs::Mob::Zombie { villager: false }, id: 2,
+            pos: Vec3::new(0.2, -1., 3.), body_yaw: 0., head_yaw: 0., pitch: 0., limb_swing: 0., limb_amount: 0.,
+            age: 0., ticks: 0, swing: 0., child: false, hurt: false, death: 0., light: [1.;3], bright: [1.;3],
+            held: None, armor: [None;4] });
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        frame.mobs.clear();
         frame.others[0].armor[2].as_mut().unwrap().glint = true;
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
