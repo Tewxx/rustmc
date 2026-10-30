@@ -8,6 +8,9 @@ import net.minecraft.init.Items;
 import net.minecraft.inventory.*;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.crafting.FurnaceRecipes;
+import net.minecraft.tileentity.TileEntityFurnace;
+import java.util.*;
 
 /** Traces real Container.slotClick state and return values, including C0E's clicked stack. */
 final class DumpContainers {
@@ -20,10 +23,10 @@ final class DumpContainers {
         JsonArray a = new JsonArray(); a.add(new JsonPrimitive(Item.getIdFromItem(s.getItem())));
         a.add(new JsonPrimitive(s.stackSize)); a.add(new JsonPrimitive(s.getMetadata())); return a;
     }
-    static JsonObject run(String name, boolean playerWindow, int[][] initial, int[][] clicks) {
+    static JsonObject run(String name, String kind, int[][] initial, int[][] clicks) {
         Player p = new Player();
-        Container c = playerWindow ? p.inventoryContainer : new ContainerChest(p.inventory, new InventoryBasic("chest", false, 27), p);
-        JsonObject out = new JsonObject(); out.addProperty("name", name); out.addProperty("kind", playerWindow ? "player" : "minecraft:chest");
+        Container c = kind.equals("player") ? p.inventoryContainer : kind.equals("minecraft:furnace") ? new ContainerFurnace(p.inventory, new TileEntityFurnace()) : new ContainerChest(p.inventory, new InventoryBasic("chest", false, 27), p);
+        JsonObject out = new JsonObject(); out.addProperty("name", name); out.addProperty("kind", kind);
         JsonArray init = new JsonArray();
         for (int[] x : initial) {
             c.getSlot(x[0]).putStack(new ItemStack(Item.getItemById(x[1]), x[2], x[3]));
@@ -43,13 +46,31 @@ final class DumpContainers {
     }
     static JsonArray dump() {
         JsonArray a = new JsonArray();
-        a.add(run("pickup", false, new int[][] {{0, 1, 41, 0}, {1, 1, 60, 0}, {2, 4, 2, 0}}, new int[][] {{0,1,0},{1,0,0},{2,0,0},{3,1,0},{3,0,0}}));
-        a.add(run("shift and number key", false, new int[][] {{0,1,40,0},{54,1,20,0},{55,4,4,0}}, new int[][] {{0,0,1},{55,0,2},{2,1,2},{54,0,1}}));
+        a.add(run("pickup", "minecraft:chest", new int[][] {{0, 1, 41, 0}, {1, 1, 60, 0}, {2, 4, 2, 0}}, new int[][] {{0,1,0},{1,0,0},{2,0,0},{3,1,0},{3,0,0}}));
+        a.add(run("shift and number key", "minecraft:chest", new int[][] {{0,1,40,0},{54,1,20,0},{55,4,4,0}}, new int[][] {{0,0,1},{55,0,2},{2,1,2},{54,0,1}}));
         int[][] full = new int[37][4]; full[0] = new int[] {0, 1, 2, 0};
         for (int i=0; i<36; i++) full[i+1] = new int[] {27+i, 4, 64, 0};
-        a.add(run("number key chest", false, new int[][] {{0, 4, 5, 0}, {54, 1, 7, 0}}, new int[][] {{0, 0, 2}}));
-        a.add(run("failed shift", false, full, new int[][] {{0,0,1}}));
-        a.add(run("armor slots", true, new int[][] {{36,1,5,0}, {37,306,1,0}}, new int[][] {{36,0,0},{5,0,0},{36,0,0},{37,0,1},{5,0,2}}));
+        a.add(run("number key chest", "minecraft:chest", new int[][] {{0, 4, 5, 0}, {54, 1, 7, 0}}, new int[][] {{0, 0, 2}}));
+        a.add(run("failed shift", "minecraft:chest", full, new int[][] {{0,0,1}}));
+        a.add(run("armor slots", "player", new int[][] {{36,1,5,0}, {37,306,1,0}}, new int[][] {{36,0,0},{5,0,0},{36,0,0},{37,0,1},{5,0,2}}));
+        a.add(run("furnace routing", "minecraft:furnace", new int[][] {{30,15,12,0},{31,263,8,0},{32,1,5,0}}, new int[][] {{30,0,1},{31,0,1},{32,0,1},{0,0,1},{1,0,1}}));
+        a.add(run("furnace fuel validation", "minecraft:furnace", new int[][] {{30,1,8,0},{31,325,1,0},{32,263,4,0}}, new int[][] {{30,0,0},{1,0,0},{30,0,0},{31,0,0},{1,0,0},{1,0,0},{31,0,0},{32,0,0},{1,0,0}}));
         return a;
+    }
+    static JsonObject furnaceRules() {
+        JsonObject root = new JsonObject(); JsonArray fuels = new JsonArray(), smelting = new JsonArray();
+        for (int id = 0; id < 4096; id++) {
+            Item item = Item.getItemById(id);
+            if (item != null && TileEntityFurnace.isItemFuel(new ItemStack(item, 1, 0))) fuels.add(new JsonPrimitive(id));
+        }
+        List<String> recipes = new ArrayList<String>();
+        for (ItemStack input : FurnaceRecipes.instance().getSmeltingList().keySet())
+            recipes.add(String.format("%05d:%05d", Item.getIdFromItem(input.getItem()), input.getMetadata()));
+        Collections.sort(recipes);
+        for (String recipe : recipes) {
+            String[] parts = recipe.split(":"); JsonArray row = new JsonArray();
+            row.add(new JsonPrimitive(Integer.parseInt(parts[0]))); row.add(new JsonPrimitive(Integer.parseInt(parts[1]))); smelting.add(row);
+        }
+        root.add("fuels", fuels); root.add("smelting", smelting); return root;
     }
 }

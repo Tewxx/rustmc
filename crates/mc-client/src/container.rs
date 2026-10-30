@@ -205,8 +205,28 @@ impl ContainerScreen {
         self.catalogue.items[s.item].max.max(1)
     }
 
+    fn furnace_rules() -> &'static serde_json::Value {
+        static RULES: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+        RULES.get_or_init(|| serde_json::from_str(include_str!("furnace_rules.json")).unwrap())
+    }
+
+    fn fuel(&self, s: ItemStack) -> bool {
+        let id = self.catalogue.items[s.item].id as u64;
+        Self::furnace_rules()["fuels"].as_array().unwrap().iter().any(|v| v.as_u64() == Some(id))
+    }
+
+    fn smeltable(&self, s: ItemStack) -> bool {
+        let id = self.catalogue.items[s.item].id as u64;
+        Self::furnace_rules()["smelting"].as_array().unwrap().iter().any(|v| {
+            v[0].as_u64() == Some(id) && (v[1].as_i64() == Some(32767) || v[1].as_i64() == Some(s.damage as i64))
+        })
+    }
+
     fn accepts(&self, w: &Window, i: usize, s: ItemStack) -> bool {
         if w.output_slot(i) { return false; }
+        if w.kind == "minecraft:furnace" && i == 1 {
+            return self.fuel(s) || self.catalogue.items[s.item].id == 325;
+        }
         if w.kind == "player" && (5..=8).contains(&i) {
             return crate::item_use::armor_slot(self.catalogue.items[s.item].id) == Some(8 - i);
         }
@@ -217,7 +237,8 @@ impl ContainerScreen {
     fn pickup(&self, w: &mut Window, ui: &mut Ui, i: usize, right: bool) {
         let cursor = w.cursor;
         let valid = cursor.is_some_and(|c| self.accepts(w, i, c));
-        let slot_limit = if w.kind == "player" && (5..=8).contains(&i) { 1 } else { 64 };
+        let slot_limit = if (w.kind == "player" && (5..=8).contains(&i)) ||
+            (w.kind == "minecraft:furnace" && i == 1 && cursor.is_some_and(|c| self.catalogue.items[c.item].id == 325)) { 1 } else { 64 };
         let Some(cur) = w.get(ui, i).map(|s| *s) else { return };
         let max_of = |s: ItemStack| self.max(s);
         let (new_slot, new_cursor) = match (cursor, cur) {
@@ -293,6 +314,17 @@ impl ContainerScreen {
                 (9..=35, _) => (36..45).collect(),
                 _ => (9..36).collect(),
             };
+            let rest = self.merge(w, ui, s, range);
+            w.set(ui, i, rest);
+            return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
+        }
+        if w.kind == "minecraft:furnace" {
+            let range = if i == 2 { (3..39).rev().collect() }
+                else if i < 2 { (3..39).collect() }
+                else if self.smeltable(s) { vec![0] }
+                else if self.fuel(s) { vec![1] }
+                else if i < 30 { (30..39).collect() }
+                else { (3..30).collect() };
             let rest = self.merge(w, ui, s, range);
             w.set(ui, i, rest);
             return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
@@ -493,7 +525,7 @@ mod tests {
         for fixture in fixtures.as_array().unwrap() {
             let kind = fixture["kind"].as_str().unwrap();
             let name = fixture["name"].as_str().unwrap();
-            let w = Arc::new(Mutex::new(Window::new(1, kind, String::new(), if kind == "player" { 5 } else { 27 })));
+            let w = Arc::new(Mutex::new(Window::new(1, kind, String::new(), if kind == "player" { 5 } else if kind == "minecraft:furnace" { 3 } else { 27 })));
             let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
             for initial in fixture["initial"].as_array().unwrap() {
                 let row = initial.as_array().unwrap();
