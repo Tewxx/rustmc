@@ -66,6 +66,9 @@ public final class Main {
         if (all || contains(args, "furnace_rules")) {
             write(new File(outDir, "furnace_rules.json"), DumpContainers.furnaceRules(), false);
         }
+        if (all || contains(args, "crafting_recipes")) {
+            write(new File(outDir, "crafting_recipes.json"), DumpContainers.craftingRecipes(), false);
+        }
         if (all || contains(args, "containers")) {
             write(new File(outDir, "containers.json"), DumpContainers.dump(), false);
         }

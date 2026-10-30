@@ -8,7 +8,7 @@ import net.minecraft.init.Items;
 import net.minecraft.inventory.*;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.crafting.FurnaceRecipes;
+import net.minecraft.item.crafting.*;
 import net.minecraft.tileentity.TileEntityFurnace;
 import java.util.*;
 
@@ -93,6 +93,33 @@ final class DumpContainers {
             row.addProperty("cost", a[2]); row.addProperty("creative", a[3] != 0); row.addProperty("allowed", c.enchantItem(p, 0)); out.add(row);
         }
         return out;
+    }
+    static Object field(Object obj, String name) {
+        try { java.lang.reflect.Field f = obj.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(obj); }
+        catch (ReflectiveOperationException e) { throw new RuntimeException(e); }
+    }
+    static JsonObject craftingRecipes() {
+        JsonObject root = new JsonObject(); JsonArray recipes = new JsonArray(), containers = new JsonArray();
+        for (IRecipe r : CraftingManager.getInstance().getRecipeList()) {
+            if (r.getClass() != ShapedRecipes.class && r.getClass() != ShapelessRecipes.class) continue;
+            JsonObject row = new JsonObject(); boolean shaped = r instanceof ShapedRecipes;
+            if (shaped) {
+                row.addProperty("width", (Integer)field(r, "recipeWidth"));
+                row.addProperty("height", (Integer)field(r, "recipeHeight"));
+                row.addProperty("copy_nbt", (Boolean)field(r, "copyIngredientNBT"));
+            }
+            JsonArray inputs = new JsonArray();
+            Iterable<ItemStack> items = shaped ? Arrays.asList((ItemStack[])field(r, "recipeItems")) : (List<ItemStack>)field(r, "recipeItems");
+            for (ItemStack item : items) inputs.add(stack(item));
+            row.add("inputs", inputs); row.add("output", stack(r.getRecipeOutput())); recipes.add(row);
+        }
+        for (int id = 0; id < 4096; id++) {
+            Item item = Item.getItemById(id);
+            if (item != null && item.hasContainerItem()) {
+                JsonArray row = new JsonArray(); row.add(new JsonPrimitive(id)); row.add(new JsonPrimitive(Item.getIdFromItem(item.getContainerItem()))); containers.add(row);
+            }
+        }
+        root.add("recipes", recipes); root.add("containers", containers); return root;
     }
     static JsonObject furnaceRules() {
         JsonObject root = new JsonObject(); JsonArray fuels = new JsonArray(), smelting = new JsonArray(), brewing = new JsonArray();
