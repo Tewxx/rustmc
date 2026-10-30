@@ -42,8 +42,10 @@ bytes are counted separately in the probe directory. A final transformer saves t
 definition. The script compares the selected bytes to the shadow jar, then compares
 per-method normalized ASM output before and after the full transformer chain. It
 requires an unchanged no-Mixin control and detects `func_76128_c(D)I` plus the
-injected handler. Rust registers a controlled JNI native, invokes the hooked
-method, checks every callback, and measures both control and hooked dispatch after
+injected handler. Rust posts a controlled event through the Forge bus and checks listener order,
+payload changes, and cancellation on the returned result. It also registers a
+controlled JNI native, invokes the hooked method, checks every callback, and
+measures both control and hooked dispatch after
 10,000 warmup calls. Logs and locally derived class bytes stay in the printed
 probe directory and must not be redistributed.
 
@@ -63,3 +65,10 @@ uses vanilla registry bootstrap and a stubbed client delegate, so it does not
 prove Rust ownership of game state or support for mods that need client services.
 A single local warm run measured about 320 ns/control and 347 ns/hooked dispatch;
 these are noisy microbenchmarks and do not establish game or cross-platform cost.
+
+The event-bus oracle comparison is strict. A repeated graph run once emitted an
+extra EV-05 instance-handler record: Forge dispatched the instance handler before
+a same-priority static handler that then threw `IncompatibleClassChangeError`.
+Another ordering throws first. The probe preserves its raw logs and trace in the
+printed directory; repeated real-client oracle sessions are needed to determine
+whether both orders are valid before changing the comparison.

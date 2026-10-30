@@ -18,6 +18,26 @@ import net.minecraftforge.fml.common.eventhandler.*;
 public class FTBus {
     static final Trace.T T = Trace.of("bus");
 
+    @Cancelable public static final class BridgeEvent extends Event {
+        int value;
+        BridgeEvent(int value) { this.value = value; }
+    }
+    public static final class BridgeListener {
+        @SubscribeEvent(priority = EventPriority.HIGH)
+        public void high(BridgeEvent event) {
+            if (event.value < 0) event.setCanceled(true);
+            event.value = Math.abs(event.value) * 2;
+        }
+        @SubscribeEvent public void normal(BridgeEvent event) { event.value += 10; }
+        @SubscribeEvent(priority = EventPriority.LOW, receiveCanceled = true)
+        public void low(BridgeEvent event) { event.value += 3; }
+    }
+    public static int postBridgeEvent(int value) {
+        BridgeEvent event = new BridgeEvent(value);
+        boolean canceled = MinecraftForge.EVENT_BUS.post(event);
+        return event.value * 10 + (canceled ? 1 : 0);
+    }
+
     @Cancelable
     public static class Cancelable1 extends Event {
         public final String name;
@@ -118,6 +138,7 @@ public class FTBus {
     @Mod.EventHandler
     public void init(FMLInitializationEvent ev) {
         EventBus forge = MinecraftForge.EVENT_BUS;
+        forge.register(new BridgeListener());
         EventBus fml = FMLCommonHandler.instance().bus();
 
         Priorities p = new Priorities();

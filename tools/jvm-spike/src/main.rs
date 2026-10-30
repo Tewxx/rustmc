@@ -24,6 +24,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         let hooked = args[5] == "shadow";
         env.call_static_method(&class, "value", "()I", &[])?;
         let target = JClass::from(env.get_static_field(&class, "target", "Ljava/lang/Class;")?.l()?);
+        let event_bridge = JClass::from(env.get_static_field(&class, "eventBridge", "Ljava/lang/Class;")?.l()?);
+        for (input, expected) in [(2, 170), (-2, 71)] {
+            let result = env.call_static_method(&event_bridge, "postBridgeEvent", "(I)I", &[jni::objects::JValue::Int(input)])?.i()?;
+            if result != expected { return Err(format!("Forge event bridge returned {result}, expected {expected} for {input}").into()); }
+        }
+        println!("rust_forge_event_bridge=passed");
         let bridge = JClass::from(env.get_static_field(&class, "bridge", "Ljava/lang/Class;")?.l()?);
         env.register_native_methods(&bridge, &[NativeMethod { name: "offset".into(), sig: "()I".into(), fn_ptr: native_offset as *mut _ }])?;
         let method = env.get_static_method_id(&target, "func_76128_c", "(D)I")?;

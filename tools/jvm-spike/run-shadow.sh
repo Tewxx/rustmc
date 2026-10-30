@@ -61,6 +61,7 @@ for mode in control hooked graph-control graph-hooked; do
     [ ! -f "$D/$mode/shadow-missing.txt" ] || missing=$(wc -l < "$D/$mode/shadow-missing.txt" | tr -d ' ')
     echo "$mode selected $count shadow classes; $missing unresolved lookups with no input bytes"
   fi
+  grep 'rust_forge_event_bridge=passed' "$D/$mode.log"
   grep 'shadow_mode=' "$D/$mode.log"
 done
 echo 'lifecycle and event bus traces match the Forge oracle; selected bytes match the shadow; final chain diff finds target and injection; control is unchanged'
