@@ -483,7 +483,7 @@ impl ContainerScreen {
     pub(crate) fn replay_click(&mut self, ui: &mut Ui, slot: i16, button: i8, mode: i8) {
         if slot == -999 && mode == 0 && self.window.lock().unwrap().cursor.is_some() {
             self.mouse(ui, -1, -1, button == 1);
-            self.release_at(ui, -1, -1, button == 1);
+            self.release_at(ui, -1, -1, button as u8);
         } else {
             self.click_slot(ui, slot as usize, button, mode);
         }
