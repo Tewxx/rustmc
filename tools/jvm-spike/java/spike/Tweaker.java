@@ -12,6 +12,6 @@ public class Tweaker implements ITweaker {
         Mixins.addConfiguration("mixins.fttest.json");
     }
     public void injectIntoClassLoader(LaunchClassLoader loader) { mixin.injectIntoClassLoader(loader); }
-    public String getLaunchTarget() { return "spiketarget.TargetMain"; }
+    public String getLaunchTarget() { return "driverapp.TargetMain"; }
     public String[] getLaunchArguments() { return new String[0]; }
 }
