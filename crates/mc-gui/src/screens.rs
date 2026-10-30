@@ -9,6 +9,8 @@ use crate::Ui;
 pub const OPTIONS_BACKGROUND: &str = "textures/gui/options_background.png";
 const TITLE: &str = "textures/gui/title/minecraft.png";
 
+pub use crate::multiplayer::MultiplayerScreen;
+
 /// What a screen asks the client to do.
 pub enum Action {
     None,
@@ -27,7 +29,8 @@ pub enum Action {
     /// `GuiYesNo` answer for the pending `S48PacketResourcePackSend`.
     ResourcePackDecision(bool),
     /// Join a server from the multiplayer screens (`GuiConnecting`).
-    Connect { address: String, name: String, online: bool },
+    /// `pack_mode` is the saved server's `acceptTextures` (`enabled`/`disabled`/`prompt`).
+    Connect { address: String, name: String, online: bool, pack_mode: Option<&'static str> },
     /// `displayGuiScreen(null)`: close this screen and every parent.
     CloseAll,
     /// `GuiChat` Page Up/Down: scroll the chat by `lineCount - 1` in that direction.
@@ -231,7 +234,7 @@ pub fn default_background(ui: &Ui, b: &mut GuiBatch, w: i32, h: i32) {
 }
 
 /// `drawBackground` / `GuiSlot.overlayBackground`: tiled options texture, gray-tinted.
-fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) {
+pub(crate) fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) {
     let c = [gray, gray, gray, 255];
     let f = 32.0;
     b.quad(
@@ -248,14 +251,14 @@ fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) 
     );
 }
 
-fn draw_buttons(buttons: &mut [Button], ui: &mut Ui, b: &mut GuiBatch, mx: i32, my: i32) {
+pub(crate) fn draw_buttons(buttons: &mut [Button], ui: &mut Ui, b: &mut GuiBatch, mx: i32, my: i32) {
     for btn in buttons {
         btn.draw(ui, b, mx, my);
     }
 }
 
 /// `GuiScreen.mouseClicked`: first button hit wins.
-fn click_buttons(buttons: &mut [Button], ui: &mut Ui, mx: i32, my: i32) -> Option<i32> {
+pub(crate) fn click_buttons(buttons: &mut [Button], ui: &mut Ui, mx: i32, my: i32) -> Option<i32> {
     buttons.iter_mut().find_map(|btn| btn.press(ui, mx, my).then_some(btn.id))
 }
 
@@ -327,127 +330,6 @@ impl Screen for MainMenu {
 
     fn key(&mut self, _ui: &mut Ui, _key: Key) -> Action {
         Action::None
-    }
-}
-
-// ---------------------------------------------------------------- multiplayer
-
-/// `GuiMultiplayer`'s direct-connect path. The saved-server list is not ported yet, so this
-/// takes `host[:port]` and the offline name and asks the client to relaunch against it
-/// (`Action::Connect`); a running `App` has no world-reset path.
-pub struct MultiplayerScreen {
-    buttons: Vec<Button>,
-    address: String,
-    name: String,
-    focus: usize,
-    /// Field/title left edge, captured in `init` (`Screen::click` has no screen size).
-    x: i32,
-}
-
-impl MultiplayerScreen {
-    pub fn new() -> Self {
-        Self { buttons: Vec::new(), address: String::new(), name: String::new(), focus: 0, x: 0 }
-    }
-
-    fn submit(&self, online: bool) -> Action {
-        let address = self.address.trim();
-        if address.is_empty() {
-            return Action::None;
-        }
-        let name = if self.name.trim().is_empty() { "Player" } else { self.name.trim() };
-        Action::Connect { address: address.to_string(), name: name.to_string(), online }
-    }
-
-    fn field(&mut self) -> &mut String {
-        if self.focus == 0 { &mut self.address } else { &mut self.name }
-    }
-}
-
-fn draw_edit_box(ui: &mut Ui, b: &mut GuiBatch, x: i32, y: i32, text: &str, focused: bool) {
-    b.rect(x - 1, y - 1, x + 201, y + 21, if focused { 0xFFFF_FFFF } else { 0xFFA0_A0A0 });
-    b.rect(x, y, x + 200, y + 20, 0xFF00_0000);
-    ui.font.draw(b, text, (x + 4) as f32, (y + 6) as f32, 0xFFE0_E0E0);
-    if focused && (ui.ticks * 2.0) as i32 % 2 == 0 {
-        let w = ui.font.width(text);
-        ui.font.draw(b, "_", (x + 4 + w) as f32, (y + 6) as f32, 0xFFFF_FFFF);
-    }
-}
-
-impl Screen for MultiplayerScreen {
-    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
-        self.x = w / 2 - 100;
-        if self.name.is_empty() {
-            self.name = ui.player_name.clone();
-        }
-        self.buttons = vec![
-            Button::new(0, w / 2 - 100, 140, "Join Server"),
-            Button::new(2, w / 2 - 100, 166, "Join (Microsoft)"),
-            Button::new(1, w / 2 - 100, 192, ui.lang.get("gui.cancel")),
-        ];
-        let _ = h;
-    }
-
-    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
-        default_background(ui, b, w, h);
-        let x = w / 2 - 100;
-        ui.font.draw_centered(b, &ui.lang.get("multiplayer.title"), w / 2, 15, 0xFFFF_FFFF);
-        ui.font.draw_shadow(b, "Server Address", x as f32, 52.0, 0xFFA0_A0A0);
-        draw_edit_box(ui, b, x, 64, &self.address, self.focus == 0);
-        ui.font.draw_shadow(b, "Username", x as f32, 92.0, 0xFFA0_A0A0);
-        draw_edit_box(ui, b, x, 104, &self.name, self.focus == 1);
-        self.buttons[0].enabled = !self.address.trim().is_empty();
-        self.buttons[1].enabled = self.buttons[0].enabled;
-        draw_buttons(&mut self.buttons, ui, b, mx, my);
-        ui.font.draw_centered(b, "Offline-mode servers accept any name.", w / 2, h - 44, 0xFFA0_A0A0);
-        ui.font.draw_centered(b, "Online-mode servers (Hypixel) need --online.", w / 2, h - 30, 0xFFA0_A0A0);
-    }
-
-    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
-        let fx = self.x;
-        if (fx..fx + 200).contains(&mx) {
-            if (64..84).contains(&my) {
-                self.focus = 0;
-                self.address.clear();
-                return Action::None;
-            }
-            if (104..124).contains(&my) {
-                self.focus = 1;
-                self.name.clear();
-                return Action::None;
-            }
-        }
-        match click_buttons(&mut self.buttons, ui, mx, my) {
-            Some(0) => self.submit(false),
-            Some(2) => self.submit(true),
-            Some(1) => Action::Close,
-            _ => Action::None,
-        }
-    }
-
-    fn key(&mut self, _ui: &mut Ui, key: Key) -> Action {
-        match key {
-            Key::Escape => Action::Close,
-            Key::Enter => self.submit(false),
-            Key::Tab => {
-                self.focus ^= 1;
-                Action::None
-            }
-            Key::Backspace | Key::Delete => {
-                self.field().pop();
-                Action::None
-            }
-            _ => Action::None,
-        }
-    }
-
-    fn typed(&mut self, _ui: &mut Ui, c: char) {
-        if c == '\u{a7}' || (c as u32) < 32 {
-            return;
-        }
-        let f = self.field();
-        if f.chars().count() < 128 {
-            f.push(c);
-        }
     }
 }
 
@@ -1370,40 +1252,5 @@ impl Screen for ConfirmOpenLink {
         } else {
             Action::None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn ui() -> Ui {
-        Ui::new(&mc_assets::AssetSource::new(), crate::settings::Settings::default())
-    }
-
-    #[test]
-    fn multiplayer_screen_builds_a_connect_action() {
-        let mut s = MultiplayerScreen::new();
-        for c in "play.example.com:25566".chars() {
-            s.typed(&mut ui(), c);
-        }
-        s.focus = 1;
-        s.name.clear();
-        for c in "ASUISSU".chars() {
-            s.typed(&mut ui(), c);
-        }
-        match s.submit(false) {
-            Action::Connect { address, name, online } => {
-                assert_eq!(address, "play.example.com:25566");
-                assert_eq!(name, "ASUISSU");
-                assert!(!online);
-            }
-            _ => panic!("expected Connect"),
-        }
-    }
-
-    #[test]
-    fn empty_address_does_not_connect() {
-        assert!(matches!(MultiplayerScreen::new().submit(false), Action::None));
     }
 }

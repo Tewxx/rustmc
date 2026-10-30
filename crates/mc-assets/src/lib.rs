@@ -17,6 +17,18 @@ enum Layer {
     Dir(PathBuf),
 }
 
+static DYNAMIC: Mutex<Vec<(String, Vec<u8>)>> = Mutex::new(Vec::new());
+
+/// Registers an in-memory file under `path` (a `DynamicTexture`'s stand-in, e.g. the server list
+/// icons). `AssetSource::read` serves `servers/...` paths from here ahead of every pack layer.
+pub fn register_dynamic(path: &str, bytes: Vec<u8>) {
+    let mut d = DYNAMIC.lock().unwrap();
+    match d.iter_mut().find(|(p, _)| p == path) {
+        Some(e) => e.1 = bytes,
+        None => d.push((path.to_string(), bytes)),
+    }
+}
+
 /// Ordered resource pack stack. Later layers override earlier ones, like the
 /// resource pack screen's top-of-list-wins order.
 #[derive(Default)]
@@ -44,6 +56,11 @@ impl AssetSource {
 
     /// Reads `assets/minecraft/<path>` from the highest layer that has it.
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
+        if path.starts_with("servers/") {
+            if let Some((_, b)) = DYNAMIC.lock().unwrap().iter().find(|(p, _)| p == path) {
+                return Some(b.clone());
+            }
+        }
         let full = format!("assets/minecraft/{path}");
         self.layers.iter().rev().find_map(|l| match l {
             Layer::Dir(d) => std::fs::read(d.join(&full)).ok(),
