@@ -78,6 +78,10 @@ impl App {
         if let Some(slot) = self.pending_selected_slot.take() {
             self.player.selected_slot = slot;
         }
+        if std::mem::take(&mut self.pending_open_inventory) {
+            use mc_protocol::packets::{ClientStatus, ClientStatusKind, PlayServerbound};
+            self.send(PlayServerbound::ClientStatus(ClientStatus { status: ClientStatusKind::OpenInventoryAchievement }));
+        }
         self.right_click_delay = self.right_click_delay.saturating_sub(1);
         self.left_click_counter = self.left_click_counter.saturating_sub(1);
         self.update_target(1.0);

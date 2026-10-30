@@ -617,6 +617,7 @@ mod tests {
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for name in [
+            "inventory_clicks",
             "creative_fly_toggle",
             "attack_entities",
             "mine_to_completion",
@@ -691,11 +692,15 @@ mod tests {
             app.grabbed = true;
             app.in_game = true;
             let rows = sc["out"].as_array().unwrap();
+            let script = sc["script"].as_array().unwrap();
+            // The rest of inventory_clicks needs the GUI's slot-click event path.
+            let (rows, script) = if name == "inventory_clicks" { (&rows[..5], &script[..5]) } else { (&rows[..], &script[..]) };
             let count: usize = rows.iter().map(|r| r.as_array().unwrap().len()).sum();
             let (mut net, srv) = loopback(usize::MAX);
             net.entity_id = 1;
             app.net = Some(net);
-            for tk in sc["script"].as_array().unwrap() {
+            for tk in script {
+                if tk["op"] == "inventory" { app.pending_open_inventory = true; }
                 if !tk["y"].is_null() {
                     app.entity.yaw = f32::from_bits(num(&tk["y"]) as u32);
                 }

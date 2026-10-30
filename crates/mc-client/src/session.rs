@@ -185,6 +185,7 @@ impl App {
         self.next_entity_id = 1;
         self.particles = particles::Particles::default();
         self.drop_presses.clear();
+        self.pending_open_inventory = false;
         self.info = level::WorldInfo::new(0, BlockPos::new(spawn.x.floor() as i32, spawn.y.floor() as i32, spawn.z.floor() as i32));
         self.weather = level::Weather::default();
         // The chat history and its tick clock survive (`GuiNewChat` is only cleared on the title screen).

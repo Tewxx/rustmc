@@ -223,6 +223,7 @@ impl ApplicationHandler for App {
                 let lw = keymap::lwjgl(code);
                 let is = |name: &str| lw != 0 && self.ui.settings.key(name) == lw;
                 if is("key.inventory") {
+                    self.pending_open_inventory = self.net.is_some();
                     if self.entity.creative {
                         self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false)
                     } else if self.net.is_some() {

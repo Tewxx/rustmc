@@ -56,6 +56,7 @@ pub(crate) struct App {
     pub(crate) in_game: bool,
     pub(crate) keys: HashSet<KeyCode>,
     pub(crate) pending_selected_slot: Option<usize>,
+    pub(crate) pending_open_inventory: bool,
     pub(crate) grabbed: bool,
     pub(crate) mouse_px: (f64, f64),
     /// Applied settings, to notice changes made in option screens.
@@ -202,6 +203,7 @@ impl App {
             in_game: false,
             keys: HashSet::new(),
             pending_selected_slot: None,
+            pending_open_inventory: false,
             grabbed: false,
             mouse_px: (0., 0.),
             applied: settings,
