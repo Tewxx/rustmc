@@ -31,7 +31,7 @@ performance → Forge. Max 5 agents at once.
 | P1 | Prism launch-argument module (not wired in) | new `mc-client/src/launch.rs` |
 | B1 | Busy-scene benchmarks + profiler feature + baseline | `mc-client/src/bench.rs`, `mc-protocol/examples/mock_server.rs` |
 
-## Wave 2 — stabilise existing features (merged: F1, F5, F6, D1, G2, M1, RP1, SP0; merged: M2; running: F3, F2, F4)
+## Wave 2 — stabilise existing features (merged: F1, F5, F6, D1, G2, M1, RP1, SP0; merged: M2; F2 and F4 partially implemented; F3 harness recovered, capture unverified)
 | Id | Task |
 |---|---|
 | F1 | Movement replay harness vs Java `EntityPlayerSP`; fix divergences (bit-exact) |
@@ -48,8 +48,8 @@ performance → Forge. Max 5 agents at once.
 | G2 | mc-gen oracle tests actually run (tools/oracle on macOS) and honour `RUSTMC_REQUIRE_GOLDEN`; gen-data sorts `effectiveBlocks` (Java HashSet order made regeneration nondeterministic) |
 
 ## Wave 3 — performance (parallel with Wave 2)
-R1 mesh/light worker pool + 18³ snapshots · R2 GPU arena/compact vertex/multi-draw-indirect (implemented; pixel and performance verification outstanding) ·
-R3 `VisGraph` cave culling · R6 (running) per-frame sort (18%) and drawable-acquire stall (BENCH.md) · R4 GPU instanced entities/particles · R5 frame pacing, buffer reuse.
+R1 mesh/light worker pool + 18³ snapshots (in progress) · R2 GPU arena/compact vertex/multi-draw-indirect (implemented; pixel and performance verification outstanding) ·
+R3 `VisGraph` cave culling · R6 (merged) per-frame sort (18%) and drawable-acquire stall (BENCH.md) · R4 GPU instanced entities/particles · R5 frame pacing, buffer reuse.
 Then profile on Metal; native Metal only where wgpu overhead shows.
 
 ## Wave 4 — missing client parity (everything a server can show)
@@ -63,5 +63,5 @@ FG0 (merged) static analysis of a test corpus (RavenB4, LunarForge, Meowtils, Ac
 WM0 (merged) `docs/WASM_MODS.md`: spec for JVM-free native WASM mods ·
 FS1 (partial inventory and loading notes) full Forge 1.8.9 contract from the real artifacts (universal jar, Forge src + patches, LaunchWrapper, Mixin, MCP mappings) → `docs/forge-spec/` (API dump, event catalogue with fire sites, loading/runtime SPEC.md, coverage IDs) ·
 FT1 (partial scaffolding, no client oracle or bridge yet) differential test suite `tests/forge/`: our own per-area test mods emitting traces, golden traces from real Forge, rustmc runner (0/N until the bridge exists), corpus smoke tier ·
-FG1 join Forge 1.8.9 servers: FML handshake (`FML|HS` channel, mod list, registry sync), `REGISTER`/plugin channels ·
+FG1 (vanilla-registry handshake and bounded multipart implemented; mod runtime and custom registries outstanding) join Forge 1.8.9 servers: FML handshake (`FML|HS` channel, mod list, registry sync), `REGISTER`/plugin channels ·
 FG2 spike per FORGE_ARCHITECTURE §9.1: shadow jar (binpatches + SRG), embedded HotSpot + LaunchClassLoader + Mixin, FT1's mixin test mod, hooked-method diff, JNI dispatch cost · FG3 mod GUIs/HUD through U1's GL-path draw layer · then the full class surface.
