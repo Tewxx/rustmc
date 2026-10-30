@@ -108,6 +108,7 @@ pub struct ContainerScreen {
     last_click: Option<(usize, bool, std::time::Instant)>,
     dragging: Option<(bool, Vec<usize>)>,
     pub(crate) creative: bool,
+    shift_clicked: Option<ItemStack>,
 }
 
 struct Layout {
@@ -124,7 +125,7 @@ struct Layout {
 
 impl ContainerScreen {
     pub fn new(window: Arc<Mutex<Window>>, catalogue: Arc<Catalogue>) -> Self {
-        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None, dragging: None, creative: false }
+        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None, dragging: None, creative: false, shift_clicked: None }
     }
 
     fn layout(w: &Window) -> Layout {
@@ -467,14 +468,34 @@ impl ContainerScreen {
         match self.at(&l, mx, my) {
             Some(i) => {
                 let now = std::time::Instant::now();
-                let double = !right && !ui.shift_down && self.last_click.is_some_and(|(slot, previous_right, at)|
+                let double = !right && self.last_click.is_some_and(|(slot, previous_right, at)|
                     slot == i && !previous_right && now.duration_since(at).as_millis() < 250);
                 self.last_click = if double { None } else { Some((i, right, now)) };
-                if double {
+                if double && ui.shift_down {
+                    self.shift_clicked = self.window.lock().unwrap().get(ui, i).and_then(|slot| *slot);
+                    self.click_slot(ui, i, button, 1);
+                    if let Some(shifted) = self.shift_clicked {
+                        let candidates = {
+                            let mut w = self.window.lock().unwrap();
+                            let group = |index: usize| -> usize {
+                                match w.kind.as_str() {
+                                    "player" => if index == 0 { 0 } else if index < 5 { 1 } else { 2 },
+                                    "minecraft:crafting_table" => if index == 0 { 0 } else if index < 10 { 1 } else { 2 },
+                                    _ => if index < w.slots.len() { 0 } else { 1 },
+                                }
+                            };
+                            let target = group(i);
+                            let same_inventory: Vec<usize> = (0..w.total()).filter(|&j| group(j) == target).collect();
+                            same_inventory.into_iter().filter(|&j| w.get(ui, j).and_then(|slot| *slot).is_some_and(|stack| stack.stacks_with(&shifted))).collect::<Vec<_>>()
+                        };
+                        for j in candidates { self.click_slot(ui, j, button, 1); }
+                    }
+                } else if double {
                     self.click_slot(ui, i, button, 6);
                 } else if self.window.lock().unwrap().cursor.is_some() {
                     self.dragging = Some((right, Vec::new()));
                 } else {
+                    if ui.shift_down { self.shift_clicked = self.window.lock().unwrap().get(ui, i).and_then(|slot| *slot); }
                     self.click_slot(ui, i, button, if ui.shift_down { 1 } else { 0 });
                 }
             }
@@ -726,6 +747,31 @@ mod tests {
         let win = window.lock().unwrap();
         assert_eq!((win.clicks.last().unwrap().mode, win.clicks.last().unwrap().button), (4, 1));
         assert!(win.slots[1].is_none());
+    }
+
+    #[test]
+    fn shift_double_click_does_not_repeat_when_source_is_empty() {
+        let Some(jar) = crate::find_jar() else { return };
+        let mut assets = mc_assets::AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = mc_render::models::BlockModels::load(&assets);
+        let cat = Arc::new(Catalogue::load(&assets, &models));
+        let stone = cat.index_of(1, 0).unwrap();
+        let other = cat.index_of(4, 0).unwrap();
+        let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
+        ui.shift_down = true;
+        let window = Arc::new(Mutex::new(Window::new(2, "minecraft:chest", String::new(), 27)));
+        for (i, s) in [(0, ItemStack::new(stone, 10, 0)), (1, ItemStack::new(stone, 5, 0)), (2, ItemStack::new(other, 4, 0)), (3, ItemStack::new(stone, 2, 0))] {
+            window.lock().unwrap().slots[i] = Some(s);
+        }
+        let mut screen = ContainerScreen::new(window.clone(), cat);
+        screen.click(&mut ui, 9, 19);
+        screen.click(&mut ui, 9, 19);
+        let win = window.lock().unwrap();
+        assert_eq!(win.clicks.iter().map(|c| c.slot).collect::<Vec<_>>(), [0, 0]);
+        assert_eq!(win.slots[2].unwrap().item, other);
+        assert_eq!(win.slots[1].unwrap().count, 5);
+        assert_eq!(ui.inventory[8].unwrap().count, 10);
     }
 
     #[test]
