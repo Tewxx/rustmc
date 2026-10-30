@@ -16,5 +16,6 @@ winit = "0.30"
 wgpu = "24"
 
 [dev-dependencies]
+pollster = "0.4"
 serde_json = { version = "1", features = ["float_roundtrip"] }
 mc-testutil = { path = "../mc-testutil" }

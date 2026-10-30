@@ -22,6 +22,41 @@ pub struct Vertex {
     pub light: [u8; 4],
 }
 
+/// 20-byte GPU vertex: position relative to the section origin as `(v + 4) * 2048` (exact for all
+/// multiples of 1/2048 in -4..28), full-precision UV, light (block, sky), colour and a layer flag in `color[3]`
+/// (0 solid, 255 cutout, 128 cutout-mipped, 64 translucent).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct PackedVertex {
+    pub pos: [u16; 3],
+    pub light: [u8; 2],
+    pub uv: [f32; 2],
+    pub color: [u8; 4],
+}
+
+impl PackedVertex {
+    /// Only use the compact format when it exactly represents every position.
+    pub fn can_pack(v: &Vertex, origin_y: f32) -> bool {
+        [v.pos[0], v.pos[1] - origin_y, v.pos[2]].iter().all(|&x| {
+            let q = (x + 4.0) * 2048.0;
+            q.is_finite() && q >= 0.0 && q <= 65535.0 && q.fract() == 0.0 && q / 2048.0 - 4.0 == x
+        })
+    }
+    pub fn pack(v: &Vertex, origin_y: f32) -> Self {
+        let q = |x: f32| ((x + 4.0) * 2048.0).round().clamp(0.0, 65535.0) as u16;
+        let flag = match (v.light[2], v.light[3]) {
+            (_, t) if t != 0 => 64,
+            (a, _) => a,
+        };
+        Self {
+            pos: [q(v.pos[0]), q(v.pos[1] - origin_y), q(v.pos[2])],
+            light: [v.light[0], v.light[1]],
+            uv: v.uv,
+            color: [v.color[0], v.color[1], v.color[2], flag],
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ChunkMesh {
     pub vertices: Vec<Vertex>,

@@ -1384,6 +1384,7 @@ dependencies = [
  "mc-gui",
  "mc-testutil",
  "mc-world",
+ "pollster",
  "serde_json",
  "wgpu",
  "winit",

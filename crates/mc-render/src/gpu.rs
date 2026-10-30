@@ -1,14 +1,14 @@
-//! wgpu renderer: one atlas, one pipeline, one vertex/index buffer per chunk, frustum-culled.
+//! wgpu renderer: frustum-culled sections packed into shared GPU arenas.
 
 use crate::gui_gpu::GuiRenderer;
-use crate::mesh::{ChunkMesh, Vertex};
+use crate::mesh::{ChunkMesh, PackedVertex, Vertex};
 use crate::models::BlockModels;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use mc_assets::AssetSource;
 use mc_gui::batch::GuiBatch;
 use mc_gui::Scaled;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -22,18 +22,81 @@ struct Globals {
     fog: [f32; 4],
 }
 
-struct GpuChunk {
+/// First-fit range allocator with coalescing; offsets and lengths are in elements.
+struct FreeList {
+    free: BTreeMap<u32, u32>,
+}
+
+impl FreeList {
+    fn new(cap: u32) -> Self {
+        Self { free: BTreeMap::from([(0, cap)]) }
+    }
+
+    fn alloc(&mut self, n: u32) -> Option<u32> {
+        let (&off, &len) = self.free.iter().find(|&(_, &len)| len >= n)?;
+        self.free.remove(&off);
+        if len > n {
+            self.free.insert(off + n, len - n);
+        }
+        Some(off)
+    }
+
+    fn release(&mut self, mut off: u32, mut n: u32) {
+        if let Some((&po, &pl)) = self.free.range(..off).next_back() {
+            if po + pl == off {
+                self.free.remove(&po);
+                off = po;
+                n += pl;
+            }
+        }
+        if let Some(&nl) = self.free.get(&(off + n)) {
+            self.free.remove(&(off + n));
+            n += nl;
+        }
+        self.free.insert(off, n);
+    }
+}
+
+/// One large vertex + index buffer pair that sections are sub-allocated from.
+struct ArenaPage {
+    packed: bool,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
+    vfree: FreeList,
+    ifree: FreeList,
+}
+
+const CHUNK_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint16x4, offset: 0, shader_location: 0 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 8, shader_location: 1 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Unorm8x4, offset: 16, shader_location: 2 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Unorm8x2, offset: 6, shader_location: 3 },
+];
+
+const FULL_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4];
+
+const PAGE_VERTS: u32 = 1 << 20;
+const PAGE_INDICES: u32 = PAGE_VERTS / 2 * 3;
+const INITIAL_SLOTS: usize = 4096;
+
+struct GpuChunk {
+    page: u32,
+    /// Vertex / index element offsets inside the page; solid indices first, then sorted translucent ones.
+    v_off: u32,
+    v_count: u32,
+    i_off: u32,
     index_count: u32,
     solid_count: u32,
     transparent: Vec<([u32; 6], Vec3)>,
     /// Camera position the translucent quads were last sorted/uploaded for (NaN = never).
     sorted_at: Vec3,
-    bind_group: wgpu::BindGroup,
+    key: (i32, i32, i32),
     min: Vec3,
     max: Vec3,
 }
+
+/// `DrawIndexedIndirectArgs` layout.
+type DrawCmd = [u32; 5];
 
 pub struct Camera {
     pub pos: Vec3,
@@ -76,14 +139,30 @@ pub struct Renderer {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
+    full_pipeline: wgpu::RenderPipeline,
     translucent_pipeline: wgpu::RenderPipeline,
+    full_translucent_pipeline: wgpu::RenderPipeline,
     globals_buf: wgpu::Buffer,
     globals_bg: wgpu::BindGroup,
     chunk_layout: wgpu::BindGroupLayout,
+    origins_buf: wgpu::Buffer,
+    origins_bg: wgpu::BindGroup,
+    origins: Vec<[f32; 4]>,
+    pages: Vec<ArenaPage>,
+    /// Slot-indexed sections (slot = instance index in the shader); `index` maps keys to slots.
+    slots: Vec<Option<GpuChunk>>,
+    free_slots: Vec<u32>,
+    index: HashMap<(i32, i32, i32), u32>,
+    indirect: wgpu::Buffer,
+    indirect_cap: usize,
+    use_indirect: bool,
+    cmds: Vec<DrawCmd>,
+    /// (frames, CPU time in encode + submit excluding drawable acquire/present); printed on drop with RUSTMC_RENDER_TIMING.
+    timing: (u32, std::time::Duration),
+    runs: Vec<(u32, u32, u32)>,
     depth: wgpu::TextureView,
     lightmap: wgpu::Texture,
     atlas: wgpu::Texture,
-    chunks: HashMap<(i32, i32, i32), GpuChunk>,
     gui: GuiRenderer,
     uncapped_mode: wgpu::PresentMode,
     pub adapter_info: wgpu::AdapterInfo,
@@ -108,7 +187,7 @@ impl Renderer {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("rustmc"),
-                    required_features: wgpu::Features::empty(),
+                    required_features: adapter.features() & (wgpu::Features::MULTI_DRAW_INDIRECT | wgpu::Features::INDIRECT_FIRST_INSTANCE),
                     required_limits: wgpu::Limits::default(),
                     memory_hints: wgpu::MemoryHints::Performance,
                 },
@@ -291,35 +370,44 @@ impl Renderer {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
                 count: None,
             }],
         });
+        let (origins_buf, origins_bg) = make_origins(&device, &chunk_layout, INITIAL_SLOTS);
+        let use_indirect = std::env::var_os("RUSTMC_NO_MDI").is_none()
+            && device.features().contains(wgpu::Features::MULTI_DRAW_INDIRECT | wgpu::Features::INDIRECT_FIRST_INSTANCE);
+        let indirect = make_indirect(&device, 4096);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("chunk shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+        let full_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("full precision chunk shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader_full.wgsl").into()),
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("chunk"),
             bind_group_layouts: &[&globals_layout, &chunk_layout],
             push_constant_ranges: &[],
         });
-        let make_pipeline = |translucent: bool| {
+        let make_pipeline = |translucent: bool, packed: bool| {
+            let shader = if packed { &shader } else { &full_shader };
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("chunk"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
-                    module: &shader,
+                    module: shader,
                     entry_point: Some("vs_main"),
                     compilation_options: Default::default(),
                     buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        array_stride: if packed { std::mem::size_of::<PackedVertex>() } else { std::mem::size_of::<Vertex>() } as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4],
+                        attributes: if packed { &CHUNK_ATTRIBUTES } else { &FULL_ATTRIBUTES },
                     }],
                 },
                 primitive: wgpu::PrimitiveState {
@@ -336,7 +424,7 @@ impl Renderer {
                 }),
                 multisample: Default::default(),
                 fragment: Some(wgpu::FragmentState {
-                    module: &shader,
+                    module: shader,
                     entry_point: Some("fs_main"),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
@@ -350,8 +438,10 @@ impl Renderer {
             })
         };
 
-        let pipeline = make_pipeline(false);
-        let translucent_pipeline = make_pipeline(true);
+        let pipeline = make_pipeline(false, true);
+        let translucent_pipeline = make_pipeline(true, true);
+        let full_pipeline = make_pipeline(false, false);
+        let full_translucent_pipeline = make_pipeline(true, false);
         let depth = create_depth(&device, config.width, config.height);
         let mut gui = GuiRenderer::new(&device, &queue, format, assets);
         gui.register_view(&device, "rustmc:block_atlas", &atlas_level0);
@@ -370,14 +460,28 @@ impl Renderer {
             queue,
             config,
             pipeline,
+            full_pipeline,
             translucent_pipeline,
+            full_translucent_pipeline,
             globals_buf,
             globals_bg,
             chunk_layout,
             depth,
             lightmap,
             atlas: atlas_tex,
-            chunks: HashMap::new(),
+            origins_buf,
+            origins_bg,
+            origins: vec![[0.0; 4]; INITIAL_SLOTS],
+            pages: Vec::new(),
+            slots: Vec::new(),
+            free_slots: Vec::new(),
+            index: HashMap::new(),
+            indirect,
+            indirect_cap: 4096,
+            use_indirect,
+            cmds: Vec::new(),
+            timing: (0, std::time::Duration::ZERO),
+            runs: Vec::new(),
             render_distance_blocks: 128.0,
             drawn_chunks: 0,
         }
@@ -407,25 +511,39 @@ impl Renderer {
     /// Drops every uploaded chunk mesh. Used after a resource-pack reload, where all baked
     /// atlas UVs change and the world must be remeshed.
     pub fn clear_sections(&mut self) {
-        self.chunks.clear();
+        self.pages.clear();
+        self.slots.clear();
+        self.free_slots.clear();
+        self.index.clear();
     }
 
-    pub fn upload_section(&mut self, cx: i32, sy: i32, cz: i32, mesh: &ChunkMesh) {        if mesh.indices.is_empty() {
-            self.chunks.remove(&(cx, sy, cz));
+    fn remove_section(&mut self, key: (i32, i32, i32)) {
+        if let Some(slot) = self.index.remove(&key) {
+            let c = self.slots[slot as usize].take().unwrap();
+            let p = &mut self.pages[c.page as usize];
+            p.vfree.release(c.v_off, c.v_count);
+            p.ifree.release(c.i_off, c.index_count);
+            self.free_slots.push(slot);
+        }
+    }
+
+    pub fn upload_section(&mut self, cx: i32, sy: i32, cz: i32, mesh: &ChunkMesh) {
+        let key = (cx, sy, cz);
+        self.remove_section(key);
+        if mesh.indices.is_empty() {
             return;
         }
-        let vertices = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("chunk vertices"),
-            contents: bytemuck::cast_slice(&mesh.vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let section_y = (sy * 16) as f32;
+        let use_packed = mesh.vertices.iter().all(|v| PackedVertex::can_pack(v, section_y));
+        let origin = [(cx * 16) as f32, if use_packed { section_y } else { 0.0 }, (cz * 16) as f32, 0.0];
+        let packed: Vec<PackedVertex> = if use_packed { mesh.vertices.iter().map(|v| PackedVertex::pack(v, section_y)).collect() } else { Vec::new() };
         let mut solid = Vec::new();
         let mut transparent: Vec<([u32; 6], Vec3)> = Vec::new();
         for q in mesh.indices.chunks_exact(6) {
             if mesh.vertices[q[0] as usize].light[3] != 0 {
                 let center = [q[0], q[1], q[2], q[5]]
                     .into_iter()
-                    .map(|i| Vec3::from(mesh.vertices[i as usize].pos))
+                    .map(|i| Vec3::from(mesh.vertices[i as usize].pos) - Vec3::new(0.0, section_y, 0.0))
                     .sum::<Vec3>()
                     * 0.25;
                 transparent.push((q.try_into().unwrap(), center));
@@ -437,45 +555,112 @@ impl Renderer {
         for (q, _) in &transparent {
             solid.extend_from_slice(q);
         }
-        let indices = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("chunk indices"),
-            contents: bytemuck::cast_slice(&solid),
-            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+        let (v_count, i_count) = (mesh.vertices.len() as u32, solid.len() as u32);
+        // First page with room, else a new one (never reallocating: no copies).
+        let found = self.pages.iter_mut().enumerate().find_map(|(pi, p)| {
+            if p.packed != use_packed { return None; }
+            let v = p.vfree.alloc(v_count)?;
+            match p.ifree.alloc(i_count) {
+                Some(i) => Some((pi, v, i)),
+                None => {
+                    p.vfree.release(v, v_count);
+                    None
+                }
+            }
         });
-        let origin = [(cx * 16) as f32, 0.0, (cz * 16) as f32, 0.0];
-        let uniform = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("chunk origin"),
-            contents: bytemuck::cast_slice(&origin),
-            usage: wgpu::BufferUsages::UNIFORM,
+        let (page, v_off, i_off) = found.unwrap_or_else(|| {
+            let (vc, ic) = (PAGE_VERTS.max(v_count), PAGE_INDICES.max(i_count));
+            let mut p = ArenaPage {
+                packed: use_packed,
+                vertices: self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("arena vertices"),
+                    size: vc as u64 * if use_packed { std::mem::size_of::<PackedVertex>() } else { std::mem::size_of::<Vertex>() } as u64,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                indices: self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("arena indices"),
+                    size: ic as u64 * 4,
+                    usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                vfree: FreeList::new(vc),
+                ifree: FreeList::new(ic),
+            };
+            let (v, i) = (p.vfree.alloc(v_count).unwrap(), p.ifree.alloc(i_count).unwrap());
+            self.pages.push(p);
+            (self.pages.len() - 1, v, i)
         });
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("chunk"),
-            layout: &self.chunk_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform.as_entire_binding(),
-            }],
+        let p = &self.pages[page];
+        if use_packed {
+            self.queue.write_buffer(&p.vertices, v_off as u64 * std::mem::size_of::<PackedVertex>() as u64, bytemuck::cast_slice(&packed));
+        } else {
+            self.queue.write_buffer(&p.vertices, v_off as u64 * std::mem::size_of::<Vertex>() as u64, bytemuck::cast_slice(&mesh.vertices));
+        }
+        self.queue.write_buffer(&p.indices, i_off as u64 * 4, bytemuck::cast_slice(&solid));
+
+        let slot = self.free_slots.pop().unwrap_or_else(|| {
+            self.slots.push(None);
+            self.slots.len() as u32 - 1
         });
+        if slot as usize >= self.origins.len() {
+            let cap = (self.origins.len() * 2).max(slot as usize + 1);
+            self.origins.resize(cap, [0.0; 4]);
+            let (buf, bg) = make_origins(&self.device, &self.chunk_layout, cap);
+            self.queue.write_buffer(&buf, 0, bytemuck::cast_slice(&self.origins));
+            self.origins_buf = buf;
+            self.origins_bg = bg;
+        }
+        self.origins[slot as usize] = origin;
+        self.queue.write_buffer(&self.origins_buf, slot as u64 * 16, bytemuck::cast_slice(&origin));
+
         let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
         for v in &mesh.vertices {
             lo = lo.min(Vec3::from(v.pos));
             hi = hi.max(Vec3::from(v.pos));
         }
         let o = Vec3::new(origin[0], 0.0, origin[2]);
-        self.chunks.insert(
-            (cx, sy, cz),
-            GpuChunk {
-                vertices,
-                indices,
-                index_count: mesh.indices.len() as u32,
-                solid_count,
-                transparent,
-                sorted_at: Vec3::NAN,
-                bind_group,
-                min: lo + o,
-                max: hi + o,
-            },
-        );
+        self.slots[slot as usize] = Some(GpuChunk {
+            page: page as u32,
+            v_off,
+            v_count,
+            i_off,
+            index_count: i_count,
+            solid_count,
+            transparent,
+            sorted_at: Vec3::NAN,
+            key,
+            min: lo + o,
+            max: hi + o,
+        });
+        self.index.insert(key, slot);
+    }
+
+    /// Grows the indirect buffer (contents are rewritten every frame, so no copy).
+    fn ensure_indirect(&mut self, cmds: usize) {
+        if cmds > self.indirect_cap {
+            self.indirect_cap = cmds.next_power_of_two();
+            self.indirect = make_indirect(&self.device, self.indirect_cap);
+        }
+    }
+
+    /// Issues `self.cmds[start..start + n]` (all in arena page `page`); `ind_base` is where this
+    /// frame's commands start in the indirect buffer.
+    fn issue(&self, pass: &mut wgpu::RenderPass<'_>, page: u32, start: u32, n: u32, ind_base: u32, translucent: bool) {
+        let p = &self.pages[page as usize];
+        pass.set_pipeline(match (p.packed, translucent) {
+            (true, false) => &self.pipeline, (true, true) => &self.translucent_pipeline,
+            (false, false) => &self.full_pipeline, (false, true) => &self.full_translucent_pipeline,
+        });
+        pass.set_vertex_buffer(0, p.vertices.slice(..));
+        pass.set_index_buffer(p.indices.slice(..), wgpu::IndexFormat::Uint32);
+        if self.use_indirect {
+            pass.multi_draw_indexed_indirect(&self.indirect, (ind_base + start) as u64 * 20, n);
+        } else {
+            for c in &self.cmds[start as usize..(start + n) as usize] {
+                pass.draw_indexed(c[2]..c[2] + c[0], c[3] as i32, c[4]..c[4] + 1);
+            }
+        }
     }
 
     /// Draws the world (when `cam` is set) and then the GUI batch on top.
@@ -486,6 +671,7 @@ impl Renderer {
         assets: &AssetSource,
     ) -> Result<(), wgpu::SurfaceError> {
         let frame = self.surface.get_current_texture()?;
+        let t0 = std::time::Instant::now();
         let view = frame.texture.create_view(&Default::default());
         let aspect = self.config.width as f32 / self.config.height as f32;
         let mut enc = self.encode(cam, &view, None, aspect, self.config.height as f32, assets);
@@ -513,6 +699,8 @@ impl Renderer {
             }
         }
         self.queue.submit([enc.finish()]);
+        self.timing.0 += 1;
+        self.timing.1 += t0.elapsed();
         frame.present();
         Ok(())
     }
@@ -659,6 +847,32 @@ impl Renderer {
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
         let planes = frustum_planes(view_proj);
 
+        // Visible opaque draws, one batch per arena page (order is irrelevant under depth testing).
+        self.cmds.clear();
+        self.runs.clear();
+        self.drawn_chunks = 0;
+        for page in 0..self.pages.len() as u32 {
+            let start = self.cmds.len() as u32;
+            for (slot, c) in self.slots.iter().enumerate() {
+                let Some(c) = c else { continue };
+                if c.page != page || !aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos) {
+                    continue;
+                }
+                self.drawn_chunks += 1;
+                if c.solid_count > 0 {
+                    self.cmds.push([c.solid_count, 1, c.i_off, c.v_off, slot as u32]);
+                }
+            }
+            let n = self.cmds.len() as u32 - start;
+            if n > 0 {
+                self.runs.push((page, start, n));
+            }
+        }
+        self.ensure_indirect(self.slots.len() * 2);
+        if self.use_indirect && !self.cmds.is_empty() {
+            self.queue.write_buffer(&self.indirect, 0, bytemuck::cast_slice(&self.cmds));
+        }
+
         let mut enc = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -692,18 +906,10 @@ impl Renderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.globals_bg, &[]);
-            self.drawn_chunks = 0;
-            for c in self.chunks.values() {
-                if !aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos) {
-                    continue;
-                }
-                pass.set_bind_group(1, &c.bind_group, &[]);
-                pass.set_vertex_buffer(0, c.vertices.slice(..));
-                pass.set_index_buffer(c.indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..c.solid_count, 0, 0..1);
-                self.drawn_chunks += 1;
+            pass.set_bind_group(1, &self.origins_bg, &[]);
+            for &(page, start, n) in &self.runs {
+                self.issue(&mut pass, page, start, n, 0, false);
             }
         }
         self.sky_renderer.encode(
@@ -734,27 +940,50 @@ impl Renderer {
             );
         }
         let mut translucent: Vec<_> = self
-            .chunks
+            .slots
             .iter()
-            .filter(|(_, c)| !c.transparent.is_empty() && aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos))
-            .map(|(&k, c)| (k, ((c.min + c.max) * 0.5 - cam.pos).length_squared()))
+            .enumerate()
+            .filter_map(|(slot, c)| {
+                let c = c.as_ref()?;
+                (!c.transparent.is_empty() && aabb_visible(&planes, c.min - cam.pos, c.max - cam.pos))
+                    .then(|| (slot, ((c.min + c.max) * 0.5 - cam.pos).length_squared()))
+            })
             .collect();
         translucent.sort_by(|a, b| b.1.total_cmp(&a.1));
-        for &(key, _) in &translucent {
-            let c = self.chunks.get_mut(&key).unwrap();
+        for &(slot, _) in &translucent {
+            let c = self.slots[slot].as_mut().unwrap();
             // Vanilla re-sorts translucent quads only after the camera moved more than a block.
             if c.sorted_at.is_finite() && (cam.pos - c.sorted_at).length_squared() <= 1.0 {
                 continue;
             }
             c.sorted_at = cam.pos;
-            let relative = cam.pos - Vec3::new((key.0 * 16) as f32, 0., (key.2 * 16) as f32);
+            let relative = cam.pos - Vec3::new((c.key.0 * 16) as f32, (c.key.1 * 16) as f32, (c.key.2 * 16) as f32);
             c.transparent
                 .sort_by(|a, b| (b.1 - relative).length_squared().total_cmp(&(a.1 - relative).length_squared()));
             let indices: Vec<u32> = c.transparent.iter().flat_map(|(q, _)| q.iter().copied()).collect();
-            self.queue
-                .write_buffer(&c.indices, c.solid_count as u64 * 4, bytemuck::cast_slice(&indices));
+            self.queue.write_buffer(
+                &self.pages[c.page as usize].indices,
+                (c.i_off + c.solid_count) as u64 * 4,
+                bytemuck::cast_slice(&indices),
+            );
         }
         if !translucent.is_empty() {
+            // Back-to-front across the whole world: batch only consecutive sections of the same page.
+            let base = self.slots.len() as u32;
+            self.cmds.clear();
+            self.runs.clear();
+            for &(slot, _) in &translucent {
+                let c = self.slots[slot].as_ref().unwrap();
+                self.cmds.push([c.index_count - c.solid_count, 1, c.i_off + c.solid_count, c.v_off, slot as u32]);
+                let i = self.cmds.len() as u32 - 1;
+                match self.runs.last_mut() {
+                    Some(r) if r.0 == c.page => r.2 += 1,
+                    _ => self.runs.push((c.page, i, 1)),
+                }
+            }
+            if self.use_indirect {
+                self.queue.write_buffer(&self.indirect, base as u64 * 20, bytemuck::cast_slice(&self.cmds));
+            }
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("translucent blocks"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -776,14 +1005,10 @@ impl Renderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_pipeline(&self.translucent_pipeline);
             pass.set_bind_group(0, &self.globals_bg, &[]);
-            for (key, _) in &translucent {
-                let c = &self.chunks[key];
-                pass.set_bind_group(1, &c.bind_group, &[]);
-                pass.set_vertex_buffer(0, c.vertices.slice(..));
-                pass.set_index_buffer(c.indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(c.solid_count..c.index_count, 0, 0..1);
+            pass.set_bind_group(1, &self.origins_bg, &[]);
+            for &(page, start, n) in &self.runs {
+                self.issue(&mut pass, page, start, n, base, true);
             }
         }
         enc
@@ -867,4 +1092,114 @@ fn aabb_visible(planes: &[Vec4; 5], min: Vec3, max: Vec3) -> bool {
         );
         p.truncate().dot(v) + p.w >= 0.0
     })
+}
+
+fn make_origins(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, slots: usize) -> (wgpu::Buffer, wgpu::BindGroup) {
+    let buf = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("section origins"),
+        size: slots as u64 * 16,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("section origins"),
+        layout,
+        entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }],
+    });
+    (buf, bg)
+}
+
+fn make_indirect(device: &wgpu::Device, cmds: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("draw commands"),
+        size: cmds as u64 * 20,
+        usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        if std::env::var_os("RUSTMC_RENDER_TIMING").is_some() && self.timing.0 > 0 {
+            let arena: u64 = self.pages.iter().map(|p| p.vertices.size() + p.indices.size()).sum();
+            let used: u64 = self.slots.iter().flatten().map(|c| c.v_count as u64 * if self.pages[c.page as usize].packed { std::mem::size_of::<PackedVertex>() } else { std::mem::size_of::<Vertex>() } as u64 + c.index_count as u64 * 4).sum();
+            eprintln!(
+                "render cpu (encode+submit): {:.3} ms/frame over {} frames; sections {} pages {} arena {:.1} MiB used {:.1} MiB; multi_draw_indirect={}",
+                self.timing.1.as_secs_f64() * 1e3 / self.timing.0 as f64,
+                self.timing.0,
+                self.index.len(),
+                self.pages.len(),
+                arena as f64 / 1048576.0,
+                used as f64 / 1048576.0,
+                self.use_indirect
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod arena_tests {
+    use super::*;
+
+    #[test]
+    fn free_list_reuses_and_coalesces_ranges() {
+        let mut f = FreeList::new(12);
+        let a = f.alloc(3).unwrap();
+        let b = f.alloc(4).unwrap();
+        let c = f.alloc(5).unwrap();
+        assert_eq!((a, b, c), (0, 3, 7));
+        assert_eq!(f.alloc(1), None);
+        f.release(b, 4);
+        f.release(a, 3);
+        f.release(c, 5);
+        assert_eq!(f.alloc(12), Some(0));
+    }
+
+    #[test]
+    fn packed_vertex_preserves_uv_light_and_layout() {
+        let v = crate::mesh::Vertex { pos: [1.5, 33.25, -0.5], uv: [0.12345678, 0.9876543], color: [30, 40, 50, 255], light: [112, 240, 128, 255] };
+        let p = PackedVertex::pack(&v, 32.0);
+        assert_eq!(std::mem::size_of::<PackedVertex>(), 20);
+        assert_eq!(p.pos.map(|x| x as f32 / 2048.0 - 4.0), [1.5, 1.25, -0.5]);
+        assert_eq!(p.uv, v.uv);
+        assert_eq!(p.light, [112, 240]);
+        assert_eq!(p.color, [30, 40, 50, 64]);
+        assert!(PackedVertex::can_pack(&v, 32.0));
+        let mut irregular = v;
+        irregular.pos[0] = 1.0 / 3.0;
+        assert!(!PackedVertex::can_pack(&irregular, 32.0));
+        irregular.pos[0] = 28.0;
+        assert!(!PackedVertex::can_pack(&irregular, 32.0));
+    }
+
+    #[test]
+    fn chunk_pipeline_validates_on_headless_gpu() {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+            eprintln!("no headless adapter; GPU pipeline test skipped");
+            return;
+        };
+        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        for (source, stride, attributes) in [
+            (include_str!("shader.wgsl"), std::mem::size_of::<PackedVertex>(), &CHUNK_ATTRIBUTES),
+            (include_str!("shader_full.wgsl"), std::mem::size_of::<Vertex>(), &FULL_ATTRIBUTES),
+        ] {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("chunk shader test"), source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
+        let _pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("chunk pipeline test"), layout: None,
+            vertex: wgpu::VertexState {
+                module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: stride as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex, attributes }],
+            },
+            primitive: Default::default(), depth_stencil: None, multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_main"),
+                compilation_options: Default::default(), targets: &[Some(wgpu::TextureFormat::Rgba8Unorm.into())] }),
+            multiview: None, cache: None,
+        });
+        }
+    }
+
 }
