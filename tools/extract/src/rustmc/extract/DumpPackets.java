@@ -135,6 +135,7 @@ final class DumpPackets {
         double x = 0.5, y = 64, z = 0.5;
         float yaw = 0, pitch = 0;
         String mode = "survival";
+        String language = "en_US";
         int food = 20;
         Sc(String name) { this.name = name; }
         Sc floor() { return fill(-24, 60, -24, 24, 63, 24, "stone"); }
@@ -197,6 +198,7 @@ final class DumpPackets {
         GameSettings gs = new GameSettings();
         put(gs, GameSettings.class, "mc", mc);
         gs.renderDistanceChunks = 12;
+        gs.language = sc.language;
         put(mc, Minecraft.class, "gameSettings", gs);
         put(mc, Minecraft.class, "mcProfiler", new Profiler());
         put(mc, Minecraft.class, "theWorld", world);
@@ -299,6 +301,7 @@ final class DumpPackets {
             } else if ("creative-drop".equals(t.op)) {
                 pc.sendPacketDropItem(new ItemStack(Item.getItemById(t.arg[0]), t.arg[1], t.arg[2]));
             } else if ("settings".equals(t.op)) {
+                gs.language = t.arg[4] == 1 ? "de_DE" : "fr_FR";
                 gs.renderDistanceChunks = t.arg[0];
                 gs.chatVisibility = net.minecraft.entity.player.EntityPlayer.EnumChatVisibility.getEnumChatVisibility(t.arg[1]);
                 gs.chatColours = t.arg[2] != 0;
@@ -340,6 +343,7 @@ final class DumpPackets {
         JsonObject o = new JsonObject();
         o.addProperty("name", sc.name);
         o.addProperty("mode", sc.mode);
+        o.addProperty("language", sc.language);
         o.addProperty("food", sc.food);
         o.add("start", DumpMovement.bits(sc.x, sc.y, sc.z));
         o.addProperty("yaw", Float.floatToRawIntBits(sc.yaw));
@@ -439,7 +443,8 @@ final class DumpPackets {
         l.add(s);
 
         s = new Sc("join_replies").floor();
-        s.op("join").op("settings", 5, 1, 0, 21).op("settings", 12, 0, 1, 127).idle(2);
+        s.language = "fr_FR";
+        s.op("join").op("settings", 5, 1, 0, 21, 1).op("settings", 12, 0, 1, 127, 0).idle(2);
         l.add(s);
 
         s = new Sc("vehicle_using_item").floor().item(0, "iron_sword", 1);

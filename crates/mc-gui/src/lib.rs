@@ -147,10 +147,11 @@ pub struct Ui {
 
 impl Ui {
     pub fn new(assets: &AssetSource, settings: Settings) -> Self {
+        let lang = Lang::load(assets, &settings.language);
         Self {
             inventory: [None; 36], armor: [None; 4], crafting: [None; 4], drops: Vec::new(), sent_messages: Vec::new(), selected_slot: 0, shift_down: false, ctrl_down: false, key_code: 0,
             font: FontRenderer::load(assets),
-            lang: Lang::load(assets, "en_US"),
+            lang,
             settings,
             splash: random_splash(assets),
             in_world: false,
@@ -169,7 +170,7 @@ impl Ui {
     /// from the (possibly changed) resource pack stack while keeping player state and settings.
     pub fn reload(&mut self, assets: &AssetSource) {
         self.font = FontRenderer::load(assets);
-        self.lang = Lang::load(assets, "en_US");
+        self.lang = Lang::load(assets, &self.settings.language);
         self.splash = random_splash(assets);
         self.pack_icon = assets.read_base("pack.png");
     }

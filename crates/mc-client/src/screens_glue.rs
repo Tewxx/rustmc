@@ -214,10 +214,12 @@ impl App {
         self.camera.fov_deg = s.fov;
         // Settings are protocol state even when no renderer has been created yet.
         let a = &self.applied;
-        if (s.chat_visibility, s.chat_colors, s.model_parts, s.render_distance) != (a.chat_visibility, a.chat_colors, a.model_parts, a.render_distance) {
+        if (&s.language, s.chat_visibility, s.chat_colors, s.model_parts, s.render_distance) != (&a.language, a.chat_visibility, a.chat_colors, a.model_parts, a.render_distance) {
             if let Some(n) = &mut self.net {
-                n.send_settings("en_US", s.render_distance as i8, s.chat_visibility as i8, s.chat_colors, s.model_parts);
+                n.send_settings(&s.language, s.render_distance as i8, s.chat_visibility as i8, s.chat_colors, s.model_parts);
             }
+            if s.language != self.applied.language { self.ui.lang = mc_gui::lang::Lang::load(&self.assets, &s.language); }
+            self.applied.language = s.language.clone();
             self.applied.chat_visibility = s.chat_visibility;
             self.applied.chat_colors = s.chat_colors;
             self.applied.model_parts = s.model_parts;

@@ -64,7 +64,7 @@ impl App {
                     self.player.hardcore = j.hardcore;
                     self.has_valid_health = false;
                     let view = self.ui.settings.render_distance as i8;
-                    n.send_join_replies("en_US", view, self.ui.settings.chat_visibility as i8, self.ui.settings.chat_colors, self.ui.settings.model_parts);
+                    n.send_join_replies(&self.ui.settings.language, view, self.ui.settings.chat_visibility as i8, self.ui.settings.chat_colors, self.ui.settings.model_parts);
                     self.entity.set_game_type(level::GameType::by_id(j.game_mode as i32));
                     self.info.difficulty = j.difficulty;
                     self.player.max_health = 20.;

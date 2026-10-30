@@ -152,8 +152,12 @@ pub(crate) struct App {
 
 impl App {
     pub(crate) fn new(assets: AssetSource, models: BlockModels, world: World, center: (i32, i32), settings: Settings) -> Self {
-        let ui = Ui::new(&assets, settings.clone());
         let catalogue = Arc::new(inventory::Catalogue::load(&assets, &models));
+        Self::with_catalogue(assets, models, world, center, settings, catalogue)
+    }
+
+    pub(crate) fn with_catalogue(assets: AssetSource, models: BlockModels, world: World, center: (i32, i32), settings: Settings, catalogue: Arc<inventory::Catalogue>) -> Self {
+        let ui = Ui::new(&assets, settings.clone());
         let spawn = find_player_spawn(&world, center);
         let mut entity = player::Player::new(spawn);
         entity.yaw = -45.;

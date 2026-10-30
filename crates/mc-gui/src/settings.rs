@@ -129,6 +129,8 @@ pub struct Settings {
     pub mouse_sensitivity: f32,
     pub gamma: f32,
     pub render_distance: i32,
+    /// `GameSettings.language` from options.txt and C15 client settings.
+    pub language: String,
     pub limit_framerate: i32,
     pub gui_scale: i32,
     pub ambient_occlusion: i32,
@@ -185,6 +187,7 @@ impl Default for Settings {
             mouse_sensitivity: 0.5,
             gamma: 0.0,
             render_distance: 12,
+            language: "en_US".into(),
             limit_framerate: 120,
             gui_scale: 0,
             ambient_occlusion: 2,
@@ -240,6 +243,7 @@ impl Settings {
                 "mouseSensitivity" => s.mouse_sensitivity = f.unwrap_or(s.mouse_sensitivity),
                 "gamma" => s.gamma = f.unwrap_or(s.gamma),
                 "renderDistance" => s.render_distance = i.unwrap_or(s.render_distance),
+                "lang" => s.language = v.to_string(),
                 "maxFps" => s.limit_framerate = i.unwrap_or(s.limit_framerate),
                 "guiScale" => s.gui_scale = i.unwrap_or(s.gui_scale),
                 "ao" => {
@@ -314,6 +318,7 @@ impl Settings {
             ("mouseSensitivity", format!("{}", self.mouse_sensitivity)),
             ("gamma", format!("{}", self.gamma)),
             ("renderDistance", self.render_distance.to_string()),
+            ("lang", self.language.clone()),
             ("maxFps", self.limit_framerate.to_string()),
             ("guiScale", self.gui_scale.to_string()),
             ("ao", self.ambient_occlusion.to_string()),
@@ -520,8 +525,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rustmc-opts-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("options.txt");
-        std::fs::write(&path, "fov:0.5\nresourcePacks:[\"a.zip\",\"b\"]\nincompatibleResourcePacks:[\"b\"]\nother:keep\n").unwrap();
+        std::fs::write(&path, "fov:0.5\nlang:fr_FR\nresourcePacks:[\"a.zip\",\"b\"]\nincompatibleResourcePacks:[\"b\"]\nother:keep\n").unwrap();
         let mut s = Settings::load(&path);
+        assert_eq!(s.language, "fr_FR");
         assert_eq!(s.resource_packs, ["a.zip", "b"]);
         assert_eq!(s.incompatible_resource_packs, ["b"]);
         assert_eq!(s.game_dir(), dir);
@@ -532,6 +538,7 @@ mod tests {
         assert!(text.contains("resourcePacks:[\"it\\u0027s\\u003d\\u003cx\\u003e.zip\",\"c\"]\n"), "{text}");
         assert!(text.contains("incompatibleResourcePacks:[]\n") && text.contains("other:keep\n"));
         let back = Settings::load(&path);
+        assert_eq!(back.language, "fr_FR");
         assert_eq!(back.resource_packs, ["it's=<x>.zip", "c"]);
         assert!(back.incompatible_resource_packs.is_empty());
         // Vanilla's default (no keys) and malformed lists.

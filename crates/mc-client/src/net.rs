@@ -499,6 +499,29 @@ mod tests {
         assert!(matches!(&messages[2], PlayServerbound::PluginMessageC(p) if p.channel == "FML|HS" && p.data[0] == 2));
     }
 
+    // Test-only barrier frames preserve tick boundaries on the real loopback stream.
+    fn mark_tick(net: &mut Net) {
+        net.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: "rustmc:test-tick".into(), data: vec![] }));
+    }
+
+    fn compare_tick_stream(name: &str, packets: Vec<PlayServerbound>, rows: &[serde_json::Value]) {
+        let mut tick = 0usize;
+        let mut actual = Vec::new();
+        for packet in packets {
+            if matches!(&packet, PlayServerbound::PluginMessageC(p) if p.channel == "rustmc:test-tick" && p.data.is_empty()) {
+                let want = rows.get(tick).unwrap_or_else(|| panic!("{name}: unexpected tick {tick}"));
+                let expected: Vec<&str> = want.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+                assert_eq!(actual, expected, "{name}: tick {tick}");
+                actual.clear();
+                tick += 1;
+            } else {
+                actual.push(packet.to_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>());
+            }
+        }
+        assert!(actual.is_empty(), "{name}: packets after final tick");
+        assert_eq!(tick, rows.len(), "{name}: missing tick markers");
+    }
+
     /// Replays Java's actual EntityPlayerSP packet stream through the client movement path.
     #[test]
     fn walking_stream_matches_java() {
@@ -583,7 +606,6 @@ mod tests {
             e.yaw = f32::from_bits(num(&sc["yaw"]) as u32);
             e.pitch = f32::from_bits(num(&sc["pitch"]) as u32);
             let rows = sc["out"].as_array().unwrap();
-            let count: usize = rows.iter().map(|r| r.as_array().unwrap().len()).sum();
             let (mut net, srv) = loopback(usize::MAX);
             net.entity_id = 1;
             for tick in sc["script"].as_array().unwrap() {
@@ -620,26 +642,10 @@ mod tests {
                     e.pitch,
                     e.on_ground,
                 );
+                mark_tick(&mut net);
             }
             net.disconnect();
-            let packets = srv.join().unwrap();
-            assert_eq!(packets.len(), count, "{name}: packet count");
-            let mut index = 0;
-            for (tick, row) in rows.iter().enumerate() {
-                for want in row.as_array().unwrap() {
-                    let got: String = packets[index]
-                        .to_bytes()
-                        .iter()
-                        .map(|b| format!("{b:02x}"))
-                        .collect();
-                    assert_eq!(
-                        got,
-                        want.as_str().unwrap(),
-                        "{name} tick {tick} packet {index}"
-                    );
-                    index += 1;
-                }
-            }
+            compare_tick_stream(name, srv.join().unwrap(), rows);
         }
     }
 
@@ -654,6 +660,10 @@ mod tests {
         };
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut assets = AssetSource::new();
+        assets.push(&jar).unwrap();
+        let mut models = BlockModels::load(&assets);
+        let catalogue = Arc::new(inventory::Catalogue::load(&assets, &models));
         for name in [
             "join_replies",
             "place_blocked_by_entity",
@@ -678,9 +688,6 @@ mod tests {
             "hotbar_swap",
         ] {
             let sc = scenes.iter().find(|s| s["name"] == name).unwrap();
-            let mut assets = AssetSource::new();
-            assets.push(&jar).unwrap();
-            let models = BlockModels::load(&assets);
             let mut world = World::default();
             for x in -2..=1 {
                 for z in -2..=1 {
@@ -694,15 +701,16 @@ mod tests {
                 for x in n[0]..=n[3] {
                     for y in n[1]..=n[4] {
                         for z in n[2]..=n[5] {
-                            world.set_block_state(
-                                BlockPos::new(x as i32, y as i32, z as i32),
-                                mc_data::StateId(n[6] as u16),
-                            );
+                            let chunk = world.chunks.get_mut(&((x as i32) >> 4, (z as i32) >> 4)).unwrap();
+                            chunk.set_state_raw((x as usize) & 15, y as i32, (z as usize) & 15, mc_data::StateId(n[6] as u16));
                         }
                     }
                 }
             }
-            let mut app = App::new(assets, models, world, (0, 0), Settings::default());
+            for chunk in world.chunks.values_mut() { chunk.generate_skylight_map(); }
+            let mut settings = Settings::default();
+            settings.language = sc["language"].as_str().unwrap().into();
+            let mut app = App::with_catalogue(assets, models, world, (0, 0), settings, catalogue.clone());
             for entity in sc["entities"].as_array().unwrap() {
                 let kind = match entity[0].as_str().unwrap() {
                     "armor_stand" => crate::entities::Kind::Object(78),
@@ -741,7 +749,6 @@ mod tests {
             let rows = sc["out"].as_array().unwrap();
             let script = sc["script"].as_array().unwrap();
             let (rows, script) = (&rows[..], &script[..]);
-            let count: usize = rows.iter().map(|r| r.as_array().unwrap().len()).sum();
             let (mut net, srv) = loopback(usize::MAX);
             net.entity_id = 1;
             app.net = Some(net);
@@ -775,6 +782,7 @@ mod tests {
                     }
                     Some("settings") => {
                         let a = tk["a"].as_array().unwrap();
+                        app.ui.settings.language = if num(&a[4]) == 1 { "de_DE" } else { "fr_FR" }.into();
                         app.ui.settings.render_distance = num(&a[0]) as i32;
                         app.ui.settings.chat_visibility = num(&a[1]) as i32;
                         app.ui.settings.chat_colors = num(&a[2]) != 0;
@@ -855,33 +863,12 @@ mod tests {
                     app.clicks.push(MouseButton::Right);
                 }
                 app.run_tick();
+                mark_tick(app.net.as_mut().unwrap());
             }
             app.net.as_mut().unwrap().disconnect();
-            let packets = srv.join().unwrap();
-            let mut index = 0;
-            for (tick, row) in rows.iter().enumerate() {
-                for want in row.as_array().unwrap() {
-                    let got: String = packets
-                        .get(index)
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "missing packet {index} at tick {tick}; got {} of {count}",
-                                packets.len()
-                            )
-                        })
-                        .to_bytes()
-                        .iter()
-                        .map(|b| format!("{b:02x}"))
-                        .collect();
-                    assert_eq!(
-                        got,
-                        want.as_str().unwrap(),
-                        "{name} tick {tick} packet {index}"
-                    );
-                    index += 1;
-                }
-            }
-            assert_eq!(packets.len(), count, "{name}: packet count");
+            compare_tick_stream(name, srv.join().unwrap(), rows);
+            assets = app.assets;
+            models = app.models;
         }
     }
 
