@@ -44,7 +44,16 @@ public class ShadowJar {
         for (byte[] bytes : classes.values()) ForgeSpec.indexNotch(ForgeSpec.parse(bytes));
         for (byte[] bytes : forgeClasses.values()) ForgeSpec.indexNotch(ForgeSpec.parse(bytes));
         Remapper remapper = new Remapper() {
-            @Override public String map(String name) { return ForgeSpec.mapCls(name); }
+            @Override public String map(String name) {
+                String mapped = ForgeSpec.mapCls(name);
+                if (!mapped.equals(name)) return mapped;
+                // Forge can add nested classes absent from joined.srg. Their enclosing
+                // vanilla class still has a mapping, so carry its mapping to the suffix.
+                int inner = name.indexOf('$');
+                if (inner < 0) return name;
+                String outer = name.substring(0, inner);
+                return ForgeSpec.mapCls(outer) + name.substring(inner);
+            }
             @Override public String mapFieldName(String owner, String name, String desc) { return ForgeSpec.mapField(owner, name); }
             @Override public String mapMethodName(String owner, String name, String desc) { return ForgeSpec.mapMethod(owner, name, desc); }
         };
