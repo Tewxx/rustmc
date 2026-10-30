@@ -4,7 +4,7 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/../forgetest/env.sh"
 "$HERE/build.sh" >/dev/null
-"$FT_HERE/build.sh" ftshadow ftlifecycle ftlifecycle2 >/dev/null
+"$FT_HERE/build.sh" ftshadow ftbus ftlifecycle ftlifecycle2 >/dev/null
 SHADOW=${1:-$FT_BUILD/shadow-probe.jar}
 [ -f "$SHADOW" ] || { echo "missing generated shadow jar: $SHADOW (run tools/shadow/build.sh first)" >&2; exit 1; }
 SHADOW=$(cd "$(dirname "$SHADOW")" && pwd)/$(basename "$SHADOW")
@@ -25,7 +25,7 @@ unzip -p "$SHADOW" net/minecraft/util/MathHelper.class > "$D/pristine.class"
 [ -s "$D/pristine.class" ] || { echo 'shadow MathHelper missing' >&2; exit 1; }
 for mode in control hooked graph-control graph-hooked; do
   mkdir -p "$D/$mode/mods"
-  cp "$FT_BUILD/mods/ftcommon.jar" "$FT_BUILD/mods/ftlifecycle.jar" "$FT_BUILD/mods/ftlifecycle2.jar" "$D/$mode/mods/"
+  cp "$FT_BUILD/mods/ftcommon.jar" "$FT_BUILD/mods/ftbus.jar" "$FT_BUILD/mods/ftlifecycle.jar" "$FT_BUILD/mods/ftlifecycle2.jar" "$D/$mode/mods/"
   case "$mode" in
     control) flag=0; arg=shadow-control; graph=0;;
     hooked) flag=1; arg=shadow; graph=0;;
@@ -36,6 +36,7 @@ for mode in control hooked graph-control graph-hooked; do
       CARGO_TARGET_DIR="$FT_BUILD/jvm-spike/cargo-target" cargo run --quiet --manifest-path "$FT_REPO/Cargo.toml" --release -p jvm-spike -- "$JVM" "$CP" bridgeprobe/ShadowRun 100000 "$arg") > "$D/$mode.log" 2>&1; then
     tail -60 "$D/$mode.log" >&2; exit 1
   fi
+  cmp "$FT_REPO/tests/forge/oracle/bus-client.jsonl" "$D/$mode/ft-trace/bus.jsonl" || { echo "event bus trace differs from Forge oracle" >&2; exit 1; }
   cmp "$FT_REPO/tests/forge/oracle/lifecycle-client-subset.jsonl" "$D/$mode/ft-trace/lifecycle.jsonl" || { echo "lifecycle trace differs from Forge oracle" >&2; exit 1; }
   if grep -Eq 'SEVERE:|unsupported headless client call|shadow missing available class|Unable to read a class file correctly|An unexpected exception' "$D/$mode.log"; then
     echo "FML lifecycle reported an error; see $D/$mode.log" >&2; exit 1
@@ -62,4 +63,4 @@ for mode in control hooked graph-control graph-hooked; do
   fi
   grep 'shadow_mode=' "$D/$mode.log"
 done
-echo 'lifecycle traces match the Forge oracle subset; selected bytes match the shadow; final chain diff finds target and injection; control is unchanged'
+echo 'lifecycle and event bus traces match the Forge oracle; selected bytes match the shadow; final chain diff finds target and injection; control is unchanged'

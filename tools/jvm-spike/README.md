@@ -26,10 +26,12 @@ The probe embeds JDK 8, runs the real FML client tweaker and LaunchClassLoader,
 and loads the project's `ftshadow` coremod and Mixin. A headless entrypoint replaces
 the Minecraft game entrypoint; no game window, third-party mod or account is used.
 It boots vanilla registries and runs the real FML lifecycle with a small headless
-client delegate and the project's `ftcommon`, `ftlifecycle`, and `ftlifecycle2`
+client delegate and the project's `ftcommon`, `ftbus`, `ftlifecycle`, and `ftlifecycle2`
 test mods. Both modes must match the 19-line Forge client oracle fixture in
 `tests/forge/oracle/lifecycle-client-subset.jsonl`; its mod list is narrowed to
-the three test mods and Forge built-ins present in this run. Unsupported client
+the four test mods and Forge built-ins present in this run. The 35 event-bus
+records also match `tests/forge/oracle/bus-client.jsonl`, covering priorities,
+cancellation, results, registration, inheritance, and error cases. Unsupported client
 delegate calls and event-dispatch errors fail the probe.
 The first two runs insert only the local shadow `MathHelper` bytes after Forge's
 patcher and before the Mixin transformers. Two more runs select every available
