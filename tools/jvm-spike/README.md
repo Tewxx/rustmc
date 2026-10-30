@@ -31,8 +31,12 @@ test mods. Both modes must match the 19-line Forge client oracle fixture in
 `tests/forge/oracle/lifecycle-client-subset.jsonl`; its mod list is narrowed to
 the three test mods and Forge built-ins present in this run. Unsupported client
 delegate calls and event-dispatch errors fail the probe.
-The selector inserts the local shadow `MathHelper` bytes after Forge's patcher and
-before the Mixin transformers. A final transformer saves the bytes passed to class
+The first two runs insert only the local shadow `MathHelper` bytes after Forge's
+patcher and before the Mixin transformers. Two more runs select every available
+`net.minecraft` class from the shadow jar in the same position. They check that
+hundreds of classes, including Forge-added nested classes, were selected and fail
+if an input class has no matching shadow entry. Unresolved lookups with no input
+bytes are counted separately in the probe directory. A final transformer saves the bytes passed to class
 definition. The script compares the selected bytes to the shadow jar, then compares
 per-method normalized ASM output before and after the full transformer chain. It
 requires an unchanged no-Mixin control and detects `func_76128_c(D)I` plus the
@@ -43,13 +47,13 @@ probe directory and must not be redistributed.
 
 FML's remapper expects the original obfuscated jar to resolve patch inputs. Shadow
 alone fails; placing shadow ahead of the original jar causes a double-patch checksum
-failure. This experiment puts the original first and substitutes **only the test
-class** from shadow. The test coremod registers the selector before Mixin
+failure. This experiment puts the original first and substitutes either the test
+class or the available Minecraft class graph from shadow. The test coremod registers the selector before Mixin
 bootstrap; the probe verifies the public transformer list places it after Forge’s
 patcher and before Mixin. This
-is an experiment, not a production loader or whole-graph solution. Substituting
-all shadow classes at this position would discard any earlier transformations,
-and classes loaded before the selector is registered would bypass it. Forge reports
+is an experiment, not a production loader or whole-graph solution. The graph run may discard transformations registered before the selector, and
+classes loaded before the selector is registered bypass it. It does not prove
+complete class coverage or correctness with other coremods. Forge reports
 a signature warning in this environment, and Mixin reports
 initialization during a tweak constructor; both remain to be resolved. The probe does not instantiate the Minecraft client, nativise world subsystems,
 synchronize game fields, or demonstrate arbitrary-mod behavior. The lifecycle
