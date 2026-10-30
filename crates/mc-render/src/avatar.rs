@@ -223,6 +223,8 @@ pub struct AvatarRenderer {
     particle_instances: wgpu::Buffer,
     particle_capacity: usize,
     use_particle_instancing: bool,
+    particle_scratch: Vec<ParticleInstance>,
+    entity_scratch: Vec<EntityInstance>,
     damage_pipeline: wgpu::RenderPipeline,
     vertices: [wgpu::Buffer; 3],
     bind_group: wgpu::BindGroup,
@@ -661,6 +663,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             particle_instances,
             particle_capacity,
             use_particle_instancing: std::env::var_os("RUSTMC_NO_PARTICLE_INSTANCING").is_none(),
+            particle_scratch: Vec::new(), entity_scratch: Vec::new(),
             damage_pipeline,
             vertices,
             bind_group,
@@ -715,8 +718,9 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     ) {
         let mut verts = Vec::new();
         let mut damage = Vec::new();
-        let mut particles = Vec::new();
-        let mut entities = Vec::new();
+        let mut particles = std::mem::take(&mut self.particle_scratch);
+        let mut entities = std::mem::take(&mut self.entity_scratch);
+        particles.clear(); entities.clear();
         let mut entity_runs: Vec<(usize, std::ops::Range<usize>)> = Vec::new();
         let max_entities = (device.limits().max_buffer_size / std::mem::size_of::<EntityInstance>() as u64).min(u32::MAX as u64) as usize;
         let max_instances = (device.limits().max_buffer_size / std::mem::size_of::<ParticleInstance>() as u64).min(u32::MAX as u64) as usize;
@@ -810,7 +814,10 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let glint_start = damage.len() as u32;
         damage.append(&mut self.glint);
         let verts = damage;
-        if verts.is_empty() && particles.is_empty() && entities.is_empty() { return; }
+        if verts.is_empty() && particles.is_empty() && entities.is_empty() {
+            self.particle_scratch = particles; self.entity_scratch = entities;
+            return;
+        }
         if !entities.is_empty() {
             if entities.len() > self.entity_capacity {
                 self.entity_capacity = entities.len().next_power_of_two().min(max_entities);
@@ -828,6 +835,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 vp: world_vp.to_cols_array_2d(), camera: cam.pos.extend(0.).to_array(),
             }));
         }
+        let particle_count = particles.len();
+        self.particle_scratch = particles; self.entity_scratch = entities;
         let buf = &self.vertices[hand_stage as usize];
         if !verts.is_empty() { queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)])); }
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -868,7 +877,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.set_vertex_buffer(0, buf.slice(..));
             start = at;
         }
-        if particles.is_empty() {
+        if particle_count == 0 {
             pass.draw(start..additive_start.min(end), 0..1);
         } else {
             let at = (particle_split as u32).min(additive_start).min(end);
@@ -876,7 +885,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.set_pipeline(&self.particle_pipeline);
             pass.set_bind_group(1, &self.particle_bind_group, &[]);
             pass.set_vertex_buffer(0, self.particle_instances.slice(..));
-            pass.draw(0..6, 0..particles.len() as u32);
+            pass.draw(0..6, 0..particle_count as u32);
             pass.set_pipeline(&self.pipeline);
             pass.set_vertex_buffer(0, buf.slice(..));
             pass.draw(at..additive_start.min(end), 0..1);
@@ -1621,18 +1630,19 @@ mod particle_instance_tests {
             age: 3., ticks: 3, swing: 0., child: false, hurt: true, death: 0., light: [1.;3], bright: [1.;3],
             held: None, armor: [None;4] };
         let frame = AvatarFrame { mobs: vec![mob; 200], ..Default::default() };
-        for enabled in [false, true] {
+        for (enabled, reuse) in [(false, true), (true, false), (true, true)] {
             renderer.use_entity_instancing = enabled;
             let mut sum = std::time::Duration::ZERO;
             for iteration in 0..31 {
                 let mut enc = device.create_command_encoder(&Default::default());
+                if !reuse { renderer.entity_scratch = Vec::new(); }
                 let t = std::time::Instant::now();
                 renderer.encode(&device, &queue, &mut enc, &color, &depth, &camera, 1., 128., 128., &frame, &assets, false);
                 let elapsed = t.elapsed();
                 queue.submit(Some(enc.finish())); device.poll(wgpu::Maintain::Wait);
                 if iteration > 0 { sum += elapsed; }
             }
-            eprintln!("mobs {}: 200 zombies, mean CPU encode {:.3} ms", if enabled { "instanced" } else { "legacy" }, sum.as_secs_f64()*1000./30.);
+            eprintln!("mobs {}: 200 zombies, mean CPU encode {:.3} ms", if !enabled { "legacy" } else if reuse { "instanced/reused" } else { "instanced/fresh" }, sum.as_secs_f64()*1000./30.);
         }
     }
 
@@ -1750,5 +1760,7 @@ mod particle_instance_tests {
         let new = render(&mut renderer, &frame, true);
         assert_eq!(old, new);
         assert!(renderer.particle_capacity >= 1500);
+        assert!(renderer.particle_scratch.capacity() >= 1500);
+        assert!(renderer.entity_scratch.capacity() > 0);
     }
 }
