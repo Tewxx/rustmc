@@ -222,7 +222,7 @@ final class DumpPackets {
         world.ents.add(p);
         p.getFoodStats().setFoodLevel(sc.food);
         for (Object[] e : sc.ents) {
-            Entity en = e[0].equals("zombie") ? new EntityZombie(world) : new EntityArmorStand(world);
+            Entity en = e[0].equals("zombie") ? new EntityZombie(world) : e[0].equals("item") ? new net.minecraft.entity.item.EntityItem(world) : new EntityArmorStand(world);
             en.setEntityId((Integer) e[1]);
             en.setPosition((Double) e[2], (Double) e[3], (Double) e[4]);
             world.ents.add(en);
@@ -368,6 +368,14 @@ final class DumpPackets {
 
         s = new Sc("place_blocks_faces").floor().set(0, 64, 3, "stone").item(0, "stone", 64).item(1, "dirt", 10);
         s.look(0f, 50f).click(false, true).idle(5).look(5f, 20f).hold(12, 0, false, true).look(-30f, 55f).idle(1).click(false, true).slot(1).look(0f, 60f).hold(9, 0, false, true).idle(5);
+        l.add(s);
+
+        s = new Sc("place_blocked_by_entity").floor().set(0, 64, 3, "stone").item(0, "stone", 64).ent("zombie", 102, 1.2, 64, 2.5);
+        s.look(0f, 14f).idle(2).click(false, true).idle(5);
+        l.add(s);
+
+        s = new Sc("place_through_item").floor().set(0, 64, 3, "stone").item(0, "stone", 64).ent("item", 103, 0.95, 64, 2.5);
+        s.look(0f, 14f).idle(2).click(false, true).idle(5);
         l.add(s);
 
         s = new Sc("place_side_face_vectors").floor().set(0, 64, 3, "stone").set(2, 64, 3, "stone").item(0, "stone", 64);

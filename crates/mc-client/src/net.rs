@@ -655,6 +655,8 @@ mod tests {
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for name in [
+            "place_blocked_by_entity",
+            "place_through_item",
             "vehicle_input",
             "server_replies",
             "respawn",
@@ -702,6 +704,7 @@ mod tests {
                 let kind = match entity[0].as_str().unwrap() {
                     "armor_stand" => crate::entities::Kind::Object(78),
                     "zombie" => crate::entities::Kind::Mob(54),
+                    "item" => crate::entities::Kind::Object(2),
                     other => panic!("unknown entity {other}"),
                 };
                 let coord = |v: &serde_json::Value| (f64::from_bits(num(v) as u64) * 32.0) as i32;

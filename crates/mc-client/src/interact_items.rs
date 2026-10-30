@@ -52,6 +52,16 @@ impl App {
     }
 
 
+    /// `World.canBlockBePlaced`: a block's default collision box must not overlap a live entity.
+    fn placement_collides(&mut self, state: mc_data::StateId, pos: BlockPos) -> bool {
+        let Some(bounds) = self.geometry.collision_box(state, &self.world, pos) else { return false };
+        if bounds.intersects_with(&self.entity.bounds()) { return true; }
+        self.remote.map.values().any(|e| {
+            let prevents = matches!(e.kind, crate::entities::Kind::Player | crate::entities::Kind::Mob(_) | crate::entities::Kind::Object(1 | 10 | 50 | 51 | 70 | 78));
+            prevents && bounds.intersects_with(&e.bb())
+        })
+    }
+
     /// `ItemBlock.onItemUse` on the client: place the held block against `t` (prediction).
     pub(crate) fn place_held_block(&mut self, t: player::Target) -> bool {
         let Some(stack) = self.ui.inventory[self.player.selected_slot] else {
@@ -110,18 +120,7 @@ impl App {
             };
         }
         let Some(state) = block.state_from_meta(meta) else { return false };
-        let mut boxes = Vec::new();
-        self.geometry.add_collision_boxes(
-            state,
-            &self.world,
-            p,
-            &self.entity.bounds(),
-            &mut boxes,
-            mc_data::geometry::CollisionEntity::Other,
-        );
-        if !boxes.is_empty() {
-            return false;
-        }
+        if self.placement_collides(block.default_state, p) { return false; }
         // PlayerControllerMP.onPlayerRightClick: the client predicts the placement itself; only the
         // integrated server runs the full block logic.
         #[cfg(feature = "singleplayer")]
@@ -149,7 +148,8 @@ impl App {
             self.play_sound(st.place_sound, Some(c), (st.volume + 1.0) / 2.0, st.frequency * 0.8);
             self.refresh_edits(&[p]);
         }
-        placed
+        // ItemBlock.onItemUse returns true once placement is allowed, even if setBlockState fails.
+        true
     }
 
     /// `Minecraft.rightClickMouse`
@@ -245,17 +245,7 @@ impl App {
                 let Some(block) = mc_data::Block::by_id(b) else {
                     return true;
                 };
-                let state = block.default_state;
-                let mut boxes = Vec::new();
-                self.geometry.add_collision_boxes(
-                    state,
-                    &self.world,
-                    pos,
-                    &self.entity.bounds(),
-                    &mut boxes,
-                    mc_data::geometry::CollisionEntity::Other,
-                );
-                !boxes.is_empty()
+                self.placement_collides(block.default_state, pos)
             });
             if blocked {
                 return false;
