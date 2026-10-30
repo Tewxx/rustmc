@@ -285,6 +285,97 @@ impl ContainerScreen {
             (w.props[0] > 0 && (self.creative || w.level >= w.props[0] as i32))
     }
 
+    fn crafting_grid(w: &Window) -> Option<usize> {
+        match w.kind.as_str() { "player" => Some(2), "minecraft:crafting_table" => Some(3), _ => None }
+    }
+
+    fn recipes() -> &'static serde_json::Value {
+        static DATA: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+        DATA.get_or_init(|| serde_json::from_str(include_str!("crafting_recipes.json")).unwrap())
+    }
+
+    fn recraft(&self, w: &mut Window, ui: &mut Ui) {
+        let Some(size) = Self::crafting_grid(w) else { return };
+        let grid: Vec<_> = (1..=size * size).map(|i| *w.get(ui, i).unwrap()).collect();
+        let matches = |input: &serde_json::Value, actual: Option<ItemStack>| -> bool {
+            match (input.as_array(), actual) {
+                (None, None) => true,
+                (Some(a), Some(s)) => self.catalogue.items[s.item].id == a[0].as_u64().unwrap() as u16 &&
+                    (a[2].as_i64().unwrap() == 32767 || s.damage as i64 == a[2].as_i64().unwrap()),
+                _ => false,
+            }
+        };
+        let mut result = None;
+        let items: Vec<_> = grid.iter().flatten().copied().collect();
+        if items.len() == 2 && items.iter().all(|s| s.count == 1) {
+            let id = self.catalogue.items[items[0].item].id;
+            if id == self.catalogue.items[items[1].item].id {
+                if let Some(item) = mc_data::item::Item::by_id(id).filter(|i| i.is_damageable()) {
+                    let max = item.max_damage as i32;
+                    let damage = (items[0].damage as i32 + items[1].damage as i32 - max - max * 5 / 100).max(0) as i16;
+                    result = Some(ItemStack::new(items[0].item, 1, damage));
+                }
+            }
+        }
+        for recipe in Self::recipes()["recipes"].as_array().unwrap() {
+            if result.is_some() { break; }
+            let inputs = recipe["inputs"].as_array().unwrap();
+            let matched = if let Some(width) = recipe["width"].as_u64() {
+                let width = width as usize;
+                let height = recipe["height"].as_u64().unwrap() as usize;
+                (0..=3-width).any(|x| (0..=3-height).any(|y| [true, false].into_iter().any(|mirror| {
+                    (0..3).all(|gy| (0..3).all(|gx| {
+                        let actual = if gx < size && gy < size { grid[gy * size + gx] } else { None };
+                        let expected = if gx >= x && gx < x + width && gy >= y && gy < y + height {
+                            let dx = gx - x; &inputs[(gy-y)*width + if mirror { width-dx-1 } else { dx }]
+                        } else { &serde_json::Value::Null };
+                        matches(expected, actual)
+                    }))
+                })))
+            } else {
+                let mut remaining = inputs.clone();
+                let mut ok = true;
+                for item in grid.iter().flatten() {
+                    if let Some(i) = remaining.iter().position(|r| matches(r, Some(*item))) { remaining.remove(i); }
+                    else { ok = false; break; }
+                }
+                ok && remaining.is_empty()
+            };
+            if matched {
+                let output = recipe["output"].as_array().unwrap();
+                let id = output[0].as_u64().unwrap() as u16;
+                let damage = output[2].as_i64().unwrap() as i16;
+                result = self.catalogue.index_of(id, damage as u16).or_else(|| self.catalogue.index_of(id, 0)).map(|item| {
+                    let mut stack = ItemStack::new(item, output[1].as_u64().unwrap() as u8, damage);
+                    if recipe["copy_nbt"].as_bool() == Some(true) { stack.tag = grid.iter().flatten().filter_map(|s| s.tag).last(); }
+                    stack
+                });
+                break;
+            }
+        }
+        w.set(ui, 0, result);
+    }
+
+    fn crafted(&self, w: &mut Window, ui: &mut Ui) {
+        let Some(size) = Self::crafting_grid(w) else { return };
+        for i in 1..=size * size {
+            let Some(stack) = *w.get(ui, i).unwrap() else { continue };
+            let id = self.catalogue.items[stack.item].id;
+            let remainder = Self::recipes()["containers"].as_array().unwrap().iter().find_map(|r| {
+                (r[0].as_u64() == Some(id as u64)).then(|| r[1].as_u64().unwrap() as u16)
+            }).and_then(|id| self.catalogue.index_of(id, 0)).map(|item| ItemStack::new(item, 1, 0));
+            w.set(ui, i, (stack.count > 1).then_some(ItemStack { count: stack.count - 1, ..stack }));
+            if let Some(remainder) = remainder {
+                if w.get(ui, i).unwrap().is_none() { w.set(ui, i, Some(remainder)); }
+                else {
+                    let range = if w.kind == "player" { (9..45).collect() } else { (10..46).collect() };
+                    self.merge(w, ui, remainder, range);
+                }
+            }
+        }
+        self.recraft(w, ui);
+    }
+
     /// `Container.slotClick` mode 0 (`PICKUP`) on window slot `i`.
     fn pickup(&self, w: &mut Window, ui: &mut Ui, i: usize, right: bool) {
         if !self.can_take(w, i) && w.get(ui, i).is_some_and(|s| s.is_some()) { return; }
@@ -457,6 +548,7 @@ impl ContainerScreen {
             }
         } else if stage == 2 && w.drag.as_ref().is_some_and(|(m, _)| *m == mode) {
             let (_, slots) = w.drag.take().unwrap();
+            let crafting_changed = Self::crafting_grid(&w).is_some_and(|n| slots.iter().any(|&i| i >= 1 && i <= n*n));
             let mut cursor = w.cursor.unwrap();
             if !slots.is_empty() {
                 let amount = if mode == 0 { cursor.count / slots.len() as u8 } else if mode == 1 { 1 } else { self.max(cursor) };
@@ -472,6 +564,7 @@ impl ContainerScreen {
                 }
                 cursor.count = left.max(0) as u8;
                 w.cursor = (left > 0).then_some(cursor);
+                if crafting_changed { self.recraft(&mut w, ui); }
             }
         } else {
             w.drag = None;
@@ -492,12 +585,24 @@ impl ContainerScreen {
     fn click_slot(&mut self, ui: &mut Ui, i: usize, button: i8, mode: i8) {
         let mut w = self.window.lock().unwrap();
         let item = w.get(ui, i).and_then(|s| *s);
+        let grid_size = Self::crafting_grid(&w);
+        let grid_before: Vec<_> = grid_size.map(|n| (1..=n*n).map(|j| *w.get(ui, j).unwrap()).collect()).unwrap_or_default();
         if w.drag.take().is_some() {
             w.clicks.push(Click { slot: i as i16, button, mode, item: None });
             return;
         }
         let returned = match mode {
             0 => { self.pickup(&mut w, ui, i, button == 1); item }
+            1 if i == 0 && grid_size.is_some() => {
+                let first = self.transfer(&mut w, ui, i);
+                if let Some(original) = first {
+                    loop {
+                        self.crafted(&mut w, ui);
+                        if !w.slots[0].is_some_and(|s| s.item == original.item) || self.transfer(&mut w, ui, i).is_none() { break; }
+                    }
+                }
+                first
+            }
             1 => self.transfer(&mut w, ui, i),
             2 if (0..9).contains(&button) && self.can_take(&w, i) => {
                 let hot_index = button as usize;
@@ -565,6 +670,14 @@ impl ContainerScreen {
             }
             _ => None,
         };
+        if i == 0 && grid_size.is_some() && mode != 1 && item.is_some() {
+            let remaining = w.get(ui, 0).and_then(|s| *s);
+            if remaining.map_or(0, |s| s.count) < item.unwrap().count && matches!(mode, 0 | 2 | 4) { self.crafted(&mut w, ui); }
+        }
+        if let Some(n) = grid_size {
+            let grid_after: Vec<_> = (1..=n*n).map(|j| *w.get(ui, j).unwrap()).collect();
+            if grid_before != grid_after { self.recraft(&mut w, ui); }
+        }
         w.clicks.push(Click { slot: i as i16, button, mode, item: returned });
     }
 

@@ -66,6 +66,13 @@ final class DumpContainers {
         a.add(run("anvil slots", "minecraft:anvil", new int[][] {{30,1,4,0},{31,4,3,0}}, new int[][] {{30,0,0},{2,0,0},{30,0,0},{30,0,1},{31,0,1},{0,0,1},{1,0,1}}));
         a.add(run("brewing transfer", "minecraft:brewing_stand", new int[][] {{31,377,4,0},{32,374,3,0},{33,1,5,0}}, new int[][] {{31,0,1},{32,0,1},{33,0,1},{3,0,1}}));
         a.add(run("enchanting transfer", "minecraft:enchanting_table", new int[][] {{29,351,8,4},{30,1,3,0},{31,4,1,0}}, new int[][] {{29,0,1},{30,0,1},{31,0,1},{0,0,1},{1,0,1}}));
+        a.add(run("craft pickup", "player", new int[][] {{1,17,3,0}}, new int[][] {{0,0,0},{0,0,0},{0,1,0}}));
+        a.add(run("craft drag", "player", new int[][] {{36,17,2,0}}, new int[][] {{36,0,0},{-999,4,5},{1,5,5},{2,5,5},{-999,6,5}}));
+        a.add(run("craft hotkey", "player", new int[][] {{1,17,2,0}}, new int[][] {{0,0,2},{0,0,4}}));
+        a.add(run("craft repair", "player", new int[][] {{1,276,1,1000},{2,276,1,1000}}, new int[][] {{0,0,0}}));
+        a.add(run("craft shift", "player", new int[][] {{1,17,4,0}}, new int[][] {{0,0,1}}));
+        a.add(run("craft grid change", "player", new int[][] {{36,17,3,0}}, new int[][] {{36,0,0},{1,1,0},{0,0,0}}));
+        a.add(run("cake remainder", "minecraft:crafting_table", new int[][] {{1,335,1,0},{2,335,1,0},{3,335,1,0},{4,353,1,0},{5,344,1,0},{6,353,1,0},{7,296,1,0},{8,296,1,0},{9,296,1,0}}, new int[][] {{0,0,0}}));
         a.add(run("workbench transfer", "minecraft:crafting_table", new int[][] {{1,4,2,0},{10,1,8,0},{37,3,7,0}}, new int[][] {{10,0,1},{37,0,1},{1,0,1}}));
         a.add(run("beacon transfer", "minecraft:beacon", new int[][] {{28,265,2,0},{29,264,1,0},{30,1,4,0}}, new int[][] {{28,0,1},{29,0,1},{30,0,1},{0,0,1}}));
         a.add(run("beacon placement", "minecraft:beacon", new int[][] {{28,1,4,0},{29,266,3,0}}, new int[][] {{28,0,0},{0,0,0},{28,0,0},{29,0,0},{0,0,0}}));
