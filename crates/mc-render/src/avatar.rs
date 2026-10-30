@@ -202,11 +202,22 @@ struct ParticleInstance {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+struct EntityInstance {
+    pos: [[f32; 3]; 4], uv: [[f32; 2]; 4], mvp: [[f32; 4]; 4],
+    color: [f32; 4], kind: f32, overlay: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct ParticleGlobals { vp: [[f32; 4]; 4], camera: [f32; 4] }
 
 pub struct AvatarRenderer {
     pipeline: wgpu::RenderPipeline,
     particle_pipeline: wgpu::RenderPipeline,
+    entity_pipeline: wgpu::RenderPipeline,
+    entity_instances: wgpu::Buffer,
+    entity_capacity: usize,
+    use_entity_instancing: bool,
     particle_globals: wgpu::Buffer,
     particle_bind_group: wgpu::BindGroup,
     particle_instances: wgpu::Buffer,
@@ -251,6 +262,12 @@ const MAX_VERTS: usize = 131072;
 fn make_particle_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor { label: Some("particle instances"),
         size: count as u64 * std::mem::size_of::<ParticleInstance>() as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
+}
+
+fn make_entity_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor { label: Some("entity instances"),
+        size: count as u64 * std::mem::size_of::<EntityInstance>() as u64,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
 }
 
@@ -302,6 +319,16 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(vertex==1u) {{p=p1;uv=u1;}} else if(vertex==2u || vertex==4u) {{p=p2;uv=u2;}} else if(vertex==5u) {{p=p3;uv=u3;}}
  var o:V; o.pos=particle_globals.vp*vec4<f32>(p-particle_globals.camera.xyz,1.0);
  o.uv=uv; o.color=color; o.kind=u32(kind); o.overlay=vec4<f32>(0.0); return o;
+}}
+@vertex fn vs_entity(@builtin(vertex_index) vertex:u32,
+ @location(0) p0:vec3<f32>, @location(1) p1:vec3<f32>, @location(2) p2:vec3<f32>, @location(3) p3:vec3<f32>,
+ @location(4) u0:vec2<f32>, @location(5) u1:vec2<f32>, @location(6) u2:vec2<f32>, @location(7) u3:vec2<f32>,
+ @location(8) m0:vec4<f32>, @location(9) m1:vec4<f32>, @location(10) m2:vec4<f32>, @location(11) m3:vec4<f32>,
+ @location(12) color:vec4<f32>, @location(13) kind:f32, @location(14) overlay:vec4<f32>)->V {{
+ var p=p0; var uv=u0;
+ if(vertex==1u) {{p=p1;uv=u1;}} else if(vertex==2u || vertex==4u) {{p=p2;uv=u2;}} else if(vertex==5u) {{p=p3;uv=u3;}}
+ var o:V; o.pos=mat4x4<f32>(m0,m1,m2,m3)*vec4<f32>(p,1.0);
+ o.uv=uv; o.color=color; o.kind=u32(kind); o.overlay=overlay; return o;
 }}
 @fragment fn fs(v:V)->@location(0) vec4<f32> {{
  var c=v.color;
@@ -400,6 +427,24 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
             multiview: None, cache: None,
         });
+        let entity_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("instanced entities"), layout: Some(&pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_entity"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<EntityInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x3,3=>Float32x3,4=>Float32x2,5=>Float32x2,6=>Float32x2,7=>Float32x2,8=>Float32x4,9=>Float32x4,10=>Float32x4,11=>Float32x4,12=>Float32x4,13=>Float32,14=>Float32x4],
+                }],
+            },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
+        });
+        let entity_capacity = 1024;
+        let entity_instances = make_entity_buffer(device, entity_capacity);
         let particle_capacity = 1024;
         let particle_instances = make_particle_buffer(device, particle_capacity);
         // drawBlockDamageTexture: blend (DST_COLOR, SRC_COLOR), polygon offset -3, no depth writes.
@@ -594,6 +639,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         Self {
             pipeline,
             particle_pipeline,
+            entity_pipeline, entity_instances, entity_capacity,
+            use_entity_instancing: std::env::var_os("RUSTMC_NO_ENTITY_INSTANCING").is_none(),
             particle_globals,
             particle_bind_group,
             particle_instances,
@@ -654,6 +701,9 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let mut verts = Vec::new();
         let mut damage = Vec::new();
         let mut particles = Vec::new();
+        let mut entities = Vec::new();
+        let mut entity_runs: Vec<(usize, std::ops::Range<usize>)> = Vec::new();
+        let max_entities = (device.limits().max_buffer_size / std::mem::size_of::<EntityInstance>() as u64).min(u32::MAX as u64) as usize;
         let max_instances = (device.limits().max_buffer_size / std::mem::size_of::<ParticleInstance>() as u64).min(u32::MAX as u64) as usize;
         let use_particle_instancing = self.use_particle_instancing && frame.particles.len() <= max_instances;
         let mut particle_split = 0;
@@ -666,7 +716,25 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 self.body(&mut verts, o, world_vp, cam.pos);
             }
             for m in &frame.mobs {
-                self.mob(&mut verts, m, world_vp, cam.pos);
+                let vertex_start = verts.len();
+                let instance_start = entities.len();
+                let use_instances = self.use_entity_instancing && !m.armor.iter().flatten().any(|a| a.glint);
+                self.mob(&mut verts, &mut entities, use_instances, m, world_vp, cam.pos);
+                if entities.len() > max_entities {
+                    // Keep draw order and the original CPU path if the device cannot hold this mob.
+                    let fallback = entities.drain(instance_start..).flat_map(|instance| {
+                        let mvp = Mat4::from_cols_array_2d(&instance.mvp);
+                        [0, 1, 2, 0, 2, 3].map(|i| Vertex { clip: (mvp * Vec3::from_array(instance.pos[i]).extend(1.)).to_array(),
+                            uv: instance.uv[i], color: instance.color, kind: instance.kind, overlay: instance.overlay })
+                    });
+                    verts.splice(vertex_start..vertex_start, fallback);
+                } else if entities.len() > instance_start {
+                    if let Some((_, range)) = entity_runs.last_mut().filter(|(at, range)| *at == vertex_start && range.end == instance_start) {
+                        range.end = entities.len();
+                    } else {
+                        entity_runs.push((vertex_start, instance_start..entities.len()));
+                    }
+                }
             }
             for o in &frame.objects {
                 self.object(&mut verts, o, world_vp, cam);
@@ -736,7 +804,14 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let glint_start = damage.len() as u32;
         damage.append(&mut self.glint);
         let verts = damage;
-        if verts.is_empty() && particles.is_empty() { return; }
+        if verts.is_empty() && particles.is_empty() && entities.is_empty() { return; }
+        if !entities.is_empty() {
+            if entities.len() > self.entity_capacity {
+                self.entity_capacity = entities.len().next_power_of_two().min(max_entities);
+                self.entity_instances = make_entity_buffer(device, self.entity_capacity);
+            }
+            queue.write_buffer(&self.entity_instances, 0, bytemuck::cast_slice(&entities));
+        }
         if !particles.is_empty() {
             if particles.len() > self.particle_capacity {
                 self.particle_capacity = particles.len().next_power_of_two().min(max_instances);
@@ -775,11 +850,23 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.draw(0..split.min(end), 0..1);
         }
         pass.set_pipeline(&self.pipeline);
+        let mut start = split.min(end);
+        for (vertex_start, instances) in &entity_runs {
+            if split as usize + vertex_start > end as usize { break; }
+            let at = (split as usize + vertex_start).min(end as usize) as u32;
+            pass.draw(start..at, 0..1);
+            pass.set_pipeline(&self.entity_pipeline);
+            pass.set_vertex_buffer(0, self.entity_instances.slice(..));
+            pass.draw(0..6, instances.start as u32..instances.end as u32);
+            pass.set_pipeline(&self.pipeline);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            start = at;
+        }
         if particles.is_empty() {
-            pass.draw(split.min(end)..additive_start.min(end), 0..1);
+            pass.draw(start..additive_start.min(end), 0..1);
         } else {
             let at = (particle_split as u32).min(additive_start).min(end);
-            pass.draw(split.min(end)..at, 0..1);
+            pass.draw(start..at, 0..1);
             pass.set_pipeline(&self.particle_pipeline);
             pass.set_bind_group(1, &self.particle_bind_group, &[]);
             pass.set_vertex_buffer(0, self.particle_instances.slice(..));
@@ -1079,7 +1166,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
 /// Points skin-textured vertices at a downloaded skin's cell in the skin atlas.
 impl AvatarRenderer {
     /// `RendererLivingEntity.doRender` for a mob, then `LayerHeldItem`.
-    fn mob(&mut self, out: &mut Vec<Vertex>, f: &MobFrame, vp: Mat4, cam: Vec3) {
+    fn mob(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &MobFrame, vp: Mat4, cam: Vec3) {
         let base = Mat4::from_translation(f.pos - cam);
         let lights = lights_in(Mat3::IDENTITY);
         let (atlas, glint, additive) = (&self.mob_atlas, &mut self.glint, &mut self.additive);
@@ -1097,8 +1184,14 @@ impl AvatarRenderer {
             let shade = standard_lighting(n, lights);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
             let overlay = l.overlay.map_or([0.; 4], |o| [o[0] * light[0], o[1] * light[1], o[2] * light[2], o[3]]);
-            let target = if l.additive { &mut *additive } else { &mut *out };
             let mvp = vp * pm;
+            if use_instances && !l.additive {
+                instances.push(EntityInstance { pos: q.pos.map(|p| p.to_array()),
+                    uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]),
+                    mvp: mvp.to_cols_array_2d(), color, kind, overlay });
+                return;
+            }
+            let target = if l.additive { &mut *additive } else { &mut *out };
             let clip = q.pos.map(|p| (mvp * p.extend(1.)).to_array());
             for i in [0, 1, 2, 0, 2, 3] {
                 let [u, v] = q.uv[i];
@@ -1482,10 +1575,28 @@ mod particle_instance_tests {
                 if enabled { "instanced" } else { "legacy" }, sum.as_secs_f64()*1000./30., max.as_secs_f64()*1000.,
                 if enabled { 4000 * std::mem::size_of::<ParticleInstance>() } else { 4000 * 6 * std::mem::size_of::<Vertex>() });
         }
+        let mob = MobFrame { mob: crate::mobs::Mob::Zombie { villager: false }, id: 1,
+            pos: Vec3::new(0., -1., 4.), body_yaw: 15., head_yaw: 10., pitch: 5., limb_swing: 1., limb_amount: 0.5,
+            age: 3., ticks: 3, swing: 0., child: false, hurt: true, death: 0., light: [1.;3], bright: [1.;3],
+            held: None, armor: [None;4] };
+        let frame = AvatarFrame { mobs: vec![mob; 200], ..Default::default() };
+        for enabled in [false, true] {
+            renderer.use_entity_instancing = enabled;
+            let mut sum = std::time::Duration::ZERO;
+            for iteration in 0..31 {
+                let mut enc = device.create_command_encoder(&Default::default());
+                let t = std::time::Instant::now();
+                renderer.encode(&device, &queue, &mut enc, &color, &depth, &camera, 1., 128., 128., &frame, &assets, false);
+                let elapsed = t.elapsed();
+                queue.submit(Some(enc.finish())); device.poll(wgpu::Maintain::Wait);
+                if iteration > 0 { sum += elapsed; }
+            }
+            eprintln!("mobs {}: 200 zombies, mean CPU encode {:.3} ms", if enabled { "instanced" } else { "legacy" }, sum.as_secs_f64()*1000./30.);
+        }
     }
 
     #[test]
-    fn instanced_particles_match_legacy_pixels_headlessly() {
+    fn instanced_particles_and_mobs_match_legacy_pixels_headlessly() {
         let Some(jar) = mc_testutil::jar() else { return };
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else { return };
@@ -1500,6 +1611,10 @@ mod particle_instance_tests {
         };
         let mut frame = AvatarFrame { particles: vec![quad(4., [0.8,0.2,0.3,0.8], ParticleTex::Block),
             quad(3., [0.2,0.8,0.4,0.6], ParticleTex::Block), quad(2., [1.,1.,1.,0.7], ParticleTex::Misc)], ..Default::default() };
+        frame.mobs.push(MobFrame { mob: crate::mobs::Mob::Zombie { villager: false }, id: 1,
+            pos: Vec3::new(0., -1., 2.5), body_yaw: 15., head_yaw: 10., pitch: 5., limb_swing: 1., limb_amount: 0.5,
+            age: 3., ticks: 3, swing: 0., child: false, hurt: true, death: 0., light: [1.;3], bright: [1.;3],
+            held: None, armor: [None;4] });
         frame.world_quads.push(WorldQuad { pos: quad(5., [1.;4], ParticleTex::Block).pos,
             uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]], color: [0.1,0.1,0.5] });
         frame.damage.push(DamageQuad { pos: quad(6., [1.;4], ParticleTex::Block).pos,
@@ -1507,6 +1622,7 @@ mod particle_instance_tests {
         frame.outline = Some(Aabb::new(-0.6, -0.6, 2.5, 0.6, 0.6, 3.5));
         let render = |renderer: &mut AvatarRenderer, frame: &AvatarFrame, instancing: bool| -> Vec<u8> {
             renderer.use_particle_instancing = instancing;
+            renderer.use_entity_instancing = instancing;
             let desc = |format, usage| wgpu::TextureDescriptor { label: None,
                 size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1,
                 dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] };
@@ -1538,6 +1654,20 @@ mod particle_instance_tests {
         let new = render(&mut renderer, &frame, true);
         assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0));
         assert_eq!(old, new);
+        frame.particles.clear(); frame.world_quads.clear(); frame.damage.clear(); frame.outline = None;
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "mob must be visible");
+        assert_eq!(old, new);
+        let mut spider = frame.mobs[0].clone();
+        spider.mob = crate::mobs::Mob::Spider { cave: false }; spider.pos = Vec3::new(-0.5, -0.8, 3.);
+        let mut enchanted = frame.mobs[0].clone();
+        enchanted.pos.x = 0.5; enchanted.armor[3] = Some(ArmorPiece { material: 2, color: 0xffffff, glint: true });
+        frame.mobs.extend([spider, enchanted, frame.mobs[0].clone()]);
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        frame.mobs.clear();
         frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
