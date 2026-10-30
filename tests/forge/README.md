@@ -10,4 +10,4 @@ This is an incomplete suite: the recorded traces are not yet validated as determ
 
 The intended future corpus smoke tier checks load, GUI and HUD behavior for user-selected jars. Third-party mods are not run by this suite; `.mc-tools/mod-corpus/` contains the local scan inputs described in `docs/FORGE_COMPAT.md`.
 
-`tools/forgetest/check-core.sh` builds the coremod and checks its transformer against a controlled class without opening a window. The `CORE-01` trace still needs a real Forge oracle run to verify loader registration and execution order.
+`tools/forgetest/check-core.sh` builds the coremod and checks its transformer against a controlled class without opening a window. A headless Forge dedicated-server run recorded `CORE-01` value 2, confirming loading and transformation on that side; client loading and broader ordering remain unverified.
