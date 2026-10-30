@@ -11,3 +11,5 @@ This is an incomplete suite: the recorded traces are not yet validated as determ
 The intended future corpus smoke tier checks load, GUI and HUD behavior for user-selected jars. Third-party mods are not run by this suite; `.mc-tools/mod-corpus/` contains the local scan inputs described in `docs/FORGE_COMPAT.md`.
 
 `tools/forgetest/check-core.sh` builds the coremod and checks its transformer against a controlled class without opening a window. A headless Forge dedicated-server run recorded `CORE-01` value 2, confirming loading and transformation on that side; client loading and broader ordering remain unverified.
+
+`ftmixin` is an opt-in experimental probe (`tools/forgetest/build.sh ftcommon ftmixin`). A local headless Forge server with Mixin 0.8.7 and ASM 5 first on its classpath recorded `MIXIN-01` value 2. Forge's ASM 5 mod scanner warns that newer classes inside the Mixin jar cannot be read. The default oracle does not load this probe until its Mixin classpath is configured. Its own-class injection and empty refmap do not test injection into a Minecraft class or mapped selectors.

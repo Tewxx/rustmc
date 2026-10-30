@@ -42,7 +42,7 @@ for m in $LIST; do
   EXTRA=""
   [ -f "$d/compile-classpath.txt" ] && EXTRA=":$(sed "s#@PL@#$PL#g" "$d/compile-classpath.txt" | tr '\n' ':')"
   find "$d/src" -name '*.java' > "$FT_BUILD/classes/$m.files"
-  "$FT_JAVAC" -nowarn -g -source 1.8 -target 1.8 -encoding UTF-8 -cp "$BASECP$DEVCP$EXTRA" -d "$cls" @"$FT_BUILD/classes/$m.files"
+  "$FT_JAVAC" -proc:none -nowarn -g -source 1.8 -target 1.8 -encoding UTF-8 -cp "$BASECP$DEVCP$EXTRA" -d "$cls" @"$FT_BUILD/classes/$m.files"
   [ -n "$(find "$cls" -name '*.class' | head -1)" ] || { echo "compile failed: $m" >&2; exit 1; }
   [ -d "$d/res" ] && cp -R "$d/res/." "$cls/"
   mf="$FT_BUILD/classes/$m.mf"; echo "Manifest-Version: 1.0" > "$mf"
