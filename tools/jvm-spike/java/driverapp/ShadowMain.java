@@ -43,6 +43,7 @@ public final class ShadowMain {
             throw new IllegalStateException("FML lifecycle did not reach AVAILABLE");
         ShadowRun.target = Class.forName("net.minecraft.util.MathHelper", true, Launch.classLoader);
         ShadowRun.bridge = Class.forName("ft.shadow.NativeBridge", true, Launch.classLoader);
+        ShadowRun.movementClass = Class.forName("net.minecraft.util.MovementInput", true, Launch.classLoader);
         ShadowRun.tickBridge = Class.forName("rustmc.forge.EventBridge", true, Launch.classLoader);
         ShadowRun.eventBridge = Class.forName("ft.bus.FTBus", true, Launch.classLoader);
         System.out.println("selected shadow target with loader " + ShadowRun.target.getClassLoader());

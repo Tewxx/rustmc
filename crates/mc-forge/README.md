@@ -20,3 +20,12 @@ mod received exactly that sequence. The probe uses Java registry bootstrap and a
 limited client delegate; it does not open a game window or run the Minecraft
 client loop. The test-only unattended client driver is disabled in this harness
 because it expects an actual Minecraft client singleton.
+
+`MovementView` is a narrow state bridge for the real Forge-loaded
+`net.minecraft.util.MovementInput` class. A Rust owner retains one view, pushes
+strafe, forward, jump and sneak before callbacks, and pulls all four fields
+back afterward. The view retains Java object identity until it is dropped;
+creating another view creates a distinct object. The probe exercises both
+ways through a test mod and checks identity and replacement. This is not yet
+connected to a Rust player or input loop; it does not mirror player, world,
+settings or arbitrary fields, and the caller must choose synchronization points.

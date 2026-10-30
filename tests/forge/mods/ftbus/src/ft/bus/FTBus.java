@@ -18,6 +18,12 @@ import net.minecraftforge.fml.common.eventhandler.*;
 public class FTBus {
     static final Trace.T T = Trace.of("bus");
 
+    public static void editMovement(net.minecraft.util.MovementInput input) {
+        input.moveStrafe += 0.5f;
+        input.moveForward *= -1.0f;
+        input.jump = !input.jump;
+        input.sneak = !input.sneak;
+    }
     private static String tickPhases = "";
     public static final class TickListener {
         @SubscribeEvent public void onTick(net.minecraftforge.fml.common.gameevent.TickEvent.ClientTickEvent event) {

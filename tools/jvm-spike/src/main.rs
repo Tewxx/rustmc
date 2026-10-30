@@ -30,6 +30,33 @@ fn main() -> Result<(), Box<dyn Error>> {
         tick_bridge.post(&mut env, false)?;
         tick_bridge.post(&mut env, true)?;
         let event_bridge = JClass::from(env.get_static_field(&class, "eventBridge", "Ljava/lang/Class;")?.l()?);
+        let movement_class = JClass::from(env.get_static_field(&class, "movementClass", "Ljava/lang/Class;")?.l()?);
+        let movement_class2 = JClass::from(env.new_local_ref(&movement_class)?);
+        let movement = mc_forge::MovementView::new(&mut env, movement_class)?;
+        let other = mc_forge::MovementView::new(&mut env, movement_class2)?;
+        if env.is_same_object(movement.object().as_obj(), other.object().as_obj())? {
+            return Err("distinct movement owners share Java identity".into());
+        }
+        let identity = env.new_global_ref(movement.object().as_obj())?;
+        let original = mc_forge::MovementState { strafe: 1.0, forward: -0.5, jump: true, sneak: false };
+        movement.push(&mut env, original)?;
+        if movement.pull(&mut env)? != original { return Err("movement state did not round-trip".into()); }
+        env.call_static_method(&event_bridge, "editMovement", "(Lnet/minecraft/util/MovementInput;)V",
+            &[jni::objects::JValue::Object(movement.object().as_obj())])?;
+        let changed = mc_forge::MovementState { strafe: 1.5, forward: 0.5, jump: false, sneak: true };
+        if movement.pull(&mut env)? != changed { return Err("Java movement edits did not reach Rust".into()); }
+        movement.push(&mut env, original)?;
+        if movement.pull(&mut env)? != original { return Err("Rust movement overwrite failed".into()); }
+        if !env.is_same_object(identity.as_obj(), movement.object().as_obj())? {
+            return Err("movement identity changed during synchronization".into());
+        }
+        let replacement_class = env.get_object_class(movement.object().as_obj())?;
+        drop(movement);
+        let replacement = mc_forge::MovementView::new(&mut env, replacement_class)?;
+        if env.is_same_object(identity.as_obj(), replacement.object().as_obj())? {
+            return Err("replacement movement owner reused stale Java identity".into());
+        }
+        println!("rust_forge_movement_view=passed");
         let phases = env.call_static_method(&event_bridge, "tickPhases", "()Ljava/lang/String;", &[])?.l()?;
         let phases = jni::objects::JString::from(phases);
         let phases: String = env.get_string(&phases)?.into();

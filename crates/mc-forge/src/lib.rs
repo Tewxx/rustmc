@@ -21,3 +21,48 @@ impl ClientTickBridge {
         Ok(())
     }
 }
+
+/// Rust-owned values mirrored to a Forge-loaded Minecraft MovementInput object.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MovementState {
+    pub strafe: f32,
+    pub forward: f32,
+    pub jump: bool,
+    pub sneak: bool,
+}
+
+/// One view per Rust owner; dropping it releases this bridge's JVM reference.
+pub struct MovementView {
+    object: GlobalRef,
+}
+
+impl MovementView {
+    /// `class` must be MovementInput from the Forge LaunchClassLoader.
+    pub fn new(env: &mut JNIEnv<'_>, class: JClass<'_>) -> Result<Self> {
+        let object = env.new_object(class, "()V", &[])?;
+        Ok(Self { object: env.new_global_ref(object)? })
+    }
+
+    pub fn object(&self) -> &GlobalRef { &self.object }
+
+    /// Copy Rust state into the same Java object before mod callbacks.
+    pub fn push(&self, env: &mut JNIEnv<'_>, state: MovementState) -> Result<()> {
+        let obj = self.object.as_obj();
+        env.set_field(obj, "field_78902_a", "F", JValue::Float(state.strafe))?;
+        env.set_field(obj, "field_78900_b", "F", JValue::Float(state.forward))?;
+        env.set_field(obj, "field_78901_c", "Z", JValue::Bool(state.jump.into()))?;
+        env.set_field(obj, "field_78899_d", "Z", JValue::Bool(state.sneak.into()))?;
+        Ok(())
+    }
+
+    /// Read all Java fields before the caller commits their values to Rust state.
+    pub fn pull(&self, env: &mut JNIEnv<'_>) -> Result<MovementState> {
+        let obj = self.object.as_obj();
+        Ok(MovementState {
+            strafe: env.get_field(obj, "field_78902_a", "F")?.f()?,
+            forward: env.get_field(obj, "field_78900_b", "F")?.f()?,
+            jump: env.get_field(obj, "field_78901_c", "Z")?.z()?,
+            sneak: env.get_field(obj, "field_78899_d", "Z")?.z()?,
+        })
+    }
+}
