@@ -205,10 +205,19 @@ impl ContainerScreen {
         self.catalogue.items[s.item].max.max(1)
     }
 
+    fn accepts(&self, w: &Window, i: usize, s: ItemStack) -> bool {
+        if w.output_slot(i) { return false; }
+        if w.kind == "player" && (5..=8).contains(&i) {
+            return crate::item_use::armor_slot(self.catalogue.items[s.item].id) == Some(8 - i);
+        }
+        true
+    }
+
     /// `Container.slotClick` mode 0 (`PICKUP`) on window slot `i`.
     fn pickup(&self, w: &mut Window, ui: &mut Ui, i: usize, right: bool) {
-        let output = w.output_slot(i);
         let cursor = w.cursor;
+        let valid = cursor.is_some_and(|c| self.accepts(w, i, c));
+        let slot_limit = if w.kind == "player" && (5..=8).contains(&i) { 1 } else { 64 };
         let Some(cur) = w.get(ui, i).map(|s| *s) else { return };
         let max_of = |s: ItemStack| self.max(s);
         let (new_slot, new_cursor) = match (cursor, cur) {
@@ -217,25 +226,26 @@ impl ContainerScreen {
                 let n = if right { s.count.div_ceil(2) } else { s.count };
                 ((s.count > n).then_some(ItemStack { count: s.count - n, ..s }), Some(ItemStack { count: n, ..s }))
             }
-            (Some(c), None) if !output => {
-                let n = if right { 1 } else { c.count.min(max_of(c)) };
+            (Some(c), None) if valid => {
+                let n = if right { 1 } else { c.count.min(max_of(c)).min(slot_limit) };
                 (Some(ItemStack { count: n, ..c }), (c.count > n).then_some(ItemStack { count: c.count - n, ..c }))
             }
             (Some(_), None) => return,
-            (Some(c), Some(s)) if output => {
+            (Some(c), Some(s)) if !valid => {
                 // Taking from an output slot adds onto a matching cursor.
-                if c.stacks_with(&s) && c.count as u16 + s.count as u16 <= max_of(c) as u16 {
+                if max_of(c) > 1 && c.stacks_with(&s) && c.count as u16 + s.count as u16 <= max_of(c) as u16 {
                     (None, Some(ItemStack { count: c.count + s.count, ..c }))
                 } else {
                     return;
                 }
             }
             (Some(c), Some(s)) if c.stacks_with(&s) => {
-                let room = max_of(s).saturating_sub(s.count);
+                let room = max_of(s).min(slot_limit).saturating_sub(s.count);
                 let n = if right { 1.min(room) } else { c.count.min(room) };
                 (Some(ItemStack { count: s.count + n, ..s }), (c.count > n).then_some(ItemStack { count: c.count - n, ..c }))
             }
-            (Some(c), Some(s)) => (Some(c), Some(s)),
+            (Some(c), Some(s)) if c.count <= slot_limit => (Some(c), Some(s)),
+            _ => return,
         };
         if let Some(slot) = w.get(ui, i) {
             *slot = new_slot;
@@ -269,8 +279,8 @@ impl ContainerScreen {
 
     /// `transferStackInSlot` for storage containers: container ↔ inventory (to the inventory
     /// back to front).
-    fn transfer(&self, w: &mut Window, ui: &mut Ui, i: usize) {
-        let Some(Some(s)) = w.get(ui, i).map(|x| *x) else { return };
+    fn transfer(&self, w: &mut Window, ui: &mut Ui, i: usize) -> Option<ItemStack> {
+        let s = w.get(ui, i).and_then(|x| *x)?;
         if w.kind == "player" {
             // ContainerPlayer.transferStackInSlot
             const SUFFIX: [&str; 4] = ["_helmet", "_chestplate", "_leggings", "_boots"];
@@ -285,30 +295,54 @@ impl ContainerScreen {
             };
             let rest = self.merge(w, ui, s, range);
             w.set(ui, i, rest);
-            return;
+            return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
         }
         let n = w.slots.len();
         let range: Vec<usize> = if i < n { (n..w.total()).rev().collect() } else { (0..n).filter(|&k| !w.output_slot(k)).collect() };
         let rest = self.merge(w, ui, s, range);
         w.set(ui, i, rest);
+        (rest.map_or(0, |r| r.count) != s.count).then_some(s)
     }
 
     fn click_slot(&mut self, ui: &mut Ui, i: usize, button: i8, mode: i8) {
         let mut w = self.window.lock().unwrap();
         let item = w.get(ui, i).and_then(|s| *s);
-        match mode {
-            0 => self.pickup(&mut w, ui, i, button == 1),
+        let returned = match mode {
+            0 => { self.pickup(&mut w, ui, i, button == 1); item }
             1 => self.transfer(&mut w, ui, i),
-            2 => {
-                // Number key: swap with hotbar slot `button`.
-                let hot = ui.inventory[button as usize];
-                let here = item;
-                w.set(ui, i, hot);
-                ui.inventory[button as usize] = here;
+            2 if (0..9).contains(&button) => {
+                let hot_index = button as usize;
+                let hot = ui.inventory[hot_index];
+                let player_slot = if w.kind == "player" { i >= 5 && i < 45 } else { i >= w.slots.len() && i < w.total() };
+                let valid = hot.is_none_or(|s| self.accepts(&w, i, s));
+                let empty = ui.inventory.iter().position(Option::is_none);
+                let direct = hot.is_none() || (player_slot && valid);
+                if let Some(here) = item {
+                    if direct {
+                        w.set(ui, i, hot);
+                        ui.inventory[hot_index] = Some(here);
+                    } else if let (Some(old), Some(empty)) = (hot, empty) {
+                        ui.inventory[hot_index] = Some(here);
+                        w.set(ui, i, None);
+                        // InventoryPlayer.addItemStackToInventory first fills compatible partial stacks.
+                        let mut left = old.count;
+                        for t in ui.inventory.iter_mut().flatten() {
+                            if t.stacks_with(&old) && t.count < self.max(old) {
+                                let n = left.min(self.max(old) - t.count); t.count += n; left -= n;
+                                if left == 0 { break; }
+                            }
+                        }
+                        if left > 0 { ui.inventory[empty] = Some(ItemStack { count: left, ..old }); }
+                    }
+                } else if hot.is_some() && valid {
+                    w.set(ui, i, hot);
+                    ui.inventory[hot_index] = None;
+                }
+                None
             }
-            _ => {}
-        }
-        w.clicks.push(Click { slot: i as i16, button, mode, item });
+            _ => None,
+        };
+        w.clicks.push(Click { slot: i as i16, button, mode, item: returned });
     }
 
     fn mouse(&mut self, ui: &mut Ui, mx: i32, my: i32, right: bool) -> Action {
@@ -437,6 +471,49 @@ impl Screen for ContainerScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn java_slot_click_traces() {
+        let Some(jar) = crate::find_jar() else {
+            assert_ne!(std::env::var("RUSTMC_REQUIRE_GOLDEN").as_deref(), Ok("1"), "slot-click replay needs the vanilla jar");
+            eprintln!("skipping Java slot-click replay: vanilla jar not found");
+            return;
+        };
+        let mut assets = mc_assets::AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = mc_render::models::BlockModels::load(&assets);
+        let cat = Arc::new(Catalogue::load(&assets, &models));
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!("../tests/data/containers.json")).unwrap();
+        let decode = |v: &serde_json::Value| -> Option<ItemStack> {
+            let a = v.as_array()?;
+            let id = a[0].as_u64().unwrap() as u16;
+            let damage = a[2].as_i64().unwrap() as i16;
+            Some(ItemStack::new(cat.index_of(id, damage as u16).or_else(|| cat.index_of(id, 0)).unwrap(), a[1].as_u64().unwrap() as u8, damage))
+        };
+        for fixture in fixtures.as_array().unwrap() {
+            let kind = fixture["kind"].as_str().unwrap();
+            let name = fixture["name"].as_str().unwrap();
+            let w = Arc::new(Mutex::new(Window::new(1, kind, String::new(), if kind == "player" { 5 } else { 27 })));
+            let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
+            for initial in fixture["initial"].as_array().unwrap() {
+                let row = initial.as_array().unwrap();
+                let s = decode(&serde_json::Value::Array(row[1..].to_vec()));
+                w.lock().unwrap().set(&mut ui, row[0].as_u64().unwrap() as usize, s);
+            }
+            let mut screen = ContainerScreen::new(w.clone(), cat.clone());
+            for step in fixture["steps"].as_array().unwrap() {
+                let slot = step["slot"].as_u64().unwrap() as usize;
+                screen.click_slot(&mut ui, slot, step["button"].as_i64().unwrap() as i8, step["mode"].as_i64().unwrap() as i8);
+                let mut w = w.lock().unwrap();
+                let returned = w.clicks.last().unwrap().item;
+                assert_eq!(returned, decode(&step["returned"]), "{name} slot {slot}: return");
+                assert_eq!(w.cursor, decode(&step["cursor"]), "{name} slot {slot}: cursor");
+                for (i, expected) in step["slots"].as_array().unwrap().iter().enumerate() {
+                    assert_eq!(*w.get(&mut ui, i).unwrap(), decode(expected), "{name} slot {slot}: inventory {i}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn chest_clicks_predict_and_queue_packets() {
