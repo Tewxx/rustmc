@@ -18,6 +18,7 @@ pub struct SkyRenderer {
     bg: wgpu::BindGroup,
     vertices: wgpu::Buffer,
     fog: wgpu::Buffer,
+    scratch: Vec<Vertex>,
 }
 impl SkyRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, assets: &AssetSource) -> Self {
@@ -195,11 +196,12 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
             bg,
             vertices,
             fog,
+            scratch: Vec::new(),
         }
     }
     #[allow(clippy::too_many_arguments)]
     pub fn encode(
-        &self,
+        &mut self,
         queue: &wgpu::Queue,
         enc: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
@@ -210,12 +212,13 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         sky: &Sky,
     ) {
         let vp = cam.view_proj(aspect, distance);
-        let mut v = Vec::new();
+        let v = &mut self.scratch;
+        v.clear();
         let color = |rgb: [f32; 3], a: f32| [rgb[0], rgb[1], rgb[2], a];
         for x in (-384..=384).step_by(64) {
             for z in (-384..=384).step_by(64) {
                 push(
-                    &mut v,
+                    v,
                     vp,
                     [
                         [x as f32, 16., z as f32],
@@ -233,7 +236,7 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         let bottom = [sky.sky[0] * 0.2 + 0.04, sky.sky[1] * 0.2 + 0.04, sky.sky[2] * 0.6 + 0.1];
         let y = 63. - cam.pos.y;
         push(
-            &mut v,
+            v,
             vp,
             [[-384., y, -384.], [448., y, -384.], [448., y, 448.], [-384., y, 448.]],
             [[0.; 2]; 4],
@@ -272,7 +275,7 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         let flat_end = v.len() as u32;
         let celestial = vp * Mat4::from_rotation_y(-90f32.to_radians()) * Mat4::from_rotation_x(sky.angle * std::f32::consts::TAU);
         push(
-            &mut v,
+            v,
             celestial,
             [[-30., 100., -30.], [30., 100., -30.], [30., 100., 30.], [-30., 100., 30.]],
             [[0., 0.], [1., 0.], [1., 1.], [0., 1.]],
@@ -282,7 +285,7 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         );
         let (u, w) = ((sky.moon % 4) as f32 / 4., (sky.moon / 4 % 2) as f32 / 2.);
         push(
-            &mut v,
+            v,
             celestial,
             [[-20., -100., 20.], [20., -100., 20.], [20., -100., -20.], [-20., -100., -20.]],
             [[u + 0.25, w + 0.5], [u, w + 0.5], [u, w], [u + 0.25, w]],
@@ -292,14 +295,14 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         );
         if sky.stars > 0. {
             for &quad in star_quads() {
-                push(&mut v, celestial, quad, [[0.; 2]; 4], [sky.stars; 4], 0., None);
+                push(v, celestial, quad, [[0.; 2]; 4], [sky.stars; 4], 0., None);
             }
         }
         let celestial_end = v.len() as u32;
         if sky.clouds {
-            clouds(&mut v, vp, cam.pos, sky, distance);
+            clouds(v, vp, cam.pos, sky, distance);
         }
-        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&v));
+        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(v));
         queue.write_buffer(&self.fog, 0, bytemuck::cast_slice(&[sky.fog[0], sky.fog[1], sky.fog[2], 1.]));
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("sky and clouds"),
@@ -563,7 +566,7 @@ mod star_tests {
         let Some(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else { return };
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
         let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
-        let renderer = SkyRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets);
+        let mut renderer = SkyRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets);
         let texture = |format, usage| device.create_texture(&wgpu::TextureDescriptor {
             label: None, size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
             mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
@@ -577,6 +580,12 @@ mod star_tests {
         renderer.encode(&queue, &mut encoder, &color.create_view(&Default::default()), &depth.create_view(&Default::default()), &camera, 1., 128., &sky);
         queue.submit(Some(encoder.finish()));
         device.poll(wgpu::Maintain::Wait);
+        let capacity = renderer.scratch.capacity();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        renderer.encode(&queue, &mut encoder, &color.create_view(&Default::default()), &depth.create_view(&Default::default()), &camera, 1., 128., &sky);
+        queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
+        assert_eq!(renderer.scratch.capacity(), capacity);
     }
 
     #[test]
