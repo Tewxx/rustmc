@@ -4,6 +4,8 @@ Goal: every Forge 1.8.9 mod works — plain `@Mod`s, GUI/HUD mods, Mixin mods, A
 itself stays Rust and stays fast. We never fall back to "run real Minecraft". Inputs: `docs/FORGE_COMPAT.md`
 (what real mods touch), `docs/forge-spec/` (the Forge contract), `tests/forge/` (differential tests).
 
+> **Design hypothesis, not an implemented compatibility guarantee.** The spike and differential tests must validate method dispatch, state coherence, transformer ordering, and rendering. Static analysis cannot enumerate every reflective, generated, or dynamically loaded field access. Java `SecurityManager` is not a reliable isolation boundary for arbitrary native code or untrusted mods; no sandbox guarantee is established. Resolve these limitations before claiming full compatibility or security.
+
 ## The core problem
 
 Mixins and coremods patch *bytecode of specific vanilla methods*, often at specific instructions
@@ -49,12 +51,10 @@ the expensive part stays Rust. Everything else stays Rust.
 Mods read and write real fields (`thePlayer.posX`, `gameSettings.keyBindAttack`), often by reflection, so
 fields need real JVM storage.
 
-- **Static field-access analysis** of every loaded mod (+ the hooked methods' bodies) lists exactly which
-  fields can be touched (`tools/modscan` already extracts this). Only those fields are mirrored.
+- **Static field-access analysis** of every loaded mod (+ the hooked methods' bodies) identifies statically visible
+  fields that can be touched (`tools/modscan` already extracts this). Only those fields are mirrored.
 - **Sync points:** Rust → Java copy of mirrored fields before any Java dispatch in a phase (once per tick /
-  frame, batched, only dirty objects); Java → Rust diff after. Reflective access to unlisted fields is
-  covered by mirroring the full field set of the classes mods reflect on (`setAccessible` targets are
-  statically visible too); a generous default set (player, world, settings, current screen) is always mirrored.
+  frame, batched, only dirty objects); Java → Rust diff after. Reflective and dynamically generated access may not be discoverable ahead of time, so this requires a conservative fallback and runtime validation; a generous default set (player, world, settings, current screen) is always mirrored.
 - Object identity: one Java object per Rust entity/chunk/screen, created lazily, kept in a slab keyed by Rust
   id, released on removal — so `==` and maps keyed by entities behave.
 
