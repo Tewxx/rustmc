@@ -107,6 +107,7 @@ pub struct ContainerScreen {
     is_player: bool,
     last_click: Option<(usize, bool, std::time::Instant)>,
     dragging: Option<(bool, Vec<usize>)>,
+    pub(crate) creative: bool,
 }
 
 struct Layout {
@@ -123,7 +124,7 @@ struct Layout {
 
 impl ContainerScreen {
     pub fn new(window: Arc<Mutex<Window>>, catalogue: Arc<Catalogue>) -> Self {
-        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None, dragging: None }
+        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None, dragging: None, creative: false }
     }
 
     fn layout(w: &Window) -> Layout {
@@ -421,6 +422,10 @@ impl ContainerScreen {
                 }
                 None
             }
+            3 if self.creative && w.cursor.is_none() => {
+                if let Some(s) = item { w.cursor = Some(ItemStack { count: self.max(s), obj: ItemStack::fresh_obj(), ..s }); }
+                None
+            }
             4 if w.cursor.is_none() => {
                 if let Some(stack) = item {
                     let count = if button == 0 { 1 } else { stack.count };
@@ -606,11 +611,21 @@ impl Screen for ContainerScreen {
     fn right_click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         self.mouse(ui, mx, my, true)
     }
+    fn pick_item(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        let layout = Self::layout(&self.window.lock().unwrap());
+        if let Some(i) = self.at(&layout, mx, my) { self.click_slot(ui, i, 2, 3); }
+        Action::None
+    }
+
     fn key(&mut self, ui: &mut Ui, key: Key) -> Action {
         match key {
             Key::Escape | Key::Inventory => {
                 self.window.lock().unwrap().closed = true;
                 Action::Close
+            }
+            Key::PickItem => {
+                if let Some(i) = self.hover { self.click_slot(ui, i, 2, 3); }
+                Action::None
             }
             Key::Drop => {
                 if self.window.lock().unwrap().cursor.is_none() {
@@ -668,6 +683,7 @@ mod tests {
                 w.lock().unwrap().set(&mut ui, row[0].as_u64().unwrap() as usize, s);
             }
             let mut screen = ContainerScreen::new(w.clone(), cat.clone());
+            screen.creative = fixture["creative"].as_bool().unwrap_or(false);
             for step in fixture["steps"].as_array().unwrap() {
                 let slot = step["slot"].as_i64().unwrap() as i16;
                 let button = step["button"].as_i64().unwrap() as i8;

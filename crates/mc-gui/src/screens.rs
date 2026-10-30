@@ -167,6 +167,7 @@ impl Screen for ResourcePackPrompt {
 pub enum Key {
     Inventory,
     Drop,
+    PickItem,
     Number(usize),
     Escape,
     Enter,
@@ -193,6 +194,7 @@ pub trait Screen {
     /// Returns the clicked button's id, if any (`actionPerformed`).
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action;
     fn right_click(&mut self, _ui:&mut Ui, _mx:i32, _my:i32)->Action {Action::None}
+    fn pick_item(&mut self, _ui: &mut Ui, _mx: i32, _my: i32) -> Action { Action::None }
     fn release(&mut self, _ui: &mut Ui) {}
     fn mouse_move(&mut self, _ui: &mut Ui, _mx: i32, _my: i32) {}
     fn release_at(&mut self, ui: &mut Ui, _mx: i32, _my: i32, _right: bool) { self.release(ui); }

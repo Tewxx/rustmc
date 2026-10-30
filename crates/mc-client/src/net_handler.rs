@@ -143,7 +143,9 @@ impl App {
                     self.open_window = Some(w.clone());
                     self.parents.clear();
                     self.screen = None;
-                    self.open(Box::new(container::ContainerScreen::new(w, self.catalogue.clone())), false);
+                    let mut screen = container::ContainerScreen::new(w, self.catalogue.clone());
+                    screen.creative = self.entity.creative;
+                    self.open(Box::new(screen), false);
                 }
                 C::CloseWindowS(_) => {
                     // handleCloseWindow: closeScreenAndDropStack without a packet.

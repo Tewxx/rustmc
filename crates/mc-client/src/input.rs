@@ -21,6 +21,9 @@ pub(crate) fn map_key(code: KeyCode, settings: &mc_gui::settings::Settings, ctrl
     if lw != 0 && lw == settings.key("key.inventory") {
         return Key::Inventory;
     }
+    if lw != 0 && lw == settings.key("key.pickItem") {
+        return Key::PickItem;
+    }
     if lw != 0 && lw == settings.key("key.drop") {
         return Key::Drop;
     }
@@ -129,6 +132,7 @@ impl ApplicationHandler for App {
                             let a = match button {
                                 MouseButton::Left => s.click(&mut self.ui, mx, my),
                                 MouseButton::Right => s.right_click(&mut self.ui, mx, my),
+                                MouseButton::Middle if self.ui.settings.key("key.pickItem") == -98 => s.pick_item(&mut self.ui, mx, my),
                                 _ => Action::None,
                             };
                             self.handle(a, el);
