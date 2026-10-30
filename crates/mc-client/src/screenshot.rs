@@ -5,7 +5,7 @@ use crate::*;
 impl App {
     /// `--screenshot`: set up the requested screen, render once off-screen, exit.
     pub(crate) fn take_screenshot(&mut self, path: &Path, which: &str) {
-        let in_game = which != "title" && which != "title-options";
+        let in_game = !matches!(which, "title" | "title-options") && !which.starts_with("multiplayer") && !which.starts_with("mp-");
         self.in_game = in_game;
         self.ui.in_world = in_game;
         if self.net.is_some() {
@@ -118,7 +118,17 @@ impl App {
                 self.sync_view();
             }
             "creative" => self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false),
-            "multiplayer" => self.open(Box::new(screens::MultiplayerScreen::new()), false),
+            "multiplayer" | "multiplayer-tip" => {
+                self.open(Box::new(screens::MultiplayerScreen::new()), false);
+                // Pings start on the first draw; let them land before the captured frame.
+                self.build_gui();
+                std::thread::sleep(Duration::from_millis(1500));
+            }
+            "mp-add" | "mp-direct" | "mp-delete" => {
+                if let Some(s) = mc_gui::multiplayer::preview_screen(which, &self.ui.lang) {
+                    self.open(s, false);
+                }
+            }
             "night" | "sunset" | "rain" | "cmds" => {
                 match which {
                     "night" => self.send_chat("/time set 18000"),
@@ -258,6 +268,10 @@ impl App {
             (sr.width / 2) as f64 * sr.factor as f64,
             (sr.height / 4 + 48 + 5) as f64 * sr.factor as f64,
         );
+        if which == "multiplayer-tip" {
+            // The first server's ping bars (list x + 305 - 15, y + 32 + 4).
+            self.mouse_px = (((sr.width / 2 + 145) * sr.factor) as f64, (40 * sr.factor) as f64);
+        }
         if which == "net-inv-tip" || which == "armor-tip" {
             // Hover the first hotbar slot of GuiInventory.
             let (left, top) = (self.ui.effect_gui_left(sr.width, 176), (sr.height - 166) / 2);

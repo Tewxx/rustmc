@@ -2,8 +2,13 @@
 
 use crate::*;
 
+// Declared here so `main.rs` (owned elsewhere) needs no `mod` line.
+#[path = "server_list.rs"]
+pub(crate) mod server_list;
+
 impl App {
     pub(crate) fn open(&mut self, mut s: Box<dyn Screen>, keep_parent: bool) {
+        server_list::install();
         let sr = self.scaled();
         s.init(&self.ui, sr.width, sr.height);
         if let Some(old) = self.screen.take() {
@@ -102,7 +107,11 @@ impl App {
         match action {
             Action::None => {}
             Action::Close => self.close_screen(),
-            Action::Open(s) => self.open(s, true),
+            Action::Open(s) => {
+                // `servers.dat` picks up a pack choice the last joined client stored.
+                server_list::sync_from_store(&mc_gui::multiplayer::game_dir(&self.ui));
+                self.open(s, true)
+            }
             Action::StartGame => {
                 self.in_game = true;
                 self.ui.in_world = true;
@@ -122,8 +131,11 @@ impl App {
                 self.screen = None;
                 self.open(Box::new(screens::MainMenu::default()), false);
             }
-            Action::Connect { address, name, online } => {
-                eprintln!("[connect] address={address:?} name={name:?} online={online}");
+            Action::Connect { address, name, online, pack_mode } => {
+                // The vanilla screens have no account or name fields: join online when a
+                // Microsoft account is cached (`rustmc_account.json`), else offline as `name`.
+                let online = online || Path::new("rustmc_account.json").exists();
+                eprintln!("[connect] address={address:?} name={name:?} online={online} pack_mode={pack_mode:?}");
                 // A running App has no world-reset/connection-switch path yet, so hand the
                 // direct-connect request to a fresh client process and stop this one.
                 let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("rustmc.exe"));
@@ -131,6 +143,10 @@ impl App {
                 cmd.arg("--connect").arg(&address).arg("--name").arg(&name);
                 if online {
                     cmd.arg("--online");
+                }
+                if let Some(mode) = pack_mode {
+                    server_list::apply_connect_mode(&address, mode);
+                    cmd.arg("--pack-mode").arg(mode);
                 }
                 if !self.jar.as_os_str().is_empty() {
                     cmd.arg("--jar").arg(&self.jar);
