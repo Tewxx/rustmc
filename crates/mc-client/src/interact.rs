@@ -612,28 +612,25 @@ impl App {
 
     /// `EntityRenderer.getMouseOver`
     pub(crate) fn update_target(&mut self, pt: f32) {
-        let eye = self.eye(pt);
-        let yaw = self.entity.prev_yaw + (self.entity.yaw - self.entity.prev_yaw) * pt;
-        let pitch = self.entity.prev_pitch + (self.entity.pitch - self.entity.prev_pitch) * pt;
-        let dir = Camera { pos: eye, yaw, pitch, fov_deg: 70., bob: glam::Mat4::IDENTITY }.look_dir();
-        self.target = player::target(
-            &self.world,
-            &mut self.geometry,
-            mc_core::Vec3::new(eye.x as f64, eye.y as f64, eye.z as f64),
-            dir,
-            if self.entity.creative { 5. } else { 4.5 },
-        );
-        // getMouseOver: entities within 3 blocks (6 in creative) closer than the block hit.
+        // Entity.getPositionEyes and getVectorForRotation retain double position precision
+        // and use Minecraft's sine table rather than renderer trigonometry.
+        let (prev, pos) = (self.entity.last_tick_pos, self.entity.pos);
+        let e = mc_core::Vec3::new(prev.x + (pos.x - prev.x) * pt as f64, prev.y + (pos.y - prev.y) * pt as f64 + self.entity.eye_height() as f64, prev.z + (pos.z - prev.z) * pt as f64);
+        let yaw = if pt == 1.0 { self.entity.yaw } else { self.entity.prev_yaw + (self.entity.yaw - self.entity.prev_yaw) * pt };
+        let pitch = if pt == 1.0 { self.entity.pitch } else { self.entity.prev_pitch + (self.entity.pitch - self.entity.prev_pitch) * pt };
+        let (f, f1) = (mc_core::math::cos(-yaw * 0.017453292 - std::f32::consts::PI), mc_core::math::sin(-yaw * 0.017453292 - std::f32::consts::PI));
+        let (f2, f3) = (-mc_core::math::cos(-pitch * 0.017453292), mc_core::math::sin(-pitch * 0.017453292));
+        let dir = glam::Vec3::new(f1 * f2, f3, f * f2);
+        self.target = player::target(&self.world, &mut self.geometry, e, dir, if self.entity.creative { 5. } else { 4.5 });
         self.pointed_entity = None;
         if self.net.is_some() {
-            let e = mc_core::Vec3::new(eye.x as f64, eye.y as f64, eye.z as f64);
-            let reach = if self.entity.creative { 6.0 } else { 3.0 };
+            let reach = if self.entity.creative { 6.0 } else { 4.5 };
             let block_d = self.target.map_or(reach, |t| ((t.hit.x - e.x).powi(2) + (t.hit.y - e.y).powi(2) + (t.hit.z - e.z).powi(2)).sqrt());
             let look = mc_core::Vec3::new(dir.x as f64, dir.y as f64, dir.z as f64);
-            if let Some((id, d)) = self.remote.ray(e, look, reach) {
-                if d < block_d || self.target.is_none() {
+            if let Some((id, d, hit)) = self.remote.ray(e, look, reach) {
+                if d <= if self.entity.creative { 6.0 } else { 3.0 } && (d < block_d || self.target.is_none()) {
                     self.pointed_entity = Some(id);
-                    self.pointed_hit = mc_core::Vec3::new(e.x + look.x * d, e.y + look.y * d, e.z + look.z * d);
+                    self.pointed_hit = hit;
                     self.target = None;
                 }
             }

@@ -171,6 +171,10 @@ impl App {
             let rel = self.remote.map.get(&id).map(|r| r.pos).map(|p| ((self.pointed_hit.x - p.x) as f32, (self.pointed_hit.y - p.y) as f32, (self.pointed_hit.z - p.z) as f32));
             use mc_protocol::packets::{PlayServerbound as S, UseEntity, UseEntityAction};
             self.send(S::UseEntity(UseEntity { entity_id: id, action: UseEntityAction::InteractAt, hit: rel }));
+            // EntityArmorStand.interactAt returns true on the client, consuming the click.
+            if self.entity.game_type != level::GameType::Spectator && self.remote.map.get(&id).is_some_and(|e| matches!(e.kind, crate::entities::Kind::Object(78))) {
+                return;
+            }
             if let Some(n) = &mut self.net {
                 n.sync_current_item(sel);
             }

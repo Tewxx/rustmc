@@ -617,6 +617,7 @@ mod tests {
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for name in [
+            "attack_entities",
             "mine_to_completion",
             "mine_cancel_and_retarget",
             "mine_instant_stone_creative",
@@ -654,6 +655,16 @@ mod tests {
                 }
             }
             let mut app = App::new(assets, models, world, (0, 0), Settings::default());
+            for entity in sc["entities"].as_array().unwrap() {
+                let kind = match entity[0].as_str().unwrap() {
+                    "armor_stand" => crate::entities::Kind::Object(78),
+                    "zombie" => crate::entities::Kind::Mob(54),
+                    other => panic!("unknown entity {other}"),
+                };
+                let coord = |v: &serde_json::Value| (f64::from_bits(num(v) as u64) * 32.0) as i32;
+                let id = num(&entity[1]) as i32;
+                app.remote.map.insert(id, crate::entities::Remote::new(id, kind, coord(&entity[2]), coord(&entity[3]), coord(&entity[4]), 0, 0));
+            }
             app.entity.set_game_type(if sc["mode"] == "creative" {
                 crate::level::GameType::Creative
             } else {
@@ -725,7 +736,6 @@ mod tests {
             }
             app.net.as_mut().unwrap().disconnect();
             let packets = srv.join().unwrap();
-            assert_eq!(packets.len(), count, "{name}: packet count");
             let mut index = 0;
             for (tick, row) in rows.iter().enumerate() {
                 for want in row.as_array().unwrap() {
@@ -749,6 +759,7 @@ mod tests {
                     index += 1;
                 }
             }
+            assert_eq!(packets.len(), count, "{name}: packet count");
         }
     }
 

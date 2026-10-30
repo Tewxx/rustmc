@@ -624,23 +624,27 @@ impl Entities {
 
     /// `EntityRenderer.getMouseOver`'s entity pass: the closest entity whose box (grown by
     /// `getCollisionBorderSize` 0.1) the look ray hits within `reach`.
-    pub fn ray(&self, eye: Vec3, look: Vec3, reach: f64) -> Option<(i32, f64)> {
+    pub fn ray(&self, eye: Vec3, look: Vec3, reach: f64) -> Option<(i32, f64, Vec3)> {
         let end = Vec3::new(eye.x + look.x * reach, eye.y + look.y * reach, eye.z + look.z * reach);
-        let mut best: Option<(i32, f64)> = None;
+        let mut best: Option<(i32, f64, Vec3)> = None;
         for e in self.map.values() {
-            if matches!(e.kind, Kind::Object(_)) {
+            if matches!(e.kind, Kind::Object(k) if k != 78) {
                 continue;
             }
-            let bb = e.bb().expand(0.1, 0.1, 0.1);
-            let d = if bb.is_vec_inside(eye) {
-                0.0
+            if matches!(e.kind, Kind::Object(78)) && matches!(e.meta.get(&10), Some(mc_protocol::MetaValue::Byte(v)) if v & 16 != 0) {
+                continue;
+            }
+            let border = 0.1_f32 as f64;
+            let bb = e.bb().expand(border, border, border);
+            let (d, hit) = if bb.is_vec_inside(eye) {
+                (0.0, bb.calculate_intercept(eye, end).map_or(eye, |(hit, _)| hit))
             } else if let Some((hit, _)) = bb.calculate_intercept(eye, end) {
-                ((hit.x - eye.x).powi(2) + (hit.y - eye.y).powi(2) + (hit.z - eye.z).powi(2)).sqrt()
+                (((hit.x - eye.x).powi(2) + (hit.y - eye.y).powi(2) + (hit.z - eye.z).powi(2)).sqrt(), hit)
             } else {
                 continue;
             };
-            if d <= reach && best.is_none_or(|(_, b)| d < b) {
-                best = Some((e.id, d));
+            if d <= reach && best.is_none_or(|(_, b, _)| d < b) {
+                best = Some((e.id, d, hit));
             }
         }
         best
