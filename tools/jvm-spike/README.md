@@ -38,9 +38,13 @@ probe directory and must not be redistributed.
 FML's remapper expects the original obfuscated jar to resolve patch inputs. Shadow
 alone fails; placing shadow ahead of the original jar causes a double-patch checksum
 failure. This experiment puts the original first and substitutes **only the test
-class** from shadow. The selector modifies LaunchClassLoader's private transformer
-list reflectively; it is an experiment, not a production loader or whole-graph
-solution. Forge reports a signature warning in this environment, and Mixin reports
+class** from shadow. The test coremod registers the selector before Mixin
+bootstrap; the probe verifies the public transformer list places it after Forge’s
+patcher and before Mixin. This
+is an experiment, not a production loader or whole-graph solution. Substituting
+all shadow classes at this position would discard any earlier transformations,
+and classes loaded before the selector is registered would bypass it. Forge reports
+a signature warning in this environment, and Mixin reports
 initialization during a tweak constructor; both remain to be resolved. The probe
 does not start full FML mod lifecycle, instantiate the Minecraft client, nativise
 world subsystems, synchronize game fields, or demonstrate arbitrary-mod behavior.

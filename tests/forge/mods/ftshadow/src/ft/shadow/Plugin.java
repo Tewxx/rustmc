@@ -7,6 +7,8 @@ import org.spongepowered.asm.mixin.Mixins;
 @IFMLLoadingPlugin.MCVersion("1.8.9")
 public class Plugin implements IFMLLoadingPlugin {
     public Plugin() {
+        if (System.getenv("RUSTMC_SHADOW_JAR") != null)
+            net.minecraft.launchwrapper.Launch.classLoader.registerTransformer("spikecapture.ShadowSelectTransformer");
         MixinBootstrap.init();
         if (!"0".equals(System.getenv("RUSTMC_SHADOW_MIXIN"))) Mixins.addConfiguration("mixins.ftshadow.json");
     }

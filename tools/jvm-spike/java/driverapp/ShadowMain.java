@@ -1,25 +1,20 @@
 package driverapp;
-import java.lang.reflect.Field;
 import java.util.List;
 import net.minecraft.launchwrapper.IClassTransformer;
 import net.minecraft.launchwrapper.Launch;
 import bridgeprobe.ShadowRun;
-/** Installs a one-class shadow selector and a final-byte capture; no game entrypoint is called. */
+/** Verifies transformer order and captures final bytes; no game entrypoint is called. */
 public final class ShadowMain {
-    @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
-        // In this probe only, inject the selector after Forge's patcher but before Mixin.
-        // Production needs a supported, general loader integration rather than reflective surgery.
-        Launch.classLoader.registerTransformer("spikecapture.ShadowSelectTransformer");
-        Field f = Launch.classLoader.getClass().getDeclaredField("transformers");
-        f.setAccessible(true);
-        List<IClassTransformer> transformers = (List<IClassTransformer>) f.get(Launch.classLoader);
-        IClassTransformer selector = transformers.remove(transformers.size() - 1);
-        int index = 0;
-        while (index < transformers.size() && !transformers.get(index).getClass().getName().equals("org.spongepowered.asm.mixin.transformer.Proxy")) index++;
-        if (index == 0 || index == transformers.size() || !transformers.get(0).getClass().getName().endsWith("PatchingTransformer"))
-            throw new IllegalStateException("unexpected Forge/Mixin transformer order");
-        transformers.add(index, selector);
+        List<IClassTransformer> transformers = Launch.classLoader.getTransformers();
+        int patch = -1, selector = -1, mixin = -1;
+        for (int i = 0; i < transformers.size(); i++) {
+            String name = transformers.get(i).getClass().getName();
+            if (name.endsWith("PatchingTransformer")) patch = i;
+            if (name.equals("spikecapture.ShadowSelectTransformer")) selector = i;
+            if (name.equals("org.spongepowered.asm.mixin.transformer.Proxy") && mixin == -1) mixin = i;
+        }
+        if (!(patch >= 0 && patch < selector && selector < mixin)) throw new IllegalStateException("unexpected transformer order: " + transformers);
         Launch.classLoader.registerTransformer("spikecapture.CaptureTransformer");
         ShadowRun.target = Class.forName("net.minecraft.util.MathHelper", true, Launch.classLoader);
         ShadowRun.bridge = Class.forName("ft.shadow.NativeBridge", true, Launch.classLoader);
