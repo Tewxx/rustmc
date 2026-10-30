@@ -62,7 +62,6 @@ pub struct PlayerEntity {
     pub move_strafe_e: f32,
     pub is_jumping: bool,
     jump_ticks: i32,
-    ai_move_speed: f32,
     jump_movement_factor: f32,
     pub sprinting: bool,
     sprint_toggle_timer: i32,
@@ -153,7 +152,6 @@ impl PlayerEntity {
             move_strafe_e: 0.,
             is_jumping: false,
             jump_ticks: 0,
-            ai_move_speed: 0.1,
             jump_movement_factor: 0.02,
             sprinting: false,
             sprint_toggle_timer: 0,
@@ -284,6 +282,9 @@ impl PlayerEntity {
         self.prev_pitch = self.pitch;
         self.prev_yaw = self.yaw;
         self.handle_water_movement(w);
+        if self.is_in_lava(w) {
+            self.fall_distance *= 0.5;
+        }
         // EntityLivingBase.onEntityUpdate
         self.prev_swing_progress = self.swing_progress;
         self.prev_render_yaw_offset = self.render_yaw_offset;
@@ -430,7 +431,6 @@ impl PlayerEntity {
         if self.sprinting {
             self.jump_movement_factor = (self.jump_movement_factor as f64 + 0.02 * 0.3) as f32;
         }
-        self.ai_move_speed = self.movement_speed_attr() as f32;
         let mut f = math::sqrt_double(self.motion.x * self.motion.x + self.motion.z * self.motion.z);
         let mut f1 = ((-self.motion.y * 0.20000000298023224).atan() * 15.0) as f32;
         if f > 0.1 {
@@ -583,7 +583,8 @@ impl PlayerEntity {
         } else {
             let f4 = self.ground_slipperiness(w);
             let f = 0.16277136 / (f4 * f4 * f4);
-            let f5 = if self.on_ground { self.ai_move_speed * f } else { self.jump_movement_factor };
+            // EntityPlayer.getAIMoveSpeed reads the live attribute, not landMovementFactor.
+            let f5 = if self.on_ground { self.movement_speed_attr() as f32 * f } else { self.jump_movement_factor };
             self.move_flying(strafe, forward, f5);
             let f4 = self.ground_slipperiness(w);
             if self.is_on_ladder(w) {
@@ -757,7 +758,10 @@ impl PlayerEntity {
                 pos = pos.down();
             }
         }
-        // updateFallState (damage is the server's)
+        // EntityLivingBase.updateFallState (damage is the server's)
+        if !self.in_water {
+            self.handle_water_movement(w);
+        }
         if self.on_ground {
             self.fall_distance = 0.0;
         } else if y < 0.0 {

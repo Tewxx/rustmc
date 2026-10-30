@@ -15,10 +15,8 @@ pub(crate) fn read_spawn(world: &Path) -> Option<(i32, i32)> {
 
 pub(crate) fn load_world(args: &Args) -> (World, (i32, i32), i64) {
     let mut world = World::default();
-    let seed = args.seed.unwrap_or_else(|| {
-        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-        t.as_nanos() as i64
-    });
+    // A fixed default: the demo world (and so its quad count / benchmarks) must not change per run.
+    let seed = args.seed.unwrap_or(0x5eed);
     let mut generator = mc_gen::Generator::new(seed);
     if args.world.is_none() {
         println!("seed {seed}");

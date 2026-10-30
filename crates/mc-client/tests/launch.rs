@@ -62,3 +62,17 @@ fn errors_and_env_fallback() {
     let env = |k: &str| (k == "INST_MC_DIR").then(|| "/env/mc".to_string());
     assert_eq!(parse(&[], Some(&no_gd), &env).unwrap().game_dir, "/env/mc");
 }
+
+// Captured from a real Prism 11.1.0 launch (macOS, quick-join); token, name and uuid replaced.
+// Differences from the reconstruction: serverAddress/serverPort come before the params, plus
+// launcherVersion/instanceName/instanceIcon* lines, windowParams 854x480.
+#[test]
+fn real_prism_script() {
+    let script = "mainClass net.minecraft.client.main.Main\nserverAddress 127.0.0.1\nserverPort 25599\nparam --username\nparam Steve\nparam --version\nparam 1.8.9\nparam --gameDir\nparam /i/rustmc-dev/minecraft\nparam --assetsDir\nparam /p/assets\nparam --assetIndex\nparam 1.8\nparam --uuid\nparam 00000000000040008000000000000000\nparam --accessToken\nparam REDACTED\nparam --userProperties\nparam {}\nparam --userType\nparam msa\nwindowTitle Prism Launcher: rustmc-dev\nwindowParams 854x480\nlauncherBrand PrismLauncher\nlauncherVersion 11.1.0\ninstanceName rustmc-dev\ninstanceIconKey rustmc-dev\ninstanceIconPath icon.png\nuserName Steve\nsessionId token:REDACTED:00000000000040008000000000000000\nlauncher standard\nlaunch\n";
+    let argv = s(&["/j/java", "-cp", "/Applications/Prism Launcher.app/Contents/MacOS/jars/NewLaunch.jar:/p/libraries/com/mojang/minecraft/1.8.9/minecraft-1.8.9-client.jar", "org.prismlauncher.EntryPoint"]);
+    let li = parse(&argv, Some(script), &noenv).unwrap();
+    assert_eq!((li.width, li.height), (Some(854), Some(480)));
+    assert_eq!((li.server.as_deref(), li.port), (Some("127.0.0.1"), Some(25599)));
+    assert_eq!(li.access_token, "REDACTED");
+    assert!(li.client_jar.unwrap().ends_with("minecraft-1.8.9-client.jar"));
+}
