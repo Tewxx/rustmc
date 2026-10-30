@@ -106,6 +106,10 @@ impl App {
     pub(crate) fn handle(&mut self, action: Action, el: &ActiveEventLoop) {
         match action {
             Action::None => {}
+            Action::Enchant { window_id, choice } => {
+                self.flush_window();
+                self.send(mc_protocol::packets::PlayServerbound::EnchantItem(mc_protocol::packets::EnchantItem { window_id, enchantment: choice }));
+            }
             Action::Close => self.close_screen(),
             Action::Open(s) => {
                 // `servers.dat` picks up a pack choice the last joined client stored.

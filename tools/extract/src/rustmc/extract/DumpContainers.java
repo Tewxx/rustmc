@@ -80,6 +80,20 @@ final class DumpContainers {
         a.add(run("furnace fuel validation", "minecraft:furnace", new int[][] {{30,1,8,0},{31,325,1,0},{32,263,4,0}}, new int[][] {{30,0,0},{1,0,0},{30,0,0},{31,0,0},{1,0,0},{1,0,0},{31,0,0},{32,0,0},{1,0,0}}));
         return a;
     }
+    static JsonArray enchantChoices() {
+        JsonArray out = new JsonArray();
+        int[][] cases = {{0, 0, 0, 0}, {1, 0, 1, 0}, {5, 1, 1, 0}, {5, 1, 6, 0}, {9, 3, 8, 0}, {0, 0, 9, 1}};
+        for (int[] a : cases) {
+            Player p = new Player(); p.experienceLevel = a[0]; p.capabilities.isCreativeMode = a[3] != 0;
+            ContainerEnchantment c = new ContainerEnchantment(p.inventory, p.worldObj);
+            c.getSlot(0).putStack(new ItemStack(Items.iron_sword));
+            if (a[1] > 0) c.getSlot(1).putStack(new ItemStack(Items.dye, a[1], 4));
+            c.updateProgressBar(0, a[2]);
+            JsonObject row = new JsonObject(); row.addProperty("level", a[0]); row.addProperty("lapis", a[1]);
+            row.addProperty("cost", a[2]); row.addProperty("creative", a[3] != 0); row.addProperty("allowed", c.enchantItem(p, 0)); out.add(row);
+        }
+        return out;
+    }
     static JsonObject furnaceRules() {
         JsonObject root = new JsonObject(); JsonArray fuels = new JsonArray(), smelting = new JsonArray(), brewing = new JsonArray();
         for (int id = 0; id < 4096; id++) {

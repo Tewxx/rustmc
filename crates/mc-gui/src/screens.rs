@@ -30,6 +30,7 @@ pub enum Action {
     /// A line for the chat log (several completion matches).
     PrintChat(String),
     Respawn,
+    Enchant { window_id: u8, choice: u8 },
     /// `GuiYesNo` answer for the pending `S48PacketResourcePackSend`.
     ResourcePackDecision(bool),
     /// Join a server from the multiplayer screens (`GuiConnecting`).

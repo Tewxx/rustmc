@@ -160,7 +160,7 @@ impl App {
                 C::WindowProperty(p) => {
                     if let Some(w) = &self.open_window {
                         let mut w = w.lock().unwrap();
-                        if w.id == p.window_id && (0..4).contains(&p.property) {
+                        if w.id == p.window_id && (0..7).contains(&p.property) {
                             w.props[p.property as usize] = p.value;
                         }
                     }

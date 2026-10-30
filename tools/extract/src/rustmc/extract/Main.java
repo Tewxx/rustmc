@@ -58,6 +58,9 @@ public final class Main {
         if (all || contains(args, "colors")) {
             write(new File(outDir, "colors.json"), DumpColors.dump(), false);
         }
+        if (all || contains(args, "enchant_choices")) {
+            write(new File(outDir, "enchant_choices.json"), DumpContainers.enchantChoices(), false);
+        }
         if (all || contains(args, "furnace_rules")) {
             write(new File(outDir, "furnace_rules.json"), DumpContainers.furnaceRules(), false);
         }

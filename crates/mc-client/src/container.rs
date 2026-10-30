@@ -27,7 +27,7 @@ pub struct Window {
     pub slots: Vec<Option<ItemStack>>,
     pub cursor: Option<ItemStack>,
     /// `WindowProperty` values (furnace progress etc.).
-    pub props: [i16; 4],
+    pub props: [i16; 7],
     pub clicks: Vec<Click>,
     pub closed: bool,
     /// `Container.transactionID`
@@ -47,7 +47,7 @@ impl Window {
             "minecraft:brewing_stand" => 4,
             _ => slots as usize,
         };
-        Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0; 4], clicks: Vec::new(), closed: false, transaction: 0, level: 0, drag: None }
+        Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0, 0, 0, 0, -1, -1, -1], clicks: Vec::new(), closed: false, transaction: 0, level: 0, drag: None }
     }
 
     /// Window slot index → storage: container slots first, then main inventory, then hotbar.
@@ -271,6 +271,13 @@ impl ContainerScreen {
             return crate::item_use::armor_slot(self.catalogue.items[s.item].id) == Some(8 - i);
         }
         true
+    }
+
+    fn can_enchant(&self, w: &Window, choice: usize) -> bool {
+        let cost = w.props[choice] as i32;
+        let lapis = w.slots[1].map_or(0, |s| s.count as usize);
+        let needed = choice + 1;
+        cost > 0 && w.slots[0].is_some() && (self.creative || lapis >= needed && w.level >= needed as i32 && w.level >= cost)
     }
 
     fn can_take(&self, w: &Window, i: usize) -> bool {
@@ -563,6 +570,17 @@ impl ContainerScreen {
 
     fn mouse(&mut self, ui: &mut Ui, mx: i32, my: i32, right: bool) -> Action {
         let l = Self::layout(&self.window.lock().unwrap());
+        if !right {
+            let w = self.window.lock().unwrap();
+            if w.kind == "minecraft:enchanting_table" {
+                for choice in 0..3 {
+                    if (self.left + 60..self.left + 168).contains(&mx) && (self.top + 14 + 19 * choice..self.top + 33 + 19 * choice).contains(&my) {
+                        if self.can_enchant(&w, choice as usize) { return Action::Enchant { window_id: w.id, choice: choice as u8 }; }
+                        return Action::None;
+                    }
+                }
+            }
+        }
         let outside = mx < self.left || my < self.top || mx >= self.left + l.w || my >= self.top + l.h;
         let button = right as i8;
         match self.at(&l, mx, my) {
@@ -679,6 +697,21 @@ impl Screen for ContainerScreen {
                 b.textured_rect(l.texture, x, y + rows * 18 + 17, 0, 126, l.w, 96);
             }
             None => b.textured_rect(l.texture, x, y, 0, 0, l.w, l.h),
+        }
+        if win.kind == "minecraft:enchanting_table" {
+            for choice in 0..3 {
+                let cost = win.props[choice];
+                let hovered = (x + 60..x + 168).contains(&mx) && (y + 14 + 19 * choice as i32..y + 33 + 19 * choice as i32).contains(&my);
+                let enabled = self.can_enchant(&win, choice);
+                let v = if cost == 0 || !enabled { 185 } else if hovered { 204 } else { 166 };
+                b.textured_rect(l.texture, x + 60, y + 14 + 19 * choice as i32, 0, v, 108, 19);
+                if cost > 0 {
+                    let text = cost.to_string();
+                    let color = if enabled { 0xff80ff20 } else { 0xff404020 };
+                    let px = x + 154 - ui.font.width(&text);
+                    ui.font.draw(b, &text, px as f32, (y + 23 + 19 * choice as i32) as f32, color);
+                }
+            }
         }
         if win.kind == "minecraft:furnace" {
             // GuiFurnace: flame (burn time left) and arrow (cook progress).
@@ -826,6 +859,33 @@ mod tests {
                     assert_eq!(*w.get(&mut ui, i).unwrap(), decode(expected), "{name} slot {slot}: inventory {i}");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn java_enchant_choices_and_screen_action() {
+        let Some(jar) = crate::find_jar() else { return };
+        let mut assets = mc_assets::AssetSource::new(); assets.push(&jar).unwrap();
+        let models = mc_render::models::BlockModels::load(&assets);
+        let cat = Arc::new(Catalogue::load(&assets, &models));
+        let sword = cat.index_of(267, 0).unwrap();
+        let lapis = cat.index_of(351, 4).or_else(|| cat.index_of(351, 0)).unwrap();
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!("../tests/data/enchant_choices.json")).unwrap();
+        for row in fixtures.as_array().unwrap() {
+            let mut ui = Ui::new(&assets, mc_gui::settings::Settings::default());
+            let w = Arc::new(Mutex::new(Window::new(7, "minecraft:enchanting_table", String::new(), 0)));
+            {
+                let mut win = w.lock().unwrap();
+                win.level = row["level"].as_i64().unwrap() as i32;
+                win.props[0] = row["cost"].as_i64().unwrap() as i16;
+                win.slots[0] = Some(ItemStack::new(sword, 1, 0));
+                let n = row["lapis"].as_u64().unwrap() as u8;
+                if n > 0 { win.slots[1] = Some(ItemStack::new(lapis, n, 4)); }
+            }
+            let mut screen = ContainerScreen::new(w, cat.clone());
+            screen.creative = row["creative"].as_bool().unwrap();
+            let action = screen.mouse(&mut ui, 61, 15, false);
+            assert_eq!(matches!(action, Action::Enchant { window_id: 7, choice: 0 }), row["allowed"].as_bool().unwrap());
         }
     }
 
