@@ -36,6 +36,10 @@ impl Kind {
     }
 }
 
+fn is_rendered_tile(state: mc_data::StateId) -> bool {
+    Kind::of(state).is_some() || matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign")
+}
+
 /// `EnumFacing.getIndex()` for the chest's `facing` property (`BlockChest.getMetaFromState`).
 fn meta_of(state: mc_data::StateId) -> u8 {
     match state.value("facing") {
@@ -109,7 +113,7 @@ impl Tiles {
     pub fn seed_from_world(&mut self, world: &World) {
         for c in world.chunks.values() {
             for (pos, nbt) in &c.tile_entities {
-                if Kind::of(world.state_at(pos.x, pos.y, pos.z)).is_some() {
+                if is_rendered_tile(world.state_at(pos.x, pos.y, pos.z)) {
                     self.on_nbt(*pos, Some(nbt.clone()));
                 }
             }
@@ -118,7 +122,7 @@ impl Tiles {
 
     /// `World.setBlockState` + `BlockContainer`: a locally placed container block gets a tile.
     pub fn placed(&mut self, pos: BlockPos, state: mc_data::StateId) {
-        if Kind::of(state).is_some() {
+        if is_rendered_tile(state) {
             self.insert(pos);
         }
     }
@@ -237,6 +241,12 @@ impl Tiles {
                 continue;
             }
             let state = world.state_at(pos.x, pos.y, pos.z);
+            if matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign") {
+                let (sky, block) = world.light(pos.x, pos.y, pos.z);
+                out.push(TileFrame::Sign { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    standing: state.block().name == "minecraft:standing_sign", meta: state.meta(), light: color(sky, block) });
+                continue;
+            }
             let Some(kind) = Kind::of(state) else { continue };
             let Some(te) = self.map.get(&pos) else { continue };
             let x_neg = is_chest_at(world, pos.west(), kind);
@@ -403,8 +413,9 @@ mod tests {
         let frames = tiles.frames(&world, 0., [4.5, 64.5, 1.5], false, &|_, _| [1.; 3]);
         let got: Vec<(i32, bool, mc_render::tile::ChestSkin, u8)> = frames
             .iter()
-            .map(|f| match f {
-                mc_render::tile::TileFrame::Chest { pos, large, skin, meta, .. } => (pos.x as i32, *large, *skin, *meta),
+            .filter_map(|f| match f {
+                mc_render::tile::TileFrame::Chest { pos, large, skin, meta, .. } => Some((pos.x as i32, *large, *skin, *meta)),
+                _ => None,
             })
             .collect();
         use mc_render::tile::ChestSkin::*;
@@ -413,6 +424,19 @@ mod tests {
         assert_eq!(got, vec![(1, false, Normal, 3), (3, true, Normal, 2), (6, false, Trapped, 5), (8, false, Ender, 4)]);
         // `i == 2 && adjacentChestXPos != null` shifts the wide model by one block.
         assert!(frames.iter().any(|f| matches!(f, mc_render::tile::TileFrame::Chest { pos, x_shift: true, .. } if pos.x == 3.)));
+    }
+
+    #[test]
+    fn sign_frames_follow_block_state_and_tile_removal() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:standing_sign").unwrap().state_from_meta(7).unwrap();
+        world.set_block_state(p, state);
+        let mut tiles = Tiles::default(); tiles.placed(p, state);
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]);
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Sign { standing: true, meta: 7, .. }]));
+        tiles.remove(p);
+        assert!(tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]).is_empty());
     }
 
     /// `TileEntityRendererDispatcher`: `getDistanceSq(...) < getMaxRenderDistanceSquared()`,

@@ -1750,9 +1750,11 @@ mod particle_instance_tests {
         frame.objects.push(crate::objects::ObjectFrame::ArmorStand { pos: Vec3::new(0.3, -1., 3.), yaw: 30., head_yaw: 10., pitch: 5., flags: 0, light: [1.;3], body_rot: (5., 10., 15.) });
         frame.tiles.push(crate::tile::TileFrame::Chest { pos: Vec3::new(-0.5, -1., 3.), meta: 2, large: false,
             skin: crate::tile::ChestSkin::Normal, x_shift: false, z_shift: false, lid: 0.5, light: [1.;3] });
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(0.3, -1., 2.5), standing: true, meta: 3, light: [1.;3] });
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 3.), standing: false, meta: 2, light: [1.;3] });
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
-        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "objects and chest must be visible");
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "objects and tiles must be visible");
         assert_eq!(old, new);
         frame.objects.clear(); frame.tiles.clear();
         frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();

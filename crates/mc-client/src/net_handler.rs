@@ -108,6 +108,10 @@ impl App {
                 C::BlockChange(b) => {
                     // S23 carries `Block.BLOCK_STATE_IDS` (`id << 4 | meta`), not `getStateId`.
                     let st = u16::try_from(b.state).ok().and_then(mc_data::StateId::try_from_raw).unwrap_or(mc_data::StateId::AIR);
+                    if self.world.state_at(b.pos.x, b.pos.y, b.pos.z).block().id != st.block().id {
+                        self.tiles.remove(b.pos); self.signs.remove(&b.pos);
+                        self.tiles.placed(b.pos, st);
+                    }
                     self.world.set_block_state(b.pos, st);
                     edits.push(b.pos);
                 }
@@ -115,6 +119,10 @@ impl App {
                     for (p, state) in m.records {
                         let pos = BlockPos::new(m.chunk_x.wrapping_mul(16).wrapping_add((p >> 12) as i32), (p & 255) as i32, m.chunk_z.wrapping_mul(16).wrapping_add(((p >> 8) & 15) as i32));
                         let st = u16::try_from(state).ok().and_then(mc_data::StateId::try_from_raw).unwrap_or(mc_data::StateId::AIR);
+                        if self.world.state_at(pos.x, pos.y, pos.z).block().id != st.block().id {
+                            self.tiles.remove(pos); self.signs.remove(&pos);
+                            self.tiles.placed(pos, st);
+                        }
                         self.world.set_block_state(pos, st);
                         edits.push(pos);
                     }
@@ -665,6 +673,7 @@ impl App {
                     }
                 }
                 C::UpdateSignS(s) => {
+                    self.tiles.insert(s.pos);
                     self.signs.insert(s.pos, s.lines);
                 }
                 C::SignEditorOpen(_) => {
@@ -885,6 +894,7 @@ impl App {
     /// `WorldClient.doPreChunk(x, z, false)`
     pub(crate) fn unload_chunk(&mut self, x: i32, z: i32) {
         self.tiles.unload_chunk(x, z);
+        self.signs.retain(|pos, _| pos.x >> 4 != x || pos.z >> 4 != z);
         if self.world.remove(x, z).is_some() {
             if let Some(pool) = &mut self.mesh_workers { for sy in 0..16 { pool.invalidate((x, sy, z), false); } }
             if let Some(r) = &mut self.renderer {
