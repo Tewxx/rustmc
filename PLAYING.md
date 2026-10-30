@@ -1,7 +1,9 @@
 # Playing the current local build
 
-Double-click `Play-RustMC.cmd`, or run `cargo run --release --offline --bin rustmc -- --play`.
-Without `--play`, choose Singleplayer on the title screen.
+Double-click `Play-RustMC.cmd` (or run `play.sh`) to open the title screen, then use Multiplayer.
+Singleplayer is out of scope: the integrated server, worldgen and local commands are behind the off-by-default
+`singleplayer` cargo feature (`cargo build --release -p mc-client --features singleplayer`, then `--play` / `--world`).
+In the default build the title screen shows the Singleplayer button disabled.
 
 Multiplayer: `rustmc --connect <host>[:port] --name <name>` joins an offline-mode 1.8.9 server
 (protocol 47). Add `--online` to sign in with a Microsoft account for online-mode servers
@@ -73,7 +75,8 @@ player/item lighting are still missing. Water and lava now render through the fl
 overworld sky values have Java golden checks; rendered scenes have not passed a Java pixel
 comparison.
 
-Visual checks: `rustmc --radius 2 --screenshot shots/hand.png --screen hud`.
-Other screens: `body`, `body-back`, `creative`, `held`, `commands`.
+Visual checks: menu screens need no world (`rustmc --screenshot shots/title.png --screen title`); in-game screens
+(`hud`, `debug`, `chat`, `pause`, `body`, ...) need a server: start the mock server and add `--connect 127.0.0.1:25599`.
+Screens that run local commands (`death`, `breaking`, `drops`, `glass`) only work in a `--features singleplayer` build.
 Network checks: start the mock server (see `HANDOFF.md`), then
 `rustmc --connect 127.0.0.1:25599 --screenshot shots/net.png --screen net`.

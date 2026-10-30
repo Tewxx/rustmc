@@ -20,6 +20,7 @@ impl GameType {
             _ => GameType::Survival,
         }
     }
+    #[cfg(feature = "singleplayer")]
     pub fn name(self) -> &'static str {
         match self {
             GameType::Survival => "survival",
@@ -74,12 +75,15 @@ impl Default for GameRules {
 }
 
 impl GameRules {
+    #[cfg(feature = "singleplayer")]
     pub fn names(&self) -> Vec<&str> {
         self.rules.keys().map(String::as_str).collect()
     }
+    #[cfg(feature = "singleplayer")]
     pub fn has(&self, name: &str) -> bool {
         self.rules.contains_key(name)
     }
+    #[cfg(feature = "singleplayer")]
     pub fn get_string(&self, name: &str) -> String {
         self.rules.get(name).map_or(String::new(), |r| r.0.clone())
     }
@@ -92,6 +96,7 @@ impl GameRules {
     pub fn get_int(&self, name: &str) -> i32 {
         self.rules.get(name).and_then(|r| r.0.parse().ok()).unwrap_or(0)
     }
+    #[cfg(feature = "singleplayer")]
     pub fn is_boolean(&self, name: &str) -> bool {
         self.rules.get(name).is_some_and(|r| r.1 == ValueType::Boolean)
     }
@@ -107,6 +112,7 @@ impl GameRules {
 }
 
 /// `EnumDifficulty`
+#[cfg(feature = "singleplayer")]
 pub const DIFFICULTY_KEYS: [&str; 4] =
     ["options.difficulty.peaceful", "options.difficulty.easy", "options.difficulty.normal", "options.difficulty.hard"];
 
@@ -124,6 +130,7 @@ pub struct WorldInfo {
     pub thunder_time: i32,
     pub clean_weather_time: i32,
     pub difficulty: u8,
+    #[cfg(feature = "singleplayer")]
     pub game_type: GameType,
     pub spawn: BlockPos,
 }
@@ -141,6 +148,7 @@ impl WorldInfo {
             thunder_time: 0,
             clean_weather_time: 0,
             difficulty: 2,
+            #[cfg(feature = "singleplayer")]
             game_type: GameType::Creative,
             spawn,
         }

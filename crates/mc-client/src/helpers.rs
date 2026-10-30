@@ -27,6 +27,7 @@ pub(crate) fn lerp_angle(a: f32, b: f32, pt: f32) -> f32 {
     a + pt * f
 }
 
+#[cfg(feature = "singleplayer")]
 pub(crate) fn java_string_hash(s: &str) -> i32 {
     s.encode_utf16().fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(c as i32))
 }

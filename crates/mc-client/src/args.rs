@@ -3,15 +3,20 @@
 use crate::*;
 
 pub(crate) struct Args {
+    #[cfg(feature = "singleplayer")]
     pub(crate) play: bool,
     pub(crate) jar: Option<PathBuf>,
     pub(crate) packs: Vec<PathBuf>,
+    #[cfg(feature = "singleplayer")]
     pub(crate) world: Option<PathBuf>,
+    #[cfg(feature = "singleplayer")]
     pub(crate) radius: i32,
+    #[cfg(feature = "singleplayer")]
     pub(crate) pos: Option<(i32, i32)>,
     pub(crate) screenshot: Option<PathBuf>,
     pub(crate) screen: String,
     pub(crate) bench: Option<f64>,
+    #[cfg(feature = "singleplayer")]
     pub(crate) seed: Option<i64>,
     /// `host[:port]` of a server to join instead of a local world.
     pub(crate) connect: Option<String>,
@@ -44,11 +49,6 @@ Usage: rustmc [options]\n\n\
   --jar <1.8.9.jar>        client jar with the assets (auto-detected otherwise)\n\
   --pack <zip|dir>         extra resource pack (repeatable)\n\
   --pack-mode <mode>       prompt | enabled | disabled\n\
-  --world <dir>            load a saved world instead of the demo generator\n\
-  --seed <seed>            demo world seed\n\
-  --radius <n>             demo world radius in chunks\n\
-  --pos <x> <z>            demo world centre\n\
-  --play                   start the integrated singleplayer server\n\
   --screenshot <png>       save one frame and exit\n\
   --screen <name>          screenshot scene (hud, net, body, …)\n\
   --bench <seconds>        render benchmark\n\n\
@@ -66,15 +66,20 @@ pub(crate) fn parse_args() -> Args {
 
 fn parse_args_from(args: impl Iterator<Item = String>) -> Args {
     let mut a = Args {
+        #[cfg(feature = "singleplayer")]
         play: false,
         jar: None,
         packs: vec![],
+        #[cfg(feature = "singleplayer")]
         world: None,
+        #[cfg(feature = "singleplayer")]
         radius: 8,
+        #[cfg(feature = "singleplayer")]
         pos: None,
         screenshot: None,
         screen: "hud".into(),
         bench: None,
+        #[cfg(feature = "singleplayer")]
         seed: None,
         connect: None,
         name: "Player".into(),
@@ -91,25 +96,34 @@ fn parse_args_from(args: impl Iterator<Item = String>) -> Args {
                 print_usage();
                 std::process::exit(0);
             }
+            #[cfg(feature = "singleplayer")]
             "--play" => a.play = true,
             "--jar" => a.jar = it.next().map(PathBuf::from),
             "--pack" => a.packs.extend(it.next().map(PathBuf::from)),
+            #[cfg(feature = "singleplayer")]
             "--world" => a.world = it.next().map(PathBuf::from),
             "--screenshot" => a.screenshot = it.next().map(PathBuf::from),
             "--screen" => a.screen = it.next().unwrap_or_default(),
             "--bench" => a.bench = Some(it.next().and_then(|s| s.parse().ok()).unwrap_or(30.0)),
+            #[cfg(feature = "singleplayer")]
             "--seed" => a.seed = it.next().map(|s| s.parse().unwrap_or_else(|_| java_string_hash(&s) as i64)),
             "--online" => a.online = true,
             "--pack-mode" => a.pack_mode = it.next().map(|s| pack::Mode::parse(&s)),
             "--connect" => a.connect = it.next(),
             "--name" => a.name = it.next().unwrap_or_else(|| "Player".into()),
+            #[cfg(feature = "singleplayer")]
             "--radius" => a.radius = it.next().and_then(|s| s.parse().ok()).unwrap_or(4),
+            #[cfg(feature = "singleplayer")]
             "--pos" => {
                 let x = it.next().and_then(|s| s.parse().ok());
                 let z = it.next().and_then(|s| s.parse().ok());
                 if let (Some(x), Some(z)) = (x, z) {
                     a.pos = Some((x, z));
                 }
+            }
+            #[cfg(not(feature = "singleplayer"))]
+            "--play" | "--world" | "--seed" | "--radius" | "--pos" => {
+                eprintln!("{arg} needs a build with --features singleplayer (singleplayer is disabled)");
             }
             other => eprintln!("ignoring unknown argument {other}"),
         }

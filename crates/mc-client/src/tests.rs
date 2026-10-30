@@ -1,4 +1,6 @@
 use super::*;
+// Needs the integrated server (local commands, block logic): singleplayer feature only.
+#[cfg(feature = "singleplayer")]
 #[test]
 fn gameplay_break_place_pick_and_commands_share_the_world() {
     let Some(jar) = find_jar() else {
@@ -121,6 +123,7 @@ fn crit_emitter_bursts_once_and_expires_after_three_ticks() {
 
 /// Rendering must be a pure function of world + settings: same seed twice gives identical
 /// blocks, light and per-section mesh sizes, whatever the thread count.
+#[cfg(feature = "singleplayer")]
 #[test]
 fn seeded_demo_world_is_deterministic() {
     use std::hash::{Hash, Hasher};

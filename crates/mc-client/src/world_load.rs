@@ -3,6 +3,7 @@
 use crate::*;
 
 /// Spawn X/Z from `level.dat` (gzipped NBT).
+#[cfg(feature = "singleplayer")]
 pub(crate) fn read_spawn(world: &Path) -> Option<(i32, i32)> {
     let mut raw = Vec::new();
     flate2::read::GzDecoder::new(&std::fs::read(world.join("level.dat")).ok()?[..])
@@ -13,6 +14,7 @@ pub(crate) fn read_spawn(world: &Path) -> Option<(i32, i32)> {
     Some((data.get("SpawnX")?.as_i64()? as i32, data.get("SpawnZ")?.as_i64()? as i32))
 }
 
+#[cfg(feature = "singleplayer")]
 pub(crate) fn load_world(args: &Args) -> (World, (i32, i32), i64) {
     let mut world = World::default();
     // A fixed default: the demo world (and so its quad count / benchmarks) must not change per run.

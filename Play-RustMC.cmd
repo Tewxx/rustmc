@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 if exist "target\release\rustmc-updated.exe" (
-    "target\release\rustmc-updated.exe" --play %*
+    "target\release\rustmc-updated.exe" %*
     exit /b
 )
 if not exist "target\release\rustmc.exe" (
@@ -11,4 +11,4 @@ if not exist "target\release\rustmc.exe" (
         exit /b 1
     )
 )
-"target\release\rustmc.exe" --play %*
+"target\release\rustmc.exe" %*

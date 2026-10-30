@@ -1,8 +1,9 @@
 //! rustmc: a 1.8.9 client in Rust.
 //!
-//! Usage: rustmc [--jar <1.8.9.jar>] [--pack <zip|dir>]... [--world <save dir>] [--radius N] [--pos X Z]
+//! Usage: rustmc [--connect host[:port]] [--jar <1.8.9.jar>] [--pack <zip|dir>]...
 //!               [--screenshot <out.png> [--screen title|pause|options|video|controls|hud|debug|chat]]
-//!               [--bench <seconds>] [--play]
+//!               [--bench <seconds>]
+//! With `--features singleplayer` (off by default): [--play] [--world <save dir>] [--radius N] [--pos X Z] [--seed S].
 //! In game: WASD, Space jump, Shift sneak, Ctrl sprint; double-tap Space for creative flight.
 //! E inventory, F5 perspective, mouse break/place/pick, T chat, / commands, Esc pause.
 
@@ -14,6 +15,7 @@ mod music;
 mod net;
 mod pack;
 mod particles;
+#[cfg(feature = "singleplayer")]
 mod commands;
 mod container;
 mod icon;
@@ -21,6 +23,7 @@ mod launch;
 mod inventory;
 mod keymap;
 mod player;
+#[cfg(feature = "singleplayer")]
 mod server;
 mod skins;
 mod level;
@@ -57,7 +60,9 @@ pub(crate) use world_load::*;
 use bench::Bench;
 use glam::Vec3;
 use mc_assets::AssetSource;
-use mc_core::{nbt, BlockPos, Facing};
+#[cfg(feature = "singleplayer")]
+use mc_core::nbt;
+use mc_core::{BlockPos, Facing};
 use mc_data::geometry::BlockGeometry;
 use mc_gui::batch::GuiBatch;
 use mc_gui::hud::{DebugInfo, Hud, PlayerHud};
@@ -67,6 +72,7 @@ use mc_gui::{Scaled, Ui};
 use mc_render::{lightmap, mesh, models::BlockModels, Camera, Renderer};
 use mc_world::World;
 use std::collections::HashSet;
+#[cfg(feature = "singleplayer")]
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -176,6 +182,7 @@ fn main() {
             }
         }
     }
+    #[cfg(feature = "singleplayer")]
     let (world, center, seed) = if connection.is_some() {
         let mut w = World::default();
         w.track_dirty = true;
@@ -183,10 +190,23 @@ fn main() {
     } else {
         load_world(&args)
     };
+    #[cfg(feature = "singleplayer")]
     if world.chunks.is_empty() && connection.is_none() {
         eprintln!("no chunks loaded around {center:?}");
         std::process::exit(1);
     }
+    // Multiplayer-only: the world is whatever the server sends. In-game screens and the
+    // benchmark need a connection (mock server); menu screens need nothing.
+    #[cfg(not(feature = "singleplayer"))]
+    let (world, center, seed) = {
+        if args.bench.is_some() && connection.is_none() {
+            eprintln!("--bench needs a world: pass --connect <host:port> (BENCH.md has the mock server commands)");
+            std::process::exit(1);
+        }
+        let mut w = World::default();
+        w.track_dirty = true;
+        (w, (8, 8), 0i64)
+    };
     let surface_y = (0..256).rev().find(|&y| world.get(center.0, y, center.1).0 != 0).unwrap_or(64);
 
     // Our own options.txt next to the binary's working dir; the real .minecraft one is left alone.
@@ -196,7 +216,12 @@ fn main() {
     let mut app = App::new(assets, models, world, center, settings);
     app.tiles.seed_from_world(&app.world);
     app.info.seed = seed;
-    app.in_game = args.play || connection.is_some();
+    mc_gui::screens::SINGLEPLAYER_AVAILABLE.store(cfg!(feature = "singleplayer"), std::sync::atomic::Ordering::Relaxed);
+    app.in_game = connection.is_some();
+    #[cfg(feature = "singleplayer")]
+    {
+        app.in_game |= args.play;
+    }
     if args.screenshot.is_none() && std::env::var_os("RUSTMC_NO_SOUND").is_none() {
         let index = if args.asset_index.is_empty() { "1.8" } else { args.asset_index.as_str() };
         let dirs = args.assets_dir.clone().into_iter()

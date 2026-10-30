@@ -12,8 +12,8 @@ mc-core = { path = "../mc-core" }
 mc-data = { path = "../mc-data" }
 mc-assets = { path = "../mc-assets" }
 mc-world = { path = "../mc-world" }
-mc-logic = { path = "../mc-logic" }
-mc-gen = { path = "../mc-gen" }
+mc-logic = { path = "../mc-logic", optional = true }
+mc-gen = { path = "../mc-gen", optional = true }
 mc-render = { path = "../mc-render" }
 mc-gui = { path = "../mc-gui" }
 mc-entity = { path = "../mc-entity" }
@@ -32,6 +32,8 @@ puffin = { version = "0.19", optional = true }
 puffin_http = { version = "0.16", optional = true }
 
 [features]
+# Integrated server, worldgen, local commands, `--play`/`--world`. Off by default: the client is multiplayer-only.
+singleplayer = ["dep:mc-logic", "dep:mc-gen"]
 # `cargo build --release --features profile`: puffin zones + HTTP server on 127.0.0.1:8585.
 profile = ["dep:puffin", "dep:puffin_http"]
 

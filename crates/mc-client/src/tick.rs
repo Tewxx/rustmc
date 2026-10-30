@@ -36,7 +36,7 @@ impl App {
         }
         // `Minecraft.isGamePaused`: only the integrated server pauses; on a remote server the
         // world keeps ticking under the pause menu or the server would rubber-band the player.
-        let paused = self.net.is_none() && self.screen.as_ref().is_some_and(|s| s.pauses());
+        let paused = self.is_local() && self.screen.as_ref().is_some_and(|s| s.pauses());
         self.tick_accum += dt * 20.0;
         while self.tick_accum >= 1.0 {
             self.tick_accum -= 1.0;
@@ -138,7 +138,7 @@ impl App {
         };
         // EntityPlayerSP.onUpdate only runs over a loaded chunk.
         let (px, pz) = (self.entity.pos.x.floor() as i32, self.entity.pos.z.floor() as i32);
-        if self.net.is_none() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
+        if self.is_local() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
             self.tick_item_in_use();
             self.entity.tick(&self.world, &mut self.geometry, keys);
             let player = Vec3::new(self.entity.pos.x as f32, self.entity.pos.y as f32, self.entity.pos.z as f32);
@@ -206,7 +206,7 @@ impl App {
             }
         }
         self.flush_sounds();
-        if self.net.is_none() && self.entity.pos.y < -64. {
+        if self.is_local() && self.entity.pos.y < -64. {
             self.entity.teleport(self.spawn);
         }
         // EntityRenderer.updateTorchFlicker
@@ -218,9 +218,10 @@ impl App {
         if self.net.is_some() {
             // WorldClient: only the strengths follow the server's raining flags.
             self.weather.tick_remote(&self.info);
-        } else {
+        } else if self.is_local() {
             self.weather.tick(&mut self.info, &mut self.rand);
         }
+        #[cfg(feature = "singleplayer")]
         if self.net.is_none() {
             // WorldServer.tick: tickUpdates, then updateBlocks' random ticks (chunks within 7).
             let (cx, cz) = (px >> 4, pz >> 4);

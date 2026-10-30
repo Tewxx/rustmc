@@ -1,5 +1,9 @@
 # Benchmarks
 
+The default build is multiplayer-only, so `--bench` needs a world from a server: run it with `--connect` against the
+mock server below (the commands in this file). Offline generated-terrain runs (`--radius N`) exist only in a
+`--features singleplayer` build.
+
 `rustmc --bench <s>` flies a fixed time-based camera path uncapped (vsync off) and prints avg FPS, 1%/0.1% lows,
 frame/cpu percentiles (p50/p99/p99.9/max), hitch counts (>16.7 ms, >33 ms) and, once wired, per-phase CPU ms.
 `bench.csv` gets one row per frame (`frame_ms,cpu_ms,net_ms,mesh_ms,world_ms,entities_ms,gui_ms,present_ms`).
@@ -9,7 +13,7 @@ Note `cpu_ms` is the whole `update + draw_frame`, so it **includes time blocked 
 
 ```
 cargo run --release -p mc-protocol --example mock_server -- 25599        # prefix with env vars below
-rustmc --jar MCP-919/jars/versions/1.8.9/1.8.9.jar --connect 127.0.0.1:25599 --radius 8 --bench 10
+rustmc --jar MCP-919/jars/versions/1.8.9/1.8.9.jar --connect 127.0.0.1:25599 --bench 10
 ```
 
 | Env | Effect |
@@ -20,7 +24,7 @@ rustmc --jar MCP-919/jars/versions/1.8.9/1.8.9.jar --connect 127.0.0.1:25599 --r
 
 The bench camera ignores server position, so `MOCK_STREAM` churns chunks inside the orbit instead of following the player.
 The mock server only sends 8x8 = 64 chunks, so connected runs are cheap on world geometry; `--radius 8/16` offline
-(generated terrain) are the world-heavy cases.
+(generated terrain, `--features singleplayer` build only) were the world-heavy cases.
 
 ## Baseline (macOS, Apple M2, wgpu Metal, release, 10 s runs)
 
