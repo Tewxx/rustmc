@@ -1,0 +1,140 @@
+"""Hand-curated facts layered over the automatic event scan. Facts verified against the Forge 1.8.9 sources
+(patch hunks and src/main/java files cited in SPEC.md); descriptions are paraphrased, not copied."""
+
+CLIENT_PKGS = ("net/minecraftforge/client/", "net/minecraftforge/fml/client/")
+
+SERVER_ONLY_CLASSES = {
+    "net/minecraft/server/MinecraftServer", "net/minecraft/world/WorldServer", "net/minecraft/entity/player/EntityPlayerMP",
+    "net/minecraft/server/management/ServerConfigurationManager", "net/minecraft/network/NetHandlerPlayServer",
+    "net/minecraft/server/management/ItemInWorldManager", "net/minecraft/server/management/PlayerManager",
+    "net/minecraft/entity/EntityTrackerEntry", "net/minecraft/world/storage/SaveHandler",
+    "net/minecraft/world/chunk/storage/AnvilChunkLoader", "net/minecraft/network/NetHandlerLoginServer",
+    "net/minecraft/command/CommandHandler",
+}
+
+T = "Minecraft client thread (the game/render thread)"
+
+CURATED = {
+    # ------------------------------------------------------------ FML game events (FMLCommonHandler.bus())
+    "net/minecraftforge/fml/common/gameevent/TickEvent$ClientTickEvent": {
+        "thread": T, "bus": ["FMLCommonHandler.bus()"],
+        "when": "START: first thing in Minecraft.runTick after the right-click delay counter is decremented and before the 'gui' profiler section (Minecraft.java.patch hunk @@ -1598); END: last statement of runTick (hunk @@ -2119)",
+        "ordering": "Fired once per game tick (20 Hz timer ticks, 0..n per frame), also while a GUI screen is open and while no world is loaded",
+        "phase": "Phase.START then Phase.END; type=CLIENT, side=CLIENT, player=null"},
+    "net/minecraftforge/fml/common/gameevent/TickEvent$RenderTickEvent": {
+        "thread": T, "bus": ["FMLCommonHandler.bus()"],
+        "when": "Minecraft.runGameLoop: START immediately before EntityRenderer.updateCameraAndRender, END immediately after it; only when skipRenderWorld is false (Minecraft.java.patch hunk @@ -1030)",
+        "ordering": "once per rendered frame; renderTickTime = partial tick; within a frame runGameLoop runs the pending runTick() calls (ClientTickEvents) first, then RenderTick START -> render -> RenderTick END",
+        "phase": "Phase.START / Phase.END"},
+    "net/minecraftforge/fml/common/gameevent/TickEvent$PlayerTickEvent": {
+        "thread": "client thread for EntityPlayerSP/remote players on the client world; server thread for EntityPlayerMP", "bus": ["FMLCommonHandler.bus()"],
+        "when": "EntityPlayer.onUpdate: START at method entry, END at method exit (both patched in EntityPlayer.java.patch)",
+        "notes": "On a multiplayer client fires for the local player and every remote player entity of the client world; event.side tells which logical side"},
+    "net/minecraftforge/fml/common/gameevent/TickEvent$ServerTickEvent": {"side": "SERVER", "mp": "no", "bus": ["FMLCommonHandler.bus()"],
+        "when": "MinecraftServer.tick START/END", "notes": "server-only; never fires on a pure multiplayer client"},
+    "net/minecraftforge/fml/common/gameevent/TickEvent$WorldTickEvent": {"side": "SERVER", "mp": "no", "bus": ["FMLCommonHandler.bus()"],
+        "when": "MinecraftServer.updateTimeLightAndEntities per world (START before worldServer tick, END after); never posted from the client in 1.8.9",
+        "notes": "Only SERVER-side WorldTickEvent exists in this version; client world ticks are only observable through ClientTickEvent"},
+    "net/minecraftforge/fml/common/gameevent/InputEvent$KeyInputEvent": {
+        "thread": T, "bus": ["FMLCommonHandler.bus()"],
+        "when": "inside the Keyboard.next() loop of Minecraft.runTick, after vanilla has processed that key event (hotkeys, GUI keyTyped, KeyBinding state) (Minecraft.java.patch hunk @@ -1923)",
+        "ordering": "one event per raw keyboard event, not per bound key; Keyboard.getEventKey() is valid inside the handler"},
+    "net/minecraftforge/fml/common/gameevent/InputEvent$MouseInputEvent": {
+        "thread": T, "bus": ["FMLCommonHandler.bus()"],
+        "when": "end of each Mouse.next() iteration in Minecraft.runTick, after vanilla processing; skipped for events swallowed by a cancelled MouseEvent (hunk @@ -1745)"},
+    "net/minecraftforge/fml/common/gameevent/PlayerEvent$ItemCraftedEvent": {"side": "BOTH", "mp": "partial", "bus": ["FMLCommonHandler.bus()"],
+        "when": "SlotCrafting.onPickupFromSlot (runs in the client container prediction as well as on the server)"},
+    "net/minecraftforge/fml/common/gameevent/PlayerEvent$ItemSmeltedEvent": {"side": "BOTH", "mp": "partial", "bus": ["FMLCommonHandler.bus()"], "when": "SlotFurnaceOutput.onCrafting"},
+    "net/minecraftforge/fml/common/gameevent/PlayerEvent$ItemPickupEvent": {"side": "SERVER", "mp": "no", "bus": ["FMLCommonHandler.bus()"], "when": "EntityItem.onCollideWithPlayer, inside the !isRemote branch"},
+    "net/minecraftforge/fml/common/gameevent/PlayerEvent$PlayerLoggedInEvent": {"side": "SERVER", "mp": "no", "bus": ["FMLCommonHandler.bus()"], "when": "ServerConfigurationManager.initializeConnectionToPlayer, server only"},
+    "net/minecraftforge/fml/common/gameevent/PlayerEvent$PlayerLoggedOutEvent": {"side": "SERVER", "mp": "no", "bus": ["FMLCommonHandler.bus()"]},
+    "net/minecraftforge/fml/common/gameevent/PlayerEvent$PlayerRespawnEvent": {"side": "SERVER", "mp": "no", "bus": ["FMLCommonHandler.bus()"]},
+    "net/minecraftforge/fml/common/gameevent/PlayerEvent$PlayerChangedDimensionEvent": {"side": "SERVER", "mp": "no", "bus": ["FMLCommonHandler.bus()"]},
+    # ------------------------------------------------------------ FML network events (posted on MinecraftForge.EVENT_BUS in 1.8.9!)
+    "net/minecraftforge/fml/common/network/FMLNetworkEvent$ClientConnectedToServerEvent": {
+        "side": "CLIENT", "mp": "yes", "thread": "Netty client I/O thread (inside NetworkDispatcher.completeClientSideConnection), not the game thread",
+        "when": "FML handshake finished (client state COMPLETE -> DONE) or immediately after S01PacketJoinGame is seen on a vanilla server; connectionType = MODDED or VANILLA",
+        "ordering": "before the S01PacketJoinGame is passed on to NetHandlerPlayClient when the server is modded (joined game afterwards)"},
+    "net/minecraftforge/fml/common/network/FMLNetworkEvent$ClientDisconnectionFromServerEvent": {
+        "side": "CLIENT", "mp": "yes", "thread": "Netty I/O thread (NetworkDispatcher.disconnect/close)", "when": "channelInactive / exceptionCaught on the connection"},
+    "net/minecraftforge/fml/common/network/FMLNetworkEvent$ClientCustomPacketEvent": {
+        "side": "CLIENT", "mp": "yes", "bus": ["FMLEventChannel bus (per-channel EventBus)"],
+        "thread": "Netty client I/O thread; use Minecraft.addScheduledTask for game-state access",
+        "when": "FMLEventChannel dispatches an inbound FMLProxyPacket; NOT on MinecraftForge.EVENT_BUS -- posted on the channel's own bus registered via FMLEventChannel.register"},
+    "net/minecraftforge/fml/common/network/FMLNetworkEvent$CustomPacketRegistrationEvent": {
+        "side": "CLIENT", "mp": "yes", "bus": ["FMLEventChannel bus"], "when": "after a REGISTER/UNREGISTER on the connection updates the channel set (FMLClientHandler.fireNetRegistrationEvent)"},
+    # ------------------------------------------------------------ client events
+    "net/minecraftforge/client/event/GuiOpenEvent": {
+        "thread": T, "when": "Minecraft.displayGuiScreen after the GuiGameOver substitution for dead players and before any vanilla screen bookkeeping (old.onGuiClosed, mouse grab, scaled resolution)",
+        "ordering": "cancel => displayGuiScreen returns, current screen unchanged; handler may replace event.gui (also null)", "mp": "yes"},
+    "net/minecraftforge/client/event/GuiScreenEvent$InitGuiEvent$Pre": {"thread": T, "when": "GuiScreen.setWorldAndResolution after mc/fontRenderer/width/height are set; cancel skips BOTH buttonList.clear() and initGui() (GuiScreen.java.patch hunk @@ -482)",
+        "notes": "fields: gui, buttonList (mutable list)"},
+    "net/minecraftforge/client/event/GuiScreenEvent$InitGuiEvent$Post": {"thread": T, "when": "GuiScreen.setWorldAndResolution always after the Pre/initGui block (also when Pre was cancelled); buttonList available for add/remove"},
+    "net/minecraftforge/client/event/GuiScreenEvent$DrawScreenEvent$Pre": {"thread": T, "when": "ForgeHooksClient.drawScreen, replacing the direct currentScreen.drawScreen call in EntityRenderer.updateCameraAndRender; cancel skips drawScreen",
+        "ordering": "mouseX, mouseY, renderPartialTicks fields"},
+    "net/minecraftforge/client/event/GuiScreenEvent$DrawScreenEvent$Post": {"thread": T, "when": "after GuiScreen.drawScreen returns"},
+    "net/minecraftforge/client/event/GuiScreenEvent$BackgroundDrawnEvent": {"thread": T, "when": "end of GuiScreen.drawDefaultBackground (also inside drawBackground for world-less screens)"},
+    "net/minecraftforge/client/event/GuiScreenEvent$ActionPerformedEvent$Pre": {"thread": T, "when": "GuiScreen.mouseClicked, after the hit button's sound/selection and before actionPerformed(button); cancel skips actionPerformed and Post; handler may replace event.button"},
+    "net/minecraftforge/client/event/GuiScreenEvent$ActionPerformedEvent$Post": {"thread": T, "when": "after actionPerformed, only if the Pre event was not cancelled and the screen is still the same (buttonList re-read)"},
+    "net/minecraftforge/client/event/GuiScreenEvent$MouseInputEvent$Pre": {"thread": T, "when": "GuiScreen.handleInput, per Mouse event, before handleMouseInput(); cancel skips it"},
+    "net/minecraftforge/client/event/GuiScreenEvent$MouseInputEvent$Post": {"thread": T, "when": "after handleMouseInput()"},
+    "net/minecraftforge/client/event/GuiScreenEvent$KeyboardInputEvent$Pre": {"thread": T, "when": "GuiScreen.handleInput, per Keyboard event, before handleKeyboardInput(); cancel skips it"},
+    "net/minecraftforge/client/event/GuiScreenEvent$KeyboardInputEvent$Post": {"thread": T, "when": "after handleKeyboardInput()"},
+    "net/minecraftforge/client/event/MouseEvent": {"thread": T, "when": "top of each Mouse.next() iteration in Minecraft.runTick, before KeyBinding state update and any GUI dispatch (ForgeHooksClient.postMouseEvent); cancel makes runTick `continue` -> neither vanilla nor GUI nor InputEvent.MouseInputEvent see it"},
+    "net/minecraftforge/client/event/ClientChatReceivedEvent": {"thread": T, "when": "NetHandlerPlayClient.handleChat for every S02PacketChat (type 0 chat, 1 system, 2 action bar) after PacketThreadUtil hands the packet to the client thread; cancel drops the message; handler may replace event.message",
+        "ordering": "fires for server messages only; locally generated messages (addChatMessage from client code) do not pass through it"},
+    "net/minecraftforge/client/event/RenderGameOverlayEvent$Pre": {"thread": T, "when": "GuiIngameForge.renderGameOverlay (Forge replaces GuiIngame; Minecraft.startGame assigns ingameGUI = new GuiIngameForge). Called by EntityRenderer.updateCameraAndRender for every frame with a world, mc.gameSettings.hideGUI == false",
+        "ordering": "ElementType order: ALL(pre) -> [vignette] HELMET -> PORTAL -> HOTBAR -> CROSSHAIRS -> BOSSHEALTH -> (if playerController.shouldDrawHUD and render view entity is a player) HEALTH -> ARMOR -> FOOD -> HEALTHMOUNT -> AIR -> (sleep fade: no event) -> JUMPBAR else EXPERIENCE -> (tool highlight: no event) -> DEBUG (only if F3 debug shown; pre/post around adding debug lines) -> Text event -> TEXT post -> (record overlay, title, scoreboard: no events) -> CHAT (Chat event then CHAT post) -> PLAYER_LIST (only while the tab key is held) -> ALL(post). Each element X is bracketed Pre(X)/Post(X); cancelling Pre skips drawing X and its Post. Cancelling ALL skips the whole overlay.",
+        "notes": "Pre/Post carry type: ElementType (ALL, HELMET, PORTAL, CROSSHAIRS, BOSSHEALTH, ARMOR, HEALTH, FOOD, AIR, HOTBAR, EXPERIENCE, TEXT, HEALTHMOUNT, JUMPBAR, CHAT, PLAYER_LIST, DEBUG), partialTicks, resolution (ScaledResolution). GuiIngameForge.java:85-186 (frame), 188-851 (elements)"},
+    "net/minecraftforge/client/event/RenderGameOverlayEvent$Post": {"thread": T, "when": "see RenderGameOverlayEvent$Pre; never fired if the matching Pre was cancelled"},
+    "net/minecraftforge/client/event/RenderGameOverlayEvent$Text": {"thread": T, "when": "GuiIngameForge.renderHUDText after the optional DEBUG pre/post; carries mutable `left` and `right` string lists (debug text, demo timer); cancel suppresses drawing the lists", "ordering": "fired even when F3 is off (lists empty) -- mods use it to add HUD text lines"},
+    "net/minecraftforge/client/event/RenderGameOverlayEvent$Chat": {"thread": T, "when": "GuiIngameForge.renderChat before the chat GUI draws at (posX, posY) = (0, height-48); cancel skips chat rendering; handler may move posX/posY; Pre(CHAT) is NOT fired -- only this event and Post(CHAT)"},
+    "net/minecraftforge/client/event/DrawBlockHighlightEvent": {"thread": T, "when": "EntityRenderer.renderWorldPass right before RenderGlobal.drawSelectionBox, pass 0 only, both the anaglyph and normal paths; cancel skips the outline"},
+    "net/minecraftforge/client/event/RenderHandEvent": {"thread": T, "when": "EntityRenderer.renderWorldPass, after RenderWorldLastEvent and before first-person hand rendering; cancel skips the hand"},
+    "net/minecraftforge/client/event/RenderWorldLastEvent": {"thread": T, "when": "EntityRenderer.renderWorldPass after entities/particles/weather/clouds of the 3D world pass and before the hand (profiler section 'forge_render_last'); GL state is the world pass state (camera matrices applied)", "ordering": "fires once per renderWorldPass call (twice per frame in anaglyph mode)"},
+    "net/minecraftforge/client/event/EntityViewRenderEvent$CameraSetup": {"thread": T, "when": "EntityRenderer.orientCamera after computing yaw/pitch/roll and before the camera transform is applied; fields yaw, pitch, roll are mutable"},
+    "net/minecraftforge/client/event/EntityViewRenderEvent$FOVModifier": {"thread": T, "when": "EntityRenderer.getFOVModifier (ForgeHooksClient.getFOVModifier); `fov` mutable; renderPartialTicks provided"},
+    "net/minecraftforge/client/event/EntityViewRenderEvent$FogColors": {"thread": T, "when": "EntityRenderer.updateFogColor after vanilla fog colour computation; red/green/blue mutable"},
+    "net/minecraftforge/client/event/EntityViewRenderEvent$FogDensity": {"thread": T, "when": "EntityRenderer.setupFog; cancel makes the handler's `density` authoritative"},
+    "net/minecraftforge/client/event/EntityViewRenderEvent$RenderFogEvent": {"thread": T, "when": "EntityRenderer.setupFog start (before GL fog setup); HasResult"},
+    "net/minecraftforge/client/event/FOVUpdateEvent": {"thread": T, "when": "AbstractClientPlayer.getFovModifier (ForgeHooksClient.getOffsetFOV); newfov mutable"},
+    "net/minecraftforge/client/event/RenderPlayerEvent$Pre": {"thread": T, "when": "RenderPlayer.doRender entry; cancel skips the whole render"},
+    "net/minecraftforge/client/event/RenderPlayerEvent$Post": {"thread": T, "when": "RenderPlayer.doRender exit"},
+    "net/minecraftforge/client/event/RenderLivingEvent$Pre": {"thread": T, "when": "RendererLivingEntity.doRender entry (all living entities; for players RenderPlayer.doRender wraps it, so the order is RenderPlayerEvent.Pre -> RenderLivingEvent.Pre -> ... -> RenderLivingEvent.Post -> RenderPlayerEvent.Post; RenderPlayerEvent.Pre cancel returns before RenderLivingEvent.Pre)", "notes": "in 1.8.9 RenderPlayerEvent.Specials.* and SetArmorModel exist but have no firing site (replaced by LayerRenderer)"},
+    "net/minecraftforge/client/event/RenderLivingEvent$Post": {"thread": T, "when": "RendererLivingEntity.doRender exit"},
+    "net/minecraftforge/client/event/RenderLivingEvent$Specials$Pre": {"thread": T, "when": "RendererLivingEntity.renderName (name tags); cancel skips the name tag"},
+    "net/minecraftforge/client/event/RenderLivingEvent$Specials$Post": {"thread": T, "when": "after renderName"},
+    "net/minecraftforge/client/event/RenderItemInFrameEvent": {"thread": T, "when": "RenderItemFrame.renderItem; cancel skips item rendering in frames"},
+    "net/minecraftforge/client/event/RenderBlockOverlayEvent": {"thread": T, "when": "ItemRenderer.renderOverlays for fire/water/in-wall overlays; cancel skips the overlay"},
+    "net/minecraftforge/client/event/TextureStitchEvent$Pre": {"thread": T, "when": "TextureMap.loadTextureAtlas before sprites are stitched (per atlas: textures/blocks and any other TextureMap, check event.map.getBasePath()); use to register extra sprites", "ordering": "occurs during resource (re)load, also at startup after FMLPreInit/Init (model/texture reload)"},
+    "net/minecraftforge/client/event/TextureStitchEvent$Post": {"thread": T, "when": "after atlas stitched; sprites have final u/v"},
+    "net/minecraftforge/client/event/ModelBakeEvent": {"thread": T, "when": "ModelManager.onResourceManagerReload through ModelLoader (ForgeHooksClient.onModelBake) after all models are baked; modelRegistry (IRegistry<ModelResourceLocation,IBakedModel>) mutable; fires on every resource reload"},
+    "net/minecraftforge/client/event/sound/PlaySoundEvent": {"thread": T, "when": "SoundManager.playSound via ForgeHooksClient.playSound; may replace the ISound or null it to cancel"},
+    "net/minecraftforge/client/event/sound/SoundLoadEvent": {"thread": T, "when": "SoundManager.reloadSoundSystem"},
+    "net/minecraftforge/client/event/sound/SoundSetupEvent": {"thread": "sound-system thread/initialisation", "when": "SoundManager constructor/ sound system init"},
+    "net/minecraftforge/fml/client/event/ConfigChangedEvent$OnConfigChangedEvent": {
+        "side": "CLIENT", "mp": "yes", "thread": T, "bus": ["MinecraftForge.EVENT_BUS"],
+        "when": "GuiConfig.actionPerformed (Done button) when any entry changed; modID/configID filters; result DENY from a handler suppresses the Post event and the 'requires restart' flow",
+        "ordering": "OnConfigChangedEvent then, if not DENY, PostConfigChangedEvent (GuiConfig.java:243-245)"},
+    # ------------------------------------------------------------ common events that matter client-side
+    "net/minecraftforge/event/entity/EntityJoinWorldEvent": {"thread": "thread of the calling world (client thread for WorldClient)", "mp": "yes",
+        "when": "World.spawnEntityInWorld/ loadEntities / joinEntityInSurroundings, after the chunk-load check and before the entity is added to the chunk; cancel => entity not added (client: remote spawn packets are then ignored)",
+        "notes": "On a MP client fires for each entity the server spawns (S0F/S0C/...) and once for the local EntityPlayerSP at login; world.isRemote == true"},
+    "net/minecraftforge/event/entity/EntityEvent$EntityConstructing": {"mp": "yes", "when": "end of Entity.<init> (so subclass fields are NOT initialised yet)", "notes": "also the point where capabilities are attached (AttachCapabilitiesEvent.Entity from Entity.<init>)"},
+    "net/minecraftforge/event/entity/living/LivingEvent$LivingUpdateEvent": {"mp": "yes", "when": "EntityLivingBase.onUpdate entry; cancel skips the rest of onUpdate for that tick", "notes": "fires for every living entity incl. remote ones on the client world"},
+    "net/minecraftforge/event/entity/living/LivingAttackEvent": {"mp": "partial", "when": "EntityLivingBase.attackEntityFrom / EntityPlayer.attackEntityFrom entry, before invulnerability checks", "notes": "client: only for client-side attackEntityFrom invocations (EntityPlayerSP), not server damage"},
+    "net/minecraftforge/event/world/WorldEvent$Load": {"mp": "yes", "when": "WorldClient.<init> end (client); DimensionManager.initDimension/MinecraftServer.loadAllWorlds (server)"},
+    "net/minecraftforge/event/world/WorldEvent$Unload": {"mp": "yes", "when": "Minecraft.loadWorld(null/new world) before the old world is dropped (Minecraft.java.patch hunk @@ -2197) on the client"},
+    "net/minecraftforge/event/world/ChunkEvent$Load": {"mp": "yes", "when": "ChunkProviderClient.loadChunk (after chunk allocation, S21 chunk data) and Chunk.onChunkLoad"},
+    "net/minecraftforge/event/world/ChunkEvent$Unload": {"mp": "yes", "when": "Chunk.onChunkUnload"},
+    "net/minecraftforge/event/entity/player/ItemTooltipEvent": {"mp": "yes", "thread": T, "when": "ItemStack.getTooltip as the very last step, after every vanilla line (name, lore, enchantments, modifiers, advanced info) is built, just before returning the list (ItemStack.java.patch hunk @@ -742); `toolTip` is the mutable result list"},
+    "net/minecraftforge/event/entity/player/PlayerInteractEvent": {"mp": "yes", "thread": T, "when": "client: Minecraft.rightClickMouse (RIGHT_CLICK_BLOCK and RIGHT_CLICK_AIR, Minecraft.java.patch hunks @@ -1463/-1494) and PlayerControllerMP click paths; server: ItemInWorldManager", "notes": "client-side cancel prevents the packet being sent (RIGHT_CLICK_BLOCK/AIR); LEFT_CLICK_BLOCK is server only in 1.8.9"},
+    "net/minecraftforge/event/CommandEvent": {"mp": "yes", "thread": T, "when": "ClientCommandHandler.executeCommand from GuiScreen.sendChatMessage (client chat '/' commands registered with ClientCommandHandler) and CommandHandler.executeCommand (server)"},
+    "net/minecraftforge/event/entity/player/PlayerEvent$NameFormat": {"mp": "yes", "when": "EntityPlayer.getDisplayNameString / refreshDisplayName"},
+    "net/minecraftforge/event/entity/player/PlayerEvent$BreakSpeed": {"mp": "yes", "when": "EntityPlayer.getBreakSpeed, client prediction and server"},
+    "net/minecraftforge/event/entity/PlaySoundAtEntityEvent": {"mp": "yes", "when": "EntityPlayerSP.playSound / World.playSoundAtEntity"},
+    "net/minecraftforge/event/terraingen/BiomeEvent$GetGrassColor": {"side": "BOTH", "mp": "yes", "thread": T, "when": "BiomeGenBase.getModdedBiomeGrassColor (render thread chunk meshing, may also run on chunk-builder worker threads)", "notes": "colour query used by block colour handlers; must be thread-safe"},
+    "net/minecraftforge/event/terraingen/BiomeEvent$GetFoliageColor": {"side": "BOTH", "mp": "yes", "when": "BiomeGenBase.getModdedBiomeFoliageColor"},
+    "net/minecraftforge/event/terraingen/BiomeEvent$GetWaterColor": {"side": "BOTH", "mp": "yes", "when": "BiomeGenBase.getWaterColorMultiplier"},
+    "net/minecraftforge/event/terraingen/BiomeEvent$BiomeColor": {"side": "BOTH", "mp": "check"},
+}
