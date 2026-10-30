@@ -2,6 +2,10 @@
 
 use crate::*;
 
+fn frame_deadline(last: Instant, limit: i32, vsync: bool, bench: bool) -> Option<Instant> {
+    (!vsync && !bench && limit < 260).then(|| last + Duration::from_secs_f64(1.0 / limit.max(1) as f64))
+}
+
 /// Screen keys: the inventory and hotbar keys follow their bindings (`GuiContainer.keyTyped`).
 pub(crate) fn map_key(code: KeyCode, settings: &mc_gui::settings::Settings, ctrl: bool) -> Key {
     let lw = keymap::lwjgl(code);
@@ -286,15 +290,6 @@ impl ApplicationHandler for App {
                     self.frames = 0;
                     self.fps_timer = Instant::now();
                 }
-                // Max Framerate (260 = unlimited; vsync caps on its own).
-                let limit = self.ui.settings.limit_framerate;
-                if limit < 260 && !self.ui.settings.vsync {
-                    let target = Duration::from_secs_f64(1.0 / limit as f64);
-                    let spent = now.elapsed();
-                    if spent < target {
-                        std::thread::sleep(target - spent);
-                    }
-                }
             }
             _ => {}
         }
@@ -312,9 +307,30 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         if let Some(w) = &self.window {
-            w.request_redraw();
+            let deadline = frame_deadline(self.last_frame, self.ui.settings.limit_framerate, self.ui.settings.vsync, self.bench.is_some());
+            if let Some(deadline) = deadline.filter(|deadline| *deadline > Instant::now()) {
+                el.set_control_flow(ControlFlow::WaitUntil(deadline));
+            } else {
+                el.set_control_flow(ControlFlow::Poll);
+                w.request_redraw();
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod frame_pacing_tests {
+    use super::*;
+
+    #[test]
+    fn capped_frames_have_deadlines_and_other_modes_do_not() {
+        let now = Instant::now();
+        assert_eq!(frame_deadline(now, 100, false, false), Some(now + Duration::from_millis(10)));
+        assert_eq!(frame_deadline(now, 0, false, false), Some(now + Duration::from_secs(1)));
+        assert_eq!(frame_deadline(now, 260, false, false), None);
+        assert_eq!(frame_deadline(now, 60, true, false), None);
+        assert_eq!(frame_deadline(now, 60, false, true), None);
     }
 }
