@@ -43,6 +43,7 @@ impl Window {
             "minecraft:enchanting_table" => 2,
             "minecraft:anvil" => 3,
             "minecraft:beacon" => 1,
+            "minecraft:brewing_stand" => 4,
             _ => slots as usize,
         };
         Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0; 4], clicks: Vec::new(), closed: false, transaction: 0, drag: None }
@@ -167,6 +168,14 @@ impl ContainerScreen {
                 inv: (8, 84),
                 rows: None,
             },
+            "minecraft:brewing_stand" => Layout {
+                texture: "textures/gui/container/brewing_stand.png", w: 176, h: 166,
+                slots: vec![(56, 46), (79, 53), (102, 46), (79, 17)], inv: (8, 84), rows: None,
+            },
+            "minecraft:enchanting_table" => Layout {
+                texture: "textures/gui/container/enchanting_table.png", w: 176, h: 166,
+                slots: vec![(15, 47), (35, 47)], inv: (8, 84), rows: None,
+            },
             "minecraft:beacon" => Layout {
                 texture: "textures/gui/container/beacon.png", w: 230, h: 219,
                 slots: vec![(136, 110)], inv: (36, 137), rows: None,
@@ -232,8 +241,21 @@ impl ContainerScreen {
         })
     }
 
+    fn brewing_ingredient(&self, s: ItemStack) -> bool {
+        let id = self.catalogue.items[s.item].id as u64;
+        Self::furnace_rules()["brewing"].as_array().unwrap().iter().any(|v| {
+            v[0].as_u64() == Some(id) && (v[1].as_i64() == Some(32767) || v[1].as_i64() == Some(s.damage as i64))
+        })
+    }
+
     fn accepts(&self, w: &Window, i: usize, s: ItemStack) -> bool {
         if w.output_slot(i) { return false; }
+        if w.kind == "minecraft:enchanting_table" && i == 1 {
+            return self.catalogue.items[s.item].id == 351 && s.damage == 4;
+        }
+        if w.kind == "minecraft:brewing_stand" && i < 4 {
+            return if i < 3 { matches!(self.catalogue.items[s.item].id, 373 | 374) } else { self.brewing_ingredient(s) };
+        }
         if w.kind == "minecraft:beacon" && i == 0 {
             return matches!(self.catalogue.items[s.item].id, 264 | 265 | 266 | 388);
         }
@@ -250,7 +272,7 @@ impl ContainerScreen {
     fn pickup(&self, w: &mut Window, ui: &mut Ui, i: usize, right: bool) {
         let cursor = w.cursor;
         let valid = cursor.is_some_and(|c| self.accepts(w, i, c));
-        let slot_limit = if (w.kind == "minecraft:beacon" && i == 0) || (w.kind == "player" && (5..=8).contains(&i)) ||
+        let slot_limit = if (w.kind == "minecraft:brewing_stand" && i < 3) || (w.kind == "minecraft:enchanting_table" && i == 0) || (w.kind == "minecraft:beacon" && i == 0) || (w.kind == "player" && (5..=8).contains(&i)) ||
             (w.kind == "minecraft:furnace" && i == 1 && cursor.is_some_and(|c| self.catalogue.items[c.item].id == 325)) { 1 } else { 64 };
         let Some(cur) = w.get(ui, i).map(|s| *s) else { return };
         let max_of = |s: ItemStack| self.max(s);
@@ -331,6 +353,27 @@ impl ContainerScreen {
             w.set(ui, i, rest);
             return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
         }
+        if w.kind == "minecraft:enchanting_table" {
+            let rest = if i < 2 { self.merge(w, ui, s, (2..38).rev().collect()) }
+                else if self.catalogue.items[s.item].id == 351 && s.damage == 4 { self.merge(w, ui, s, vec![1]) }
+                else if w.slots[0].is_none() {
+                    let placed = if s.count == 1 { s } else { ItemStack { count: 1, tag: None, obj: ItemStack::fresh_obj(), ..s } };
+                    w.slots[0] = Some(placed);
+                    (s.count > 1).then_some(ItemStack { count: s.count - 1, ..s })
+                } else { Some(s) };
+            w.set(ui, i, rest);
+            return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
+        }
+        if w.kind == "minecraft:brewing_stand" {
+            let range = if i < 4 { (4..40).rev().collect() }
+                else if w.slots[3].is_none() && self.brewing_ingredient(s) { vec![3] }
+                else if matches!(self.catalogue.items[s.item].id, 373 | 374) { (0..3).collect() }
+                else if i < 31 { (31..40).collect() }
+                else { (4..31).collect() };
+            let rest = self.merge(w, ui, s, range);
+            w.set(ui, i, rest);
+            return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
+        }
         if w.kind == "minecraft:crafting_table" {
             let range = if i == 0 { (10..46).rev().collect() }
                 else if i < 10 { (10..46).collect() }
@@ -394,7 +437,7 @@ impl ContainerScreen {
                 for i in slots {
                     let current = w.get(ui, i).and_then(|v| *v);
                     let old = current.map_or(0, |s| s.count);
-                    let limit = if w.kind == "minecraft:beacon" && i == 0 || w.kind == "player" && (5..=8).contains(&i) ||
+                    let limit = if w.kind == "minecraft:brewing_stand" && i < 3 || w.kind == "minecraft:enchanting_table" && i == 0 || w.kind == "minecraft:beacon" && i == 0 || w.kind == "player" && (5..=8).contains(&i) ||
                         w.kind == "minecraft:furnace" && i == 1 && self.catalogue.items[cursor.item].id == 325 { 1 } else { 64 };
                     let new_count = old.saturating_add(amount).min(limit).min(self.max(cursor));
                     left -= new_count - old;
@@ -616,7 +659,7 @@ impl Screen for ContainerScreen {
             b.textured_rect(l.texture, x + 79, y + 34, 176, 14, p + 1, 16);
         }
         let title_x = match win.kind.as_str() {
-            "minecraft:furnace" | "minecraft:dispenser" | "minecraft:dropper" => l.w / 2 - ui.font.width(&win.title) / 2,
+            "minecraft:furnace" | "minecraft:brewing_stand" | "minecraft:dispenser" | "minecraft:dropper" => l.w / 2 - ui.font.width(&win.title) / 2,
             "minecraft:crafting_table" => 28,
             _ => 8,
         };
