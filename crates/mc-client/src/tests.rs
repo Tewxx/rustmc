@@ -118,3 +118,52 @@ fn crit_emitter_bursts_once_and_expires_after_three_ticks() {
     particles.tick(&world, &mut geometry, &mut rand, Vec3::ZERO, &remotes, &models);
     assert_eq!(particles.emitter_count(), 0);
 }
+
+/// Rendering must be a pure function of world + settings: same seed twice gives identical
+/// blocks, light and per-section mesh sizes, whatever the thread count.
+#[test]
+fn seeded_demo_world_is_deterministic() {
+    use std::hash::{Hash, Hasher};
+    let mk = || Args {
+        play: false, jar: None, packs: vec![], world: None, radius: 8, pos: None, screenshot: None,
+        screen: "hud".into(), bench: None, seed: Some(12345), connect: None, name: "Player".into(),
+        online: false, pack_mode: None, assets_dir: None, asset_index: String::new(), window: None,
+    };
+    let hashes = |w: &World| {
+        let mut keys: Vec<_> = w.chunks.keys().copied().collect();
+        keys.sort();
+        keys.iter().map(|k| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            for s in w.chunks[k].sections.iter().flatten() {
+                s.blocks.hash(&mut h);
+                s.sky_light.hash(&mut h);
+                s.block_light.hash(&mut h);
+            }
+            (*k, h.finish())
+        }).collect::<Vec<_>>()
+    };
+    let (w1, ..) = crate::world_load::load_world(&mk());
+    let (w2, ..) = crate::world_load::load_world(&mk());
+    assert_eq!(hashes(&w1), hashes(&w2), "blocks/light differ between identical loads");
+    let Some(jar) = find_jar() else { return };
+    let mut assets = AssetSource::new();
+    assets.push(&jar).unwrap();
+    let models = BlockModels::load(&assets);
+    let mut jobs = vec![];
+    for (&(cx, cz), c) in &w1.chunks {
+        for sy in 0..16 {
+            if c.sections[sy].is_some() {
+                jobs.push((cx, sy as i32, cz));
+            }
+        }
+    }
+    jobs.sort();
+    let counts = |w: &World| {
+        crate::world_load::mesh_parallel(w, &models, &jobs, true, true).iter().map(|(k, m)| (*k, m.indices.len())).collect::<Vec<_>>()
+    };
+    let a = counts(&w1);
+    assert_eq!(a, counts(&w2));
+    let mut g = mc_data::geometry::BlockGeometry::new();
+    let serial: Vec<_> = jobs.iter().map(|&(x, sy, z)| ((x, sy, z), mc_render::mesh::build_section(&w1, &models, x, sy, z, true, true, &mut g).indices.len())).collect();
+    assert_eq!(a, serial, "parallel and serial meshing differ");
+}

@@ -17,6 +17,7 @@ mod particles;
 mod commands;
 mod container;
 mod icon;
+mod launch;
 mod inventory;
 mod keymap;
 mod player;
@@ -93,7 +94,14 @@ fn install_crash_log() {
 
 fn main() {
     install_crash_log();
-    let args = parse_args();
+    let (args, prism_session) = match launcher_args() {
+        Some(r) => r,
+        None => (parse_args(), None),
+    };
+    bench::profile_init();
+    if let Some(w) = args.window {
+        let _ = WINDOW_SIZE.set(w);
+    }
     let Some(jar) = args.jar.clone().or_else(find_jar) else {
         eprintln!("Could not find 1.8.9.jar. Pass --jar <path to 1.8.9.jar>.");
         std::process::exit(1);
@@ -140,7 +148,9 @@ fn main() {
             Some((h, p)) if p.parse::<u16>().is_ok() => (h.to_string(), p.parse().unwrap()),
             _ => (addr.to_string(), 25565),
         };
-        let session = if args.online {
+        let session = if prism_session.is_some() {
+            prism_session
+        } else if args.online {
             match auth::login() {
                 Ok(s) => {
                     println!("Signed in as {}", s.name);
@@ -188,9 +198,11 @@ fn main() {
     app.info.seed = seed;
     app.in_game = args.play || connection.is_some();
     if args.screenshot.is_none() && std::env::var_os("RUSTMC_NO_SOUND").is_none() {
-        let dirs = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(".minecraft").join("assets")).into_iter()
+        let index = if args.asset_index.is_empty() { "1.8" } else { args.asset_index.as_str() };
+        let dirs = args.assets_dir.clone().into_iter()
+            .chain(minecraft_dir().map(|d| d.join("assets")))
             .chain([PathBuf::from("MCP-919/.minecraft/assets")]);
-        if let Some(read) = dirs.into_iter().find_map(|d| mc_sound::manager::index_reader(&d, "1.8")) {
+        if let Some(read) = dirs.into_iter().find_map(|d| mc_sound::manager::index_reader(&d, index)) {
             let s = mc_sound::SoundManager::new(std::sync::Arc::new(read));
             println!("sound: {} events, output {}", s.event_count(), if s.mixer.available { "ok" } else { "unavailable" });
             app.sound = Some(s);

@@ -19,7 +19,10 @@ impl App {
     }
 
     pub(crate) fn update(&mut self, dt: f32) {
-        self.process_net();
+        {
+            let _z = crate::bench::zone(crate::bench::Phase::Net);
+            self.process_net();
+        }
         self.poll_disconnect();
         self.flush_window();
         for (cell, rgba) in self.skins.poll() {

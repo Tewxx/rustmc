@@ -119,25 +119,61 @@ fn chunk_payload_round_trips() {
     assert_eq!(&data[2..4], &[(1u16 << 4 | 1).to_le_bytes()[0], 0]);
 }
 
+/// Locate `(javac, java)`: `JAVA8_HOME`, then `.mc-tools/jdk8` in the repo or an ancestor
+/// (macOS bundles keep the JDK in `Contents/Home`), then PATH.
+fn find_java(root: &std::path::Path) -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let exe = |dir: &std::path::Path, n: &str| dir.join("bin").join(format!("{n}{}", std::env::consts::EXE_SUFFIX));
+    let mut homes: Vec<std::path::PathBuf> = std::env::var_os("JAVA8_HOME").map(Into::into).into_iter().collect();
+    for a in root.ancestors().take(6) {
+        let j = a.join(".mc-tools/jdk8");
+        homes.push(j.join("Contents/Home"));
+        homes.push(j);
+    }
+    for h in homes {
+        let (c, r) = (exe(&h, "javac"), exe(&h, "java"));
+        if c.exists() && r.exists() {
+            return Some((c, r));
+        }
+    }
+    let ok = |n: &str| std::process::Command::new(n).arg("-version").output().is_ok_and(|o| o.status.success());
+    (ok("javac") && ok("java")).then(|| ("javac".into(), "java".into()))
+}
+
 /// Vanilla reads and re-writes every sample packet (`oracle/PacketOracle.java`); the bytes must
 /// match ours exactly. Skipped when Java 8 or the MCP classes are not available.
 #[test]
 fn vanilla_reencodes_every_packet_identically() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cp_file = root.join("../../tools/oracle/cp.txt");
-    let java = std::path::PathBuf::from(r"C:\Program Files\Eclipse Adoptium\jdk-8.0.472.8-hotspot\bin");
-    let Ok(cp) = std::fs::read_to_string(&cp_file) else {
+    let Ok(cp_raw) = std::fs::read_to_string(&cp_file) else {
         eprintln!("skipping: no {}", cp_file.display());
         return;
     };
-    if !java.join("java.exe").exists() {
-        eprintln!("skipping: no Java 8");
+    let Some((javac, java)) = find_java(&root) else {
+        eprintln!("skipping: no Java 8 (set JAVA8_HOME, or put a JDK in .mc-tools/jdk8, or on PATH)");
+        return;
+    };
+    // cp.txt may be written Windows-style (`;` and `\`, relative to tools/oracle).
+    let cp_dir = cp_file.parent().unwrap();
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let cp = cp_raw
+        .trim()
+        .split(';')
+        .map(|e| {
+            let e = e.replace('\\', "/");
+            let p = std::path::Path::new(&e);
+            if p.is_absolute() { e } else { cp_dir.join(p).to_string_lossy().into_owned() }
+        })
+        .collect::<Vec<_>>()
+        .join(sep);
+    if let Some(missing) = cp.split(sep).find(|e| !std::path::Path::new(e).exists()) {
+        eprintln!("skipping: classpath entry {missing} not found (MCP-919 not available)");
         return;
     }
     let out_dir = root.join("../../target/protocol-oracle");
     std::fs::create_dir_all(&out_dir).unwrap();
-    let status = std::process::Command::new(java.join("javac.exe"))
-        .args(["-nowarn", "-cp", cp.trim(), "-d"])
+    let status = std::process::Command::new(&javac)
+        .args(["-nowarn", "-cp", &cp, "-d"])
         .arg(&out_dir)
         .arg(root.join("oracle/PacketOracle.java"))
         .status()
@@ -159,9 +195,9 @@ fn vanilla_reencodes_every_packet_identically() {
     }
     let (inp, outp) = (out_dir.join("in.bin"), out_dir.join("out.bin"));
     std::fs::write(&inp, &input).unwrap();
-    let status = std::process::Command::new(java.join("java.exe"))
+    let status = std::process::Command::new(&java)
         .arg("-cp")
-        .arg(format!("{};{}", out_dir.display(), cp.trim()))
+        .arg(format!("{}{sep}{cp}", out_dir.display()))
         .arg("PacketOracle")
         .arg(&inp)
         .arg(&outp)

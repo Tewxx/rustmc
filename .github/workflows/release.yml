@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-aarch64, os: macos-latest, target: aarch64-apple-darwin }
+          - { name: macos-x86_64, os: macos-latest, target: x86_64-apple-darwin }
+          - { name: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { name: linux-x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux system packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libvulkan-dev pkg-config
+      - name: Build
+        run: cargo build --release --bin rustmc --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          out="rustmc-${GITHUB_REF_NAME}-${{ matrix.name }}"
+          mkdir "$out"
+          cp README.md "$out/"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp target/${{ matrix.target }}/release/rustmc.exe Play-RustMC.cmd "$out/"
+            7z a "$out.zip" "$out"
+            echo "ASSET=$out.zip" >> "$GITHUB_ENV"
+          else
+            cp target/${{ matrix.target }}/release/rustmc play.sh "$out/"
+            tar czf "$out.tar.gz" "$out"
+            echo "ASSET=$out.tar.gz" >> "$GITHUB_ENV"
+          fi
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}

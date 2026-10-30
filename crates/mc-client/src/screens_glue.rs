@@ -126,7 +126,7 @@ impl App {
                 eprintln!("[connect] address={address:?} name={name:?} online={online}");
                 // A running App has no world-reset/connection-switch path yet, so hand the
                 // direct-connect request to a fresh client process and stop this one.
-                let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("rustmc.exe"));
+                let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from(format!("rustmc{}", std::env::consts::EXE_SUFFIX)));
                 let mut cmd = std::process::Command::new(exe);
                 cmd.arg("--connect").arg(&address).arg("--name").arg(&name);
                 if online {
@@ -227,6 +227,7 @@ impl App {
     }
 
     pub(crate) fn remesh(&mut self, smooth: bool) {
+        let _z = crate::bench::zone(crate::bench::Phase::Mesh);
         let Some(r) = &mut self.renderer else { return };
         let t = Instant::now();
         let jobs: Vec<_> = self.world.chunks.keys().flat_map(|&(cx, cz)| (0..16).map(move |sy| (cx, sy, cz))).collect();

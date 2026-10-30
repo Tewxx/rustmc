@@ -20,6 +20,10 @@ pub(crate) struct Args {
     pub(crate) online: bool,
     /// `ServerData.ServerResourceMode` override (`--pack-mode`); persisted per server otherwise.
     pub(crate) pack_mode: Option<pack::Mode>,
+    /// Prism: `--assetsDir` / `--assetIndex` for sounds and lang.
+    pub(crate) assets_dir: Option<PathBuf>,
+    pub(crate) asset_index: String,
+    pub(crate) window: Option<(u32, u32)>,
 }
 
 /// `host:port` with the default port filled in, the key `server-packs.json` stores.
@@ -57,6 +61,10 @@ require --online and ignore --name; they kick unauthenticated clients."
 }
 
 pub(crate) fn parse_args() -> Args {
+    parse_args_from(std::env::args().skip(1))
+}
+
+fn parse_args_from(args: impl Iterator<Item = String>) -> Args {
     let mut a = Args {
         play: false,
         jar: None,
@@ -72,8 +80,11 @@ pub(crate) fn parse_args() -> Args {
         name: "Player".into(),
         online: false,
         pack_mode: None,
+        assets_dir: None,
+        asset_index: String::new(),
+        window: None,
     };
-    let mut it = std::env::args().skip(1);
+    let mut it = args;
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--help" | "-h" => {
@@ -106,6 +117,18 @@ pub(crate) fn parse_args() -> Args {
     a
 }
 
+/// The vanilla launcher's data dir: `%APPDATA%\.minecraft`, `~/Library/Application Support/minecraft`
+/// or `~/.minecraft`.
+pub(crate) fn minecraft_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "windows") {
+        dirs::data_dir().map(|d| d.join(".minecraft"))
+    } else if cfg!(target_os = "macos") {
+        dirs::data_dir().map(|d| d.join("minecraft"))
+    } else {
+        dirs::home_dir().map(|d| d.join(".minecraft"))
+    }
+}
+
 pub(crate) fn find_jar() -> Option<PathBuf> {
     let mut candidates = vec![
         PathBuf::from("MCP-919/jars/versions/1.8.9/1.8.9.jar"),
@@ -115,8 +138,68 @@ pub(crate) fn find_jar() -> Option<PathBuf> {
             candidates.push(parent.join("MCP-919/jars/versions/1.8.9/1.8.9.jar"));
         }
     }
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        candidates.push(Path::new(&appdata).join(".minecraft/versions/1.8.9/1.8.9.jar"));
+    if let Some(d) = minecraft_dir() {
+        candidates.push(d.join("versions/1.8.9/1.8.9.jar"));
     }
     candidates.into_iter().find(|p| p.is_file())
 }
+
+/// Launched by Prism's wrapper command: argv holds `<java> ... org.prismlauncher.EntryPoint`.
+pub(crate) fn is_launcher_mode() -> bool {
+    std::env::args().skip(1).any(|a| a.ends_with("EntryPoint")) || std::env::var_os("INST_ID").is_some()
+}
+
+/// In launcher mode: read Prism's stdin script (up to `launch`), parse it and fill `Args`.
+/// Returns the Prism-authenticated session. Exits on a bad script.
+pub(crate) fn launcher_args() -> Option<(Args, Option<auth::Session>)> {
+    use std::io::BufRead;
+    if !is_launcher_mode() {
+        return None;
+    }
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let mut script = String::new();
+    for line in std::io::stdin().lock().lines() {
+        let Ok(line) = line else { break };
+        script.push_str(&line);
+        script.push('\n');
+        if line == "launch" || line == "abort" {
+            break;
+        }
+    }
+    let env = |k: &str| std::env::var(k).ok();
+    let li = match launch::parse(&argv, Some(&script), &env) {
+        Ok(li) => li,
+        Err(e) => {
+            eprintln!("rustmc: bad Prism launch: {e}");
+            std::process::exit(1);
+        }
+    };
+    // Debug: RUSTMC_LAUNCH_LOG=<file> records what Prism sent, token redacted.
+    if let Some(log) = std::env::var_os("RUSTMC_LAUNCH_LOG") {
+        let red = |s: &str| s.replace(&li.access_token, "<REDACTED>");
+        let msg = format!("argv: {}\nenv INST_*: {:?}\n--- script ---\n{}\n--- parsed ---\n{}\n",
+            red(&format!("{argv:?}")),
+            std::env::vars().filter(|(k, _)| k.starts_with("INST_")).collect::<Vec<_>>(),
+            red(&script),
+            red(&format!("{:#?}", li)));
+        let _ = std::fs::write(log, msg);
+    }
+    if let Err(e) = std::env::set_current_dir(&li.game_dir) {
+        eprintln!("rustmc: cannot enter game dir {}: {e}", li.game_dir);
+    }
+    let mut a = parse_args_from(std::iter::empty());
+    a.jar = li.client_jar.clone().map(PathBuf::from);
+    a.assets_dir = Some(PathBuf::from(&li.assets_dir));
+    a.asset_index = li.asset_index.clone();
+    a.name = li.username.clone();
+    a.window = li.width.zip(li.height);
+    a.connect = li.server.as_ref().map(|s| match li.port {
+        Some(p) => format!("{s}:{p}"),
+        None => s.clone(),
+    });
+    let session = auth::Session { name: li.username, uuid: li.uuid, access_token: li.access_token };
+    Some((a, Some(session)))
+}
+
+/// Initial window size (Prism windowParams).
+pub(crate) static WINDOW_SIZE: std::sync::OnceLock<(u32, u32)> = std::sync::OnceLock::new();
