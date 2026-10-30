@@ -85,6 +85,21 @@ impl App {
         self.right_click_delay = self.right_click_delay.saturating_sub(1);
         self.left_click_counter = self.left_click_counter.saturating_sub(1);
         self.update_target(1.0);
+        for whole in std::mem::take(&mut self.drop_presses) {
+            // EntityPlayerSP.dropOneItem always sends C07; the server changes the inventory.
+            if self.entity.game_type == level::GameType::Spectator { continue; }
+            if self.net.is_some() {
+                let status = if whole { mc_protocol::packets::DiggingStatus::DropAllItems } else { mc_protocol::packets::DiggingStatus::DropItem };
+                self.send_dig(status, BlockPos::new(0, 0, 0), Facing::Down);
+            } else {
+                let slot = self.player.selected_slot;
+                if let Some(s) = self.ui.inventory[slot] {
+                    let n = if whole { s.count } else { 1 };
+                    self.ui.inventory[slot] = (s.count > n).then_some(mc_gui::ItemStack { count: s.count - n, ..s });
+                    self.throw_stack(mc_gui::ItemStack { count: n, ..s });
+                }
+            }
+        }
         if self.screen.is_none() {
             let use_down = self.buttons.contains(&MouseButton::Right) && self.grabbed;
             if self.item_in_use.is_some() {
@@ -107,20 +122,6 @@ impl App {
             if self.item_in_use.is_some() {
                 // GuiScreen opening unpresses every key binding.
                 self.on_stopped_using_item();
-            }
-        }
-        for whole in std::mem::take(&mut self.drop_presses) {
-            // EntityPlayerSP.dropOneItem
-            let slot = self.player.selected_slot;
-            if let Some(s) = self.ui.inventory[slot] {
-                let n = if whole { s.count } else { 1 };
-                self.ui.inventory[slot] = (s.count > n).then_some(mc_gui::ItemStack { count: s.count - n, ..s });
-                if self.net.is_some() {
-                    let status = if whole { mc_protocol::packets::DiggingStatus::DropAllItems } else { mc_protocol::packets::DiggingStatus::DropItem };
-                    self.send_dig(status, BlockPos::new(0, 0, 0), Facing::Down);
-                } else {
-                    self.throw_stack(mc_gui::ItemStack { count: n, ..s });
-                }
             }
         }
         for s in std::mem::take(&mut self.ui.drops) {

@@ -731,14 +731,29 @@ mod tests {
             app.in_game = true;
             let rows = sc["out"].as_array().unwrap();
             let script = sc["script"].as_array().unwrap();
-            // The rest of inventory_clicks needs the GUI's slot-click event path.
-            let (rows, script) = if name == "inventory_clicks" { (&rows[..5], &script[..5]) } else { (&rows[..], &script[..]) };
+            let (rows, script) = (&rows[..], &script[..]);
             let count: usize = rows.iter().map(|r| r.as_array().unwrap().len()).sum();
             let (mut net, srv) = loopback(usize::MAX);
             net.entity_id = 1;
             app.net = Some(net);
+            let mut inventory_screen = None;
             for tk in script {
-                if tk["op"] == "inventory" { app.pending_open_inventory = true; }
+                match tk["op"].as_str() {
+                    Some("inventory") => {
+                        app.pending_open_inventory = true;
+                        let w = std::sync::Arc::new(std::sync::Mutex::new(crate::container::Window::new(0, "player", String::new(), 5)));
+                        inventory_screen = Some(crate::container::ContainerScreen::new(w.clone(), app.catalogue.clone()));
+                        app.open_window = Some(w);
+                    }
+                    Some("click") => {
+                        let a = tk["a"].as_array().unwrap();
+                        inventory_screen.as_mut().unwrap().replay_click(&mut app.ui, num(&a[1]) as i16, num(&a[2]) as i8, num(&a[3]) as i8);
+                        app.flush_window();
+                    }
+                    Some("close") => { app.open_window.as_ref().unwrap().lock().unwrap().closed = true; app.flush_window(); }
+                    Some("drop") => app.drop_presses.push(num(&tk["a"][0]) != 0),
+                    _ => {}
+                }
                 if !tk["y"].is_null() {
                     app.entity.yaw = f32::from_bits(num(&tk["y"]) as u32);
                 }

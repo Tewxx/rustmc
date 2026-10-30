@@ -472,6 +472,16 @@ impl ContainerScreen {
         w.clicks.push(Click { slot, button, mode: 5, item: None });
     }
 
+    #[cfg(test)]
+    pub(crate) fn replay_click(&mut self, ui: &mut Ui, slot: i16, button: i8, mode: i8) {
+        if slot == -999 && mode == 0 && self.window.lock().unwrap().cursor.is_some() {
+            self.mouse(ui, -1, -1, button == 1);
+            self.release_at(ui, -1, -1, button == 1);
+        } else {
+            self.click_slot(ui, slot as usize, button, mode);
+        }
+    }
+
     fn click_slot(&mut self, ui: &mut Ui, i: usize, button: i8, mode: i8) {
         let mut w = self.window.lock().unwrap();
         let item = w.get(ui, i).and_then(|s| *s);
