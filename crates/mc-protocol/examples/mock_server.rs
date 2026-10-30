@@ -77,7 +77,25 @@ fn handle(stream: TcpStream) {
     loop {
         while let Ok(Some(p)) = d.next_packet() {
             match stage {
-                0 => stage = 1,
+                0 => {
+                    // Handshake: next state 1 is a server list ping (status JSON, then pong).
+                    stage = match HandshakeServerbound::read(&p) {
+                        Ok(HandshakeServerbound::Handshake(h)) if h.next_state == 1 => 10,
+                        _ => 1,
+                    };
+                }
+                10 => {
+                    send(&w, -1, &StatusClientbound::StatusResponse(StatusResponse { json: status_json() }).to_bytes());
+                    stage = 11;
+                }
+                11 => {
+                    if let Ok(StatusServerbound::StatusPing(pg)) = StatusServerbound::read(&p) {
+                        let delay: u64 = std::env::var("MOCK_PING_DELAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+                        std::thread::sleep(Duration::from_millis(delay));
+                        send(&w, -1, &StatusClientbound::StatusPong(StatusPong { client_time: pg.client_time }).to_bytes());
+                    }
+                    return;
+                }
                 1 => {
                     let LoginServerbound::LoginStart(ls) = LoginServerbound::read(&p).unwrap() else { return };
                     println!("login: {}", ls.name);
@@ -545,6 +563,36 @@ fn handle(stream: TcpStream) {
             Ok(n) => d.feed(&buf[..n]),
         }
     }
+}
+
+fn base64(data: &[u8]) -> String {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::new();
+    for c in data.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            s.push(if i <= c.len() { T[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+    s
+}
+
+/// The server-list status JSON (`ServerStatusResponse`). Environment overrides:
+/// `MOCK_MOTD` (legacy `§` codes allowed), `MOCK_VERSION_NAME`, `MOCK_PROTOCOL`,
+/// `MOCK_ONLINE`, `MOCK_MAX`, `MOCK_ICON` (a 64x64 PNG) and `MOCK_PING_DELAY_MS`.
+fn status_json() -> String {
+    let env = |k: &str, d: &str| std::env::var(k).unwrap_or_else(|_| d.to_string());
+    let online: usize = env("MOCK_ONLINE", "1").parse().unwrap_or(1);
+    let sample: Vec<String> = ["Steve", "Alex"].iter().take(online).map(|n| format!("{{\"name\":\"{n}\",\"id\":\"00000000-0000-0000-0000-000000000000\"}}")).collect();
+    let icon = std::env::var_os("MOCK_ICON").and_then(|p| std::fs::read(p).ok()).map(|b| format!(",\"favicon\":\"data:image/png;base64,{}\"", base64(&b))).unwrap_or_default();
+    format!(
+        "{{\"version\":{{\"name\":{},\"protocol\":{}}},\"players\":{{\"max\":{},\"online\":{online},\"sample\":[{}]}},\"description\":{{\"text\":{}}}{icon}}}",
+        serde_json_escape(&env("MOCK_VERSION_NAME", "1.8.9")),
+        env("MOCK_PROTOCOL", "47"),
+        env("MOCK_MAX", "20"),
+        sample.join(","),
+        serde_json_escape(&env("MOCK_MOTD", "A rustmc mock server")),
+    )
 }
 
 fn serde_json_escape(s: &str) -> String {

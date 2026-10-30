@@ -156,6 +156,8 @@ pub struct Settings {
     pub chat_width: f32,
     pub chat_height_focused: f32,
     pub chat_height_unfocused: f32,
+    /// `GameSettings.lastServer`: the direct-connect address last typed.
+    pub last_server: String,
     /// Skin-parts mask sent in `C15PacketClientSettings`.
     pub model_parts: u8,
     /// Rebound keys by description (missing = the binding's default).
@@ -172,7 +174,7 @@ pub struct Settings {
     pub resource_packs: Vec<String>,
     /// `incompatibleResourcePacks`: selected packs whose `pack_format` is not 1.
     pub incompatible_resource_packs: Vec<String>,
-    path: Option<PathBuf>,
+    pub path: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -207,6 +209,7 @@ impl Default for Settings {
             chat_width: 1.0,
             chat_height_focused: 1.0,
             chat_height_unfocused: 0.44366196,
+            last_server: String::new(),
             model_parts: 0x7f,
             key_codes: Default::default(),
             show_debug: false,
@@ -277,6 +280,7 @@ impl Settings {
                 "chatHeightUnfocused" => s.chat_height_unfocused = f.unwrap_or(s.chat_height_unfocused),
                 "resourcePacks" => s.resource_packs = parse_list(v),
                 "incompatibleResourcePacks" => s.incompatible_resource_packs = parse_list(v),
+                "lastServer" => s.last_server = v.to_string(),
                 _ if k.starts_with("key_") => {
                     if let Some(i) = i {
                         s.key_codes.insert(k[4..].to_string(), i);
@@ -338,6 +342,7 @@ impl Settings {
             ("chatHeightUnfocused", self.chat_height_unfocused.to_string()),
             ("resourcePacks", gson_list(&self.resource_packs)),
             ("incompatibleResourcePacks", gson_list(&self.incompatible_resource_packs)),
+            ("lastServer", self.last_server.clone()),
         ];
         let part_keys: Vec<String> = MODEL_PARTS.iter().map(|p| format!("modelPart_{p}")).collect();
         for (i, k) in part_keys.iter().enumerate() {

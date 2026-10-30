@@ -7,6 +7,7 @@ pub mod crypto;
 pub mod frame;
 pub mod net;
 pub mod packets;
+pub mod status;
 
 pub use buf::{Error, MetaValue, Metadata, Reader, Result, Slot, Uuid, Writer};
 

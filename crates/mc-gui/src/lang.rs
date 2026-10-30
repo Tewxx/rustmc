@@ -3,7 +3,7 @@
 use mc_assets::AssetSource;
 use std::collections::HashMap;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Lang {
     map: HashMap<String, String>,
 }
