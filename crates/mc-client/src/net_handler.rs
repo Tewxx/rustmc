@@ -166,7 +166,8 @@ impl App {
                     }
                 }
                 C::ConfirmTransactionS(t) => {
-                    if !t.accepted {
+                    let known = t.window_id == 0 || self.open_window.as_ref().is_some_and(|w| w.lock().unwrap().id == t.window_id);
+                    if known && !t.accepted {
                         n.send(S::ConfirmTransactionC(ConfirmTransactionC { window_id: t.window_id, action: t.action, accepted: true }));
                     }
                 }

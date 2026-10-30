@@ -211,8 +211,8 @@ impl Net {
         let b = b"vanilla";
         brand.push(b.len() as u8);
         brand.extend_from_slice(b);
-        self.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: "MC|Brand".into(), data: brand }));
         self.send_settings(locale, view_distance, chat_mode, chat_colors, skin_parts);
+        self.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: "MC|Brand".into(), data: brand }));
     }
 
     /// `GameSettings.sendSettingsToServer` (C15).
@@ -820,6 +820,15 @@ mod tests {
             }
             assert_eq!(packets.len(), count, "{name}: packet count");
         }
+    }
+
+    #[test]
+    fn join_replies_send_settings_before_brand() {
+        let (mut n, srv) = loopback(2);
+        n.send_join_replies("en_US", 8, 0, true, 127);
+        let got = srv.join().unwrap();
+        assert!(matches!(&got[0], PlayServerbound::ClientSettings(_)));
+        assert!(matches!(&got[1], PlayServerbound::PluginMessageC(p) if p.channel == "MC|Brand" && p.data == b"\x07vanilla"));
     }
 
     #[test]
