@@ -197,7 +197,7 @@ pub trait Screen {
     fn pick_item(&mut self, _ui: &mut Ui, _mx: i32, _my: i32) -> Action { Action::None }
     fn release(&mut self, _ui: &mut Ui) {}
     fn mouse_move(&mut self, _ui: &mut Ui, _mx: i32, _my: i32) {}
-    fn release_at(&mut self, ui: &mut Ui, _mx: i32, _my: i32, _right: bool) { self.release(ui); }
+    fn release_at(&mut self, ui: &mut Ui, _mx: i32, _my: i32, _button: u8) { self.release(ui); }
     fn key(&mut self, _ui: &mut Ui, key: Key) -> Action {
         if key == Key::Escape { Action::Close } else { Action::None }
     }

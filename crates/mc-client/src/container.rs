@@ -108,7 +108,7 @@ pub struct ContainerScreen {
     /// `GuiInventory` (an `InventoryEffectRenderer`) rather than a plain `GuiContainer`.
     is_player: bool,
     last_click: Option<(usize, bool, std::time::Instant)>,
-    dragging: Option<(bool, Vec<usize>)>,
+    dragging: Option<(u8, Vec<usize>)>,
     pub(crate) creative: bool,
     shift_clicked: Option<ItemStack>,
 }
@@ -416,7 +416,7 @@ impl ContainerScreen {
         let mode = (button >> 2) & 3;
         if w.cursor.is_none() {
             w.drag = None;
-        } else if stage == 0 && w.drag.is_none() && mode <= 1 {
+        } else if stage == 0 && w.drag.is_none() && (mode <= 1 || mode == 2 && self.creative) {
             w.drag = Some((mode, Vec::new()));
         } else if stage == 1 && w.drag.as_ref().is_some_and(|(m, _)| *m == mode) && slot >= 0 {
             let i = slot as usize;
@@ -432,18 +432,18 @@ impl ContainerScreen {
             let (_, slots) = w.drag.take().unwrap();
             let mut cursor = w.cursor.unwrap();
             if !slots.is_empty() {
-                let amount = if mode == 0 { cursor.count / slots.len() as u8 } else { 1 };
-                let mut left = cursor.count;
+                let amount = if mode == 0 { cursor.count / slots.len() as u8 } else if mode == 1 { 1 } else { self.max(cursor) };
+                let mut left = cursor.count as i16;
                 for i in slots {
                     let current = w.get(ui, i).and_then(|v| *v);
                     let old = current.map_or(0, |s| s.count);
                     let limit = if w.kind == "minecraft:brewing_stand" && i < 3 || w.kind == "minecraft:enchanting_table" && i == 0 || w.kind == "minecraft:beacon" && i == 0 || w.kind == "player" && (5..=8).contains(&i) ||
                         w.kind == "minecraft:furnace" && i == 1 && self.catalogue.items[cursor.item].id == 325 { 1 } else { 64 };
                     let new_count = old.saturating_add(amount).min(limit).min(self.max(cursor));
-                    left -= new_count - old;
+                    left -= (new_count - old) as i16;
                     w.set(ui, i, Some(ItemStack { count: new_count, ..cursor }));
                 }
-                cursor.count = left;
+                cursor.count = left.max(0) as u8;
                 w.cursor = (left > 0).then_some(cursor);
             }
         } else {
@@ -562,7 +562,7 @@ impl ContainerScreen {
                 } else if double {
                     self.click_slot(ui, i, button, 6);
                 } else if self.window.lock().unwrap().cursor.is_some() {
-                    self.dragging = Some((right, Vec::new()));
+                    self.dragging = Some((right as u8, Vec::new()));
                 } else {
                     if ui.shift_down { self.shift_clicked = self.window.lock().unwrap().get(ui, i).and_then(|slot| *slot); }
                     self.click_slot(ui, i, button, if ui.shift_down { 1 } else { 0 });
@@ -570,7 +570,7 @@ impl ContainerScreen {
             }
             None if outside => {
                 if self.window.lock().unwrap().cursor.is_some() {
-                    self.dragging = Some((right, Vec::new()));
+                    self.dragging = Some((right as u8, Vec::new()));
                 }
             }
             None => {}
@@ -596,18 +596,19 @@ impl Screen for ContainerScreen {
         if can_add { self.dragging.as_mut().unwrap().1.push(i); }
     }
 
-    fn release_at(&mut self, ui: &mut Ui, mx: i32, my: i32, right: bool) {
-        let Some((drag_right, slots)) = self.dragging.take() else { return };
-        if right != drag_right { return; }
+    fn release_at(&mut self, ui: &mut Ui, mx: i32, my: i32, button: u8) {
+        let Some((drag_button, slots)) = self.dragging.take() else { return };
+        if button != drag_button { return; }
+        let right = button == 1;
         if !slots.is_empty() {
-            let mode = if right { 4 } else { 0 };
+            let mode = button as i8 * 4;
             self.drag_click(ui, -999, mode);
             for i in slots { self.drag_click(ui, i as i16, mode + 1); }
             self.drag_click(ui, -999, mode + 2);
         } else {
             let layout = Self::layout(&self.window.lock().unwrap());
             if let Some(i) = self.at(&layout, mx, my) {
-                self.click_slot(ui, i, right as i8, if ui.shift_down { 1 } else { 0 });
+                self.click_slot(ui, i, button as i8, if button == 2 { 3 } else if ui.shift_down { 1 } else { 0 });
             } else if mx < self.left || my < self.top || mx >= self.left + layout.w || my >= self.top + layout.h {
                 let mut w = self.window.lock().unwrap();
                 if let Some(c) = w.cursor {
@@ -703,7 +704,10 @@ impl Screen for ContainerScreen {
     }
     fn pick_item(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         let layout = Self::layout(&self.window.lock().unwrap());
-        if let Some(i) = self.at(&layout, mx, my) { self.click_slot(ui, i, 2, 3); }
+        if let Some(i) = self.at(&layout, mx, my) {
+            if self.creative && self.window.lock().unwrap().cursor.is_some() { self.dragging = Some((2, Vec::new())); }
+            else { self.click_slot(ui, i, 2, 3); }
+        }
         Action::None
     }
 
@@ -858,13 +862,25 @@ mod tests {
         screen.click(&mut ui, 27, 19);
         screen.mouse_move(&mut ui, 27, 19);
         screen.mouse_move(&mut ui, 45, 19);
-        screen.release_at(&mut ui, 45, 19, false);
+        screen.release_at(&mut ui, 45, 19, 0);
         let win = window.lock().unwrap();
         assert_eq!(win.slots[1].unwrap().count, 4);
         assert_eq!(win.slots[2].unwrap().count, 4);
         assert_eq!(win.cursor.unwrap().count, 1);
         let sent: Vec<_> = win.clicks.iter().map(|c| (c.slot, c.button, c.mode)).collect();
         assert_eq!(sent, [(-999, 0, 5), (1, 1, 5), (2, 1, 5), (-999, 2, 5)]);
+        drop(win);
+        window.lock().unwrap().cursor = Some(ItemStack::new(stone, 64, 0));
+        screen.creative = true;
+        screen.pick_item(&mut ui, 63, 19);
+        screen.mouse_move(&mut ui, 63, 19);
+        screen.mouse_move(&mut ui, 81, 19);
+        screen.release_at(&mut ui, 81, 19, 2);
+        let win = window.lock().unwrap();
+        assert_eq!(win.slots[3].unwrap().count, 64);
+        assert_eq!(win.slots[4].unwrap().count, 64);
+        assert!(win.cursor.is_none());
+        assert_eq!(win.clicks.last().unwrap().button, 10);
     }
 
     #[test]

@@ -61,6 +61,7 @@ final class DumpContainers {
         a.add(run("workbench transfer", "minecraft:crafting_table", new int[][] {{1,4,2,0},{10,1,8,0},{37,3,7,0}}, new int[][] {{10,0,1},{37,0,1},{1,0,1}}));
         a.add(run("beacon transfer", "minecraft:beacon", new int[][] {{28,265,2,0},{29,264,1,0},{30,1,4,0}}, new int[][] {{28,0,1},{29,0,1},{30,0,1},{0,0,1}}));
         a.add(run("beacon placement", "minecraft:beacon", new int[][] {{28,1,4,0},{29,266,3,0}}, new int[][] {{28,0,0},{0,0,0},{28,0,0},{29,0,0},{0,0,0}}));
+        a.add(run("creative drag", "minecraft:chest", new int[][] {{0,1,2,0}}, new int[][] {{0,2,3},{-999,8,5},{1,9,5},{2,9,5},{-999,10,5}}));
         a.add(run("creative clone", "minecraft:chest", new int[][] {{0,1,6,0},{1,306,1,0}}, new int[][] {{0,2,3},{1,2,3},{0,0,0},{1,2,3}}));
         a.add(run("drag evenly", "minecraft:chest", new int[][] {{0,1,11,0},{1,1,60,0}}, new int[][] {{0,0,0},{-999,0,5},{1,1,5},{2,1,5},{3,1,5},{-999,2,5}}));
         a.add(run("drag right", "minecraft:chest", new int[][] {{0,1,4,0}}, new int[][] {{0,0,0},{-999,4,5},{1,5,5},{2,5,5},{-999,6,5}}));

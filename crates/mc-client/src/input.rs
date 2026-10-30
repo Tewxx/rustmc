@@ -146,7 +146,7 @@ impl ApplicationHandler for App {
                     ElementState::Released => {
                         self.buttons.remove(&button);
                         if let Some(s) = &mut self.screen {
-                            s.release_at(&mut self.ui, mx, my, button == MouseButton::Right);
+                            s.release_at(&mut self.ui, mx, my, match button { MouseButton::Left => 0, MouseButton::Right => 1, MouseButton::Middle => 2, _ => 255 });
                             self.apply_settings();
                         }
                     }
