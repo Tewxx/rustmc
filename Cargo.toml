@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "tools/gen-data"]
+members = ["crates/*", "tools/gen-data", "tools/jvm-spike"]
 
 [workspace.package]
 edition = "2021"
