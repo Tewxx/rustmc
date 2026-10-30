@@ -116,6 +116,11 @@ pub fn login(host: &str, port: u16, name: &str, auth: Option<Authenticate>) -> R
 
 /// Like `login`, notifying the caller when the socket is available for cancellation.
 pub fn login_with_socket(host: &str, port: u16, name: &str, auth: Option<Authenticate>, on_socket: impl FnOnce(&TcpStream) -> io::Result<()>) -> Result<(Reader, Writer, LoginSuccess), LoginError> {
+    login_with_handshake_address(host, port, host, name, auth, on_socket)
+}
+
+/// Connect to `host` while sending a distinct virtual host in the handshake.
+pub fn login_with_handshake_address(host: &str, port: u16, handshake_host: &str, name: &str, auth: Option<Authenticate>, on_socket: impl FnOnce(&TcpStream) -> io::Result<()>) -> Result<(Reader, Writer, LoginSuccess), LoginError> {
     let addr = (host, port).to_socket_addrs()?.next().ok_or_else(|| LoginError::Protocol(format!("Unknown host '{host}'")))?;
     let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(30))?;
     on_socket(&stream)?;
@@ -126,7 +131,7 @@ pub fn login_with_socket(host: &str, port: u16, name: &str, auth: Option<Authent
     let threshold = Arc::new(AtomicI32::new(-1));
     let mut w = Writer { stream: stream.try_clone()?, cipher: None, threshold: threshold.clone() };
     let mut r = Reader { stream, cipher: None, decoder: Decoder::new(), threshold, buf: vec![0; 64 * 1024] };
-    let hs = HandshakeServerbound::Handshake(Handshake { protocol_version: crate::PROTOCOL_VERSION, address: host.into(), port, next_state: 2 });
+    let hs = HandshakeServerbound::Handshake(Handshake { protocol_version: crate::PROTOCOL_VERSION, address: handshake_host.into(), port, next_state: 2 });
     w.send(&hs.to_bytes())?;
     w.send(&LoginServerbound::LoginStart(LoginStart { name: name.into() }).to_bytes())?;
     let mut auth = auth;

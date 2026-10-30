@@ -12,6 +12,7 @@ impl App {
         let incoming = n.poll();
         let mut edits = Vec::new();
         for inc in incoming {
+            if self.net.as_ref().is_some_and(|n| n.closed.is_some()) { break; }
             let p = match inc {
                 net::Incoming::Packet(p) => *p,
                 net::Incoming::Closed(reason) => {
@@ -55,6 +56,7 @@ impl App {
                 C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
+                    self.world.has_sky = n.join_dimension(j.dimension) == 0;
                     self.particles.clear();
                     // A new WorldClient brings a fresh Scoreboard; the player info map stays.
                     let players = std::mem::take(&mut self.scoreboard.players);
@@ -620,7 +622,15 @@ impl App {
                 }
                 C::WorldBorder(w) => self.world_border(w),
                 C::PluginMessageS(p) => {
-                    if p.channel == "MC|Brand" {
+                    if p.channel == "REGISTER" || p.channel == "UNREGISTER" {
+                        n.update_channels(p.channel == "REGISTER", &p.data);
+                    } else if p.channel == "FML|HS" {
+                        n.forge_message(&p.data);
+                    } else if p.channel == "FML|MP" {
+                        n.forge_multipart();
+                    } else if p.channel == "FORGE" {
+                        n.forge_runtime(&p.data);
+                    } else if p.channel == "MC|Brand" {
                         // The payload is a VarInt-prefixed UTF-8 string.
                         self.brand = packet_string(&p.data);
                     }
@@ -960,7 +970,7 @@ mod hostile_tests {
         let mut app = App::new(assets, models, world, (8, 8), Settings::default());
         app.in_game = true;
         let port = serve(bodies);
-        app.net = Some(net::Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default()).unwrap());
+        app.net = Some(net::Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default(), false).unwrap());
         let t = Instant::now();
         while app.net.is_some() && t.elapsed().as_secs() < 60 {
             app.update(0.05);

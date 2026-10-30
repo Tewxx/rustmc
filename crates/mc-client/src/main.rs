@@ -12,6 +12,7 @@ mod client_packs;
 mod auth;
 mod chat;
 mod entities;
+mod forge;
 mod music;
 mod net;
 mod pack;

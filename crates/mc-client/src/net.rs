@@ -2,7 +2,7 @@
 //! `Chunk.fillChunk` conversion, and `EntityPlayerSP.onUpdateWalkingPlayer`'s movement packets.
 use mc_core::Vec3;
 use mc_protocol::chunk::WireChunk;
-use mc_protocol::net::{login_with_socket, Writer};
+use mc_protocol::net::{login_with_handshake_address, Writer};
 use mc_protocol::packets::*;
 use mc_world::chunk::{Chunk, Section};
 use std::sync::mpsc::{self, Receiver};
@@ -16,6 +16,8 @@ pub enum Incoming {
 
 pub struct Net {
     writer: Writer,
+    forge: Option<mc_protocol::forge::ClientHandshake>,
+    pub channels: std::collections::HashSet<String>,
     rx: Receiver<Incoming>,
     pub entity_id: i32,
     /// Our profile UUID from `LoginSuccess`.
@@ -46,7 +48,7 @@ impl Drop for Net {
 impl Net {
     /// `GuiConnecting`: blocks until login succeeds, then reads packets on a thread.
     /// `stage` flips to "Logging in..." once the server asks for authentication.
-    pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>, stage: &std::sync::atomic::AtomicU8, socket: &std::sync::Mutex<Option<std::net::TcpStream>>, cancel: &std::sync::atomic::AtomicBool) -> Result<Net, String> {
+    pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>, stage: &std::sync::atomic::AtomicU8, socket: &std::sync::Mutex<Option<std::net::TcpStream>>, cancel: &std::sync::atomic::AtomicBool, forge: bool) -> Result<Net, String> {
         let mut join = |hash: &str| {
             stage.store(mc_gui::screens::STAGE_LOGGING_IN, std::sync::atomic::Ordering::Relaxed);
             match session {
@@ -54,7 +56,8 @@ impl Net {
             None => Err("This server is online-mode. Sign in with --online (Microsoft account), or join an offline-mode server with --name <name>.".into()),
             }
         };
-        let (mut reader, writer, ok) = login_with_socket(host, port, name, Some(&mut join), |stream| {
+        let handshake_host = if forge { format!("{host}\0FML\0") } else { host.to_string() };
+        let (mut reader, writer, ok) = login_with_handshake_address(host, port, &handshake_host, name, Some(&mut join), |stream| {
             let mut slot = socket.lock().unwrap();
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "connection cancelled"));
@@ -93,6 +96,8 @@ impl Net {
             .map_err(|e| e.to_string())?;
         Ok(Net {
             writer,
+            forge: forge.then(|| mc_protocol::forge::ClientHandshake::new(crate::forge::client_mods())),
+            channels: Default::default(),
             rx,
             entity_id: 0,
             uuid: parse_uuid(&ok.uuid),
@@ -108,6 +113,61 @@ impl Net {
             closed: None,
             done_loading_terrain: false,
         })
+    }
+
+    /// Handle FML negotiation only when the connection opted into Forge.
+    pub fn forge_message(&mut self, data: &[u8]) {
+        let Some(handshake) = &mut self.forge else { return };
+        let result = handshake.accept(data, crate::forge::validate).and_then(|responses| {
+            if data.first() == Some(&2) {
+                match handshake.server_mods.get("Forge") {
+                    Some(version) if version.starts_with("11.15.1.") => {},
+                    _ => return Err("Unsupported or missing Forge 1.8.9 server version".into()),
+                }
+                if let Some(id) = handshake.server_mods.keys().find(|id| !matches!(id.as_str(), "mcp" | "FML" | "Forge")) {
+                    return Err(format!("Forge mod {id} requires a mod runtime, which is not yet available"));
+                }
+            }
+            if handshake.dimension.is_some_and(|d| !matches!(d, -1 | 0 | 1)) {
+                return Err("Forge custom dimensions are not yet supported".into());
+            }
+            Ok(responses)
+        });
+        match result {
+            Ok(responses) => for (channel, data) in responses {
+                self.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: channel.into(), data }));
+            },
+            Err(reason) => { self.closed = Some(format!("Forge handshake failed: {reason}")); self.disconnect(); }
+        }
+    }
+
+    pub fn join_dimension(&self, vanilla_dimension: i8) -> i32 {
+        self.forge.as_ref().and_then(|f| f.dimension).filter(|d| *d != 0).unwrap_or(vanilla_dimension as i32)
+    }
+
+    pub fn update_channels(&mut self, register: bool, data: &[u8]) {
+        let Ok(names) = std::str::from_utf8(data) else { return };
+        for name in names.split('\0').filter(|s| !s.is_empty() && s.len() <= 20) {
+            if register {
+                if self.channels.len() < 1024 { self.channels.insert(name.to_string()); }
+            } else { self.channels.remove(name); }
+        }
+    }
+
+    pub fn forge_multipart(&mut self) {
+        if self.forge.is_some() {
+            self.closed = Some("Forge multipart payloads are not yet supported".into());
+            self.disconnect();
+        }
+    }
+
+    pub fn forge_runtime(&mut self, data: &[u8]) {
+        if self.forge.is_some() {
+            if let Err(reason) = crate::forge::validate_runtime(data) {
+                self.closed = Some(format!("Forge runtime packet failed: {reason}"));
+                self.disconnect();
+            }
+        }
     }
 
     pub fn send(&mut self, p: PlayServerbound) {
@@ -398,7 +458,7 @@ mod tests {
                 d.feed(&buf[..n]);
             }
         });
-        (Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default()).unwrap(), srv)
+        (Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default(), false).unwrap(), srv)
     }
 
     /// Replays Java's actual EntityPlayerSP packet stream through the client movement path.
@@ -787,4 +847,37 @@ mod tests {
         }
         assert!(matches!(got[0], PlayServerbound::PlayerPosLook(PlayerPosLook { x: 11.0, y: 70.0, z: 12.0, .. })));
     }
+    /// Run with a local Forge 1.8.9 server; never opens a client window.
+    #[test]
+    #[ignore = "requires a local Forge 1.8.9 server (RUSTMC_FORGE_TEST_PORT)"]
+    fn real_forge_server_handshake() {
+        let port: u16 = std::env::var("RUSTMC_FORGE_TEST_PORT").unwrap().parse().unwrap();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let addr = mc_protocol::status::Address { host: "127.0.0.1".into(), port };
+        let status = mc_protocol::status::query(&addr, &cancel, std::time::Duration::from_secs(5)).unwrap();
+        let status: serde_json::Value = serde_json::from_str(&status).unwrap();
+        assert_eq!(status["modinfo"]["type"], "FML");
+        let mut n = Net::connect("127.0.0.1", port, "Probe", None, &Default::default(), &Default::default(), &cancel, true).unwrap();
+        let start = std::time::Instant::now();
+        let mut joined = false;
+        while start.elapsed() < std::time::Duration::from_secs(20) && !joined {
+            for p in n.poll() {
+                match p {
+                    Incoming::Packet(p) => match *p {
+                        PlayClientbound::PluginMessageS(p) if p.channel == "FML|HS" => n.forge_message(&p.data),
+                        PlayClientbound::PluginMessageS(p) if p.channel == "FORGE" => n.forge_runtime(&p.data),
+                        PlayClientbound::JoinGame(_) => joined = true,
+                        PlayClientbound::Disconnect(d) => panic!("server disconnected: {}", d.reason),
+                        _ => {}
+                    },
+                    Incoming::Closed(e) => panic!("connection closed: {e}"),
+                }
+                assert!(n.closed.is_none(), "{:?}", n.closed);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(n.forge.as_ref().unwrap().is_complete(), "Forge handshake incomplete");
+        assert!(joined, "server did not send JoinGame");
+    }
+
 }

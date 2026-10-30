@@ -5,6 +5,7 @@ pub mod buf;
 pub mod chunk;
 pub mod crypto;
 pub mod frame;
+pub mod forge;
 pub mod net;
 pub mod packets;
 pub mod status;

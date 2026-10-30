@@ -251,7 +251,15 @@ fn connect_blocking(addr: &mc_protocol::status::Address, name: &str, online: boo
         None
     };
     let name = session.as_ref().map_or(name.to_string(), |s| s.name.clone());
-    net::Net::connect(&addr.host, addr.port, &name, session.as_ref(), stage, socket, cancel).map(|n| (n, name))
+    let forge = match std::env::var("RUSTMC_FORGE").as_deref() {
+        Ok("1") => true,
+        Ok("0") => false,
+        _ => mc_protocol::status::query(addr, cancel, Duration::from_millis(1200))
+            .ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .is_some_and(|s| s.get("modinfo").and_then(|m| m.get("type")).and_then(|v| v.as_str()) == Some("FML")),
+    };
+    if cancel.load(Ordering::Relaxed) { return Err("Connection cancelled".into()); }
+    net::Net::connect(&addr.host, addr.port, &name, session.as_ref(), stage, socket, cancel, forge).map(|n| (n, name))
 }
 
 #[cfg(test)]
@@ -428,4 +436,58 @@ mod tests {
             assert!(m1 < m0 + 150 * 1024, "rss grew {m0} -> {m1} KiB");
         }
     }
+    #[test]
+    #[ignore = "requires a local Forge 1.8.9 server (RUSTMC_FORGE_TEST_PORT)"]
+    fn real_forge_server_auto_detect() {
+        let port: u16 = std::env::var("RUSTMC_FORGE_TEST_PORT").unwrap().parse().unwrap();
+        let addr = mc_protocol::status::Address { host: "127.0.0.1".into(), port };
+        let cancel = AtomicBool::new(false);
+        let socket = std::sync::Mutex::new(None);
+        let (mut n, _) = connect_blocking(&addr, "ProbeAuto", false, None, &AtomicU8::new(0), &socket, &cancel).unwrap();
+        let start = Instant::now();
+        let mut joined = false;
+        while start.elapsed() < Duration::from_secs(20) && !joined {
+            for item in n.poll() {
+                match item {
+                    net::Incoming::Packet(p) => match *p {
+                        mc_protocol::packets::PlayClientbound::PluginMessageS(p) if p.channel == "FML|HS" => n.forge_message(&p.data),
+                        mc_protocol::packets::PlayClientbound::PluginMessageS(p) if p.channel == "FORGE" => n.forge_runtime(&p.data),
+                        mc_protocol::packets::PlayClientbound::JoinGame(_) => joined = true,
+                        mc_protocol::packets::PlayClientbound::Disconnect(p) => panic!("server disconnected: {}", p.reason),
+                        _ => {}
+                    },
+                    net::Incoming::Closed(e) => panic!("connection closed: {e}"),
+                }
+                assert!(n.closed.is_none(), "{:?}", n.closed);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(joined, "Forge auto-detection did not reach JoinGame");
+    }
+
+    #[test]
+    #[ignore = "requires a local Forge server and RUSTMC_FORGE_TEST_JAR"]
+    fn real_forge_server_app_join() {
+        let port: u16 = std::env::var("RUSTMC_FORGE_TEST_PORT").unwrap().parse().unwrap();
+        let jar = std::env::var("RUSTMC_FORGE_TEST_JAR").unwrap();
+        let mut assets = AssetSource::new();
+        assets.push(Path::new(&jar)).unwrap();
+        let models = BlockModels::load(&assets);
+        let mut world = World::default();
+        world.track_dirty = true;
+        let mut app = App::new(assets, models, world, (8,8), Settings::default());
+        app.start_connect(&format!("127.0.0.1:{port}"), "ProbeApp", false, Some(pack::Mode::Disabled));
+        app.wait_connect();
+        assert!(app.net.is_some(), "login failed");
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(30) && app.world.chunks.is_empty() {
+            app.process_net();
+            assert!(app.net.as_ref().is_some_and(|n| n.closed.is_none()), "Forge connection closed");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!app.world.chunks.is_empty(), "Forge world chunks did not arrive");
+        app.leave_world();
+        assert!(app.world.chunks.is_empty());
+    }
+
 }

@@ -116,6 +116,18 @@ fn send(stream: &mut TcpStream, body: &[u8]) -> io::Result<()> {
     stream.write_all(&out)
 }
 
+/// Retrieve status without a pong, with a caller-selected timeout (e.g. Forge detection).
+pub fn query(addr: &Address, cancel: &AtomicBool, timeout: Duration) -> Result<String, PingError> {
+    let mut stream = connect(addr, cancel, timeout)?;
+    let mut dec = Decoder::new();
+    send(&mut stream, &HandshakeServerbound::Handshake(Handshake { protocol_version: crate::PROTOCOL_VERSION, address: addr.host.clone(), port: addr.port, next_state: 1 }).to_bytes())?;
+    send(&mut stream, &StatusServerbound::StatusRequest(StatusRequest {}).to_bytes())?;
+    match StatusClientbound::read(&recv(&mut stream, &mut dec, cancel, timeout)?).map_err(|e| PingError::Protocol(format!("{e:?}")))? {
+        StatusClientbound::StatusResponse(s) => Ok(s.json),
+        _ => Err(PingError::Protocol("Received unrequested packet".into())),
+    }
+}
+
 /// The modern status ping. `on_status` gets the `S00PacketServerInfo` JSON as soon as it
 /// arrives (vanilla fills `ServerData` from it before the pong); the result is the round trip
 /// of `C01PacketPing` -> `S01PacketPong` in ms.
