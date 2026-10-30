@@ -70,6 +70,10 @@ pub struct PlayerEntity {
     // PlayerCapabilities
     pub flying: bool,
     pub riding: bool,
+    pub saddled_horse: bool,
+    horse_jump_counter: i32,
+    horse_jump_power: f32,
+    pub pending_horse_jump: Option<i32>,
     pub disable_damage: bool,
     pub allow_flying: bool,
     pub creative: bool,
@@ -161,6 +165,10 @@ impl PlayerEntity {
             food_level: 20,
             flying: false,
             riding: false,
+            saddled_horse: false,
+            horse_jump_counter: 0,
+            horse_jump_power: 0.,
+            pending_horse_jump: None,
             disable_damage: false,
             allow_flying: false,
             creative: false,
@@ -416,6 +424,24 @@ impl PlayerEntity {
                 self.motion.y += (self.fly_speed * 3.0) as f64;
             }
         }
+        // EntityPlayerSP's horse jump charge and release run before riding packets.
+        if self.saddled_horse {
+            if self.horse_jump_counter < 0 {
+                self.horse_jump_counter += 1;
+                if self.horse_jump_counter == 0 { self.horse_jump_power = 0.; }
+            }
+            if flag && !self.jump_key {
+                self.horse_jump_counter = -10;
+                self.pending_horse_jump = Some((self.horse_jump_power * 100.) as i32);
+            } else if !flag && self.jump_key {
+                self.horse_jump_counter = 0;
+                self.horse_jump_power = 0.;
+            } else if flag {
+                self.horse_jump_counter += 1;
+                self.horse_jump_power = if self.horse_jump_counter < 10 { self.horse_jump_counter as f32 * 0.1 }
+                    else { 0.8 + 2.0 / (self.horse_jump_counter - 9) as f32 * 0.1 };
+            }
+        } else { self.horse_jump_power = 0.; }
         self.on_living_update_player(w);
         if self.on_ground && self.flying && !self.no_clip {
             self.flying = false;

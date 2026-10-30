@@ -81,8 +81,13 @@ impl App {
             self.player.selected_slot = slot;
         }
         if std::mem::take(&mut self.pending_open_inventory) {
-            use mc_protocol::packets::{ClientStatus, ClientStatusKind, PlayServerbound};
-            self.send(PlayServerbound::ClientStatus(ClientStatus { status: ClientStatusKind::OpenInventoryAchievement }));
+            use mc_protocol::packets::{ClientStatus, ClientStatusKind, EntityAction, EntityActionKind, PlayServerbound};
+            if self.riding_horse() {
+                let id = self.net.as_ref().unwrap().entity_id;
+                self.send(PlayServerbound::EntityAction(EntityAction { entity_id: id, action: EntityActionKind::OpenInventory, aux: 0 }));
+            } else {
+                self.send(PlayServerbound::ClientStatus(ClientStatus { status: ClientStatusKind::OpenInventoryAchievement }));
+            }
         }
         self.right_click_delay = self.right_click_delay.saturating_sub(1);
         self.left_click_counter = self.left_click_counter.saturating_sub(1);
@@ -147,6 +152,9 @@ impl App {
             self.tick_item_in_use();
             let riding = self.net.as_ref().and_then(|n| self.attached.get(&n.entity_id)).copied();
             self.entity.riding = riding.is_some();
+            self.entity.saddled_horse = riding.and_then(|id| self.remote.map.get(&id)).is_some_and(|e| {
+                matches!(e.kind, entities::Kind::Mob(100)) && matches!(e.meta.get(&16), Some(mc_protocol::MetaValue::Int(flags)) if flags & 4 != 0)
+            });
             if riding.is_some() { self.entity.motion = mc_core::Vec3::new(0., 0., 0.); }
             self.entity.tick(&self.world, &mut self.geometry, keys);
             let player = Vec3::new(self.entity.pos.x as f32, self.entity.pos.y as f32, self.entity.pos.z as f32);
@@ -170,6 +178,11 @@ impl App {
                 let e = &self.entity;
                 let flags = e.disable_damage as u8 | (e.flying as u8) << 1 | (e.allow_flying as u8) << 2 | (e.creative as u8) << 3;
                 self.send(S::PlayerAbilitiesC(PlayerAbilitiesC { flags, fly_speed: e.fly_speed, walk_speed: e.walk_speed }));
+            }
+            if let Some(jump) = self.entity.pending_horse_jump.take() {
+                if let Some(n) = &mut self.net {
+                    n.send(mc_protocol::packets::PlayServerbound::EntityAction(mc_protocol::packets::EntityAction { entity_id: n.entity_id, action: mc_protocol::packets::EntityActionKind::RidingJump, aux: jump }));
+                }
             }
             if let Some(n) = &mut self.net {
                 let e = &self.entity;

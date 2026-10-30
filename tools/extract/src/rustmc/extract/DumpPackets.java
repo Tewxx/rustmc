@@ -280,7 +280,8 @@ final class DumpPackets {
             if (lcc > 0) put(mc, Minecraft.class, "leftClickCounter", lcc - 1);
             if (t.slot >= 0) p.inventory.currentItem = t.slot;
             if ("inventory".equals(t.op)) {
-                p.sendQueue.addToSendQueue(new C16PacketClientStatus(C16PacketClientStatus.EnumState.OPEN_INVENTORY_ACHIEVEMENT));
+                if (pc.isRidingHorse()) p.sendHorseInventory();
+                else p.sendQueue.addToSendQueue(new C16PacketClientStatus(C16PacketClientStatus.EnumState.OPEN_INVENTORY_ACHIEVEMENT));
             } else if ("click".equals(t.op)) {
                 pc.windowClick(t.arg[0], t.arg[1], t.arg[2], t.arg[3], p);
             } else if ("close".equals(t.op)) {
@@ -314,6 +315,10 @@ final class DumpPackets {
             } else if ("mount".equals(t.op)) {
                 net.minecraft.entity.item.EntityMinecartEmpty cart = new net.minecraft.entity.item.EntityMinecartEmpty(world, 0.5, 64.0, 0.5);
                 cart.setEntityId(77); world.ents.add(cart); p.mountEntity(cart);
+            } else if ("mounthorse".equals(t.op)) {
+                net.minecraft.entity.passive.EntityHorse horse = new net.minecraft.entity.passive.EntityHorse(world);
+                horse.setPosition(0.5, 64.0, 0.5); horse.setEntityId(77); horse.setHorseSaddled(t.arg[0] != 0);
+                world.ents.add(horse); p.mountEntity(horse);
             } else if ("mountboat".equals(t.op)) {
                 net.minecraft.entity.item.EntityBoat boat = new net.minecraft.entity.item.EntityBoat(world, 0.5, 64.0, 0.5);
                 boat.setEntityId(77); boat.rotationYaw = t.arg[0]; boat.prevRotationYaw = t.arg[0]; world.ents.add(boat); p.mountEntity(boat);
@@ -448,6 +453,11 @@ final class DumpPackets {
         s = new Sc("join_replies").floor();
         s.language = "fr_FR";
         s.op("join").op("settings", 5, 1, 0, 21, 1).op("settings", 12, 0, 1, 127, 0).idle(2);
+        l.add(s);
+
+        s = new Sc("horse_input").floor();
+        s.idle(2).op("mounthorse", 1).keys(5, J).keys(1, 0).op("inventory").idle(2)
+         .keys(12, J).keys(1, 0).idle(2).op("dismount").idle(2);
         l.add(s);
 
         s = new Sc("boat_input").floor();

@@ -3,6 +3,12 @@
 use crate::*;
 
 impl App {
+    /// `PlayerControllerMP.isRidingHorse` does not require a saddle.
+    pub(crate) fn riding_horse(&self) -> bool {
+        self.net.as_ref().and_then(|n| self.attached.get(&n.entity_id)).and_then(|id| self.remote.map.get(id))
+            .is_some_and(|e| matches!(e.kind, entities::Kind::Mob(100)))
+    }
+
     /// The `Item` in the selected hotbar slot.
     pub(crate) fn held_registry_item(&self) -> Option<&'static mc_data::item::Item> {
         let s = self.ui.inventory[self.player.selected_slot]?;

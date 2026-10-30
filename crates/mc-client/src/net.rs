@@ -669,6 +669,7 @@ mod tests {
             "place_blocked_by_entity",
             "place_through_item",
             "creative_actions",
+            "horse_input",
             "boat_input",
             "vehicle_using_item",
             "vehicle_input",
@@ -793,6 +794,12 @@ mod tests {
                     Some("join") => {
                         app.handle_packet(PlayClientbound::JoinGame(JoinGame { entity_id: 1, game_mode: 0, hardcore: false, dimension: 0, difficulty: 2, max_players: 20, level_type: "default".into(), reduced_debug_info: false }), &mut Vec::new());
                     }
+                    Some("mounthorse") => {
+                        let mut horse = crate::entities::Remote::new(77, crate::entities::Kind::Mob(100), 16, 2048, 16, 0, 0);
+                        horse.meta.insert(16, mc_protocol::MetaValue::Int(if num(&tk["a"][0]) != 0 { 4 } else { 0 }));
+                        app.remote.map.insert(77, horse);
+                        app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());
+                    }
                     Some("mountboat") => {
                         app.remote.map.insert(77, crate::entities::Remote::new(77, crate::entities::Kind::Object(1), 16, 2048, 16, ((num(&tk["a"][0]) * 256 / 360) as u8) as i8, 0));
                         app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());
@@ -817,9 +824,11 @@ mod tests {
                     Some("respawn") => app.request_respawn(),
                     Some("inventory") => {
                         app.pending_open_inventory = true;
-                        let w = std::sync::Arc::new(std::sync::Mutex::new(crate::container::Window::new(0, "player", String::new(), 5)));
-                        inventory_screen = Some(crate::container::ContainerScreen::new(w.clone(), app.catalogue.clone()));
-                        app.open_window = Some(w);
+                        if !app.riding_horse() {
+                            let w = std::sync::Arc::new(std::sync::Mutex::new(crate::container::Window::new(0, "player", String::new(), 5)));
+                            inventory_screen = Some(crate::container::ContainerScreen::new(w.clone(), app.catalogue.clone()));
+                            app.open_window = Some(w);
+                        }
                     }
                     Some("click") => {
                         let a = tk["a"].as_array().unwrap();

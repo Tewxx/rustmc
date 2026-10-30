@@ -236,7 +236,9 @@ impl ApplicationHandler for App {
                 let is = |name: &str| lw != 0 && self.ui.settings.key(name) == lw;
                 if is("key.inventory") {
                     self.pending_open_inventory = self.net.is_some();
-                    if self.entity.creative {
+                    if self.net.is_some() && self.riding_horse() {
+                        // The server opens the horse container after C0B OPEN_INVENTORY.
+                    } else if self.entity.creative {
                         self.open(Box::new(inventory::Creative::new(self.catalogue.clone())), false)
                     } else if self.net.is_some() {
                         // ContainerPlayer is window 0; clicks go to the server like any window.
