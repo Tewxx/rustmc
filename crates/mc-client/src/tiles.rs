@@ -37,7 +37,7 @@ impl Kind {
 }
 
 fn is_rendered_tile(state: mc_data::StateId) -> bool {
-    Kind::of(state).is_some() || matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign")
+    Kind::of(state).is_some() || matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign" | "minecraft:skull")
 }
 
 /// `EnumFacing.getIndex()` for the chest's `facing` property (`BlockChest.getMetaFromState`).
@@ -245,6 +245,14 @@ impl Tiles {
                 let (sky, block) = world.light(pos.x, pos.y, pos.z);
                 out.push(TileFrame::Sign { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
                     standing: state.block().name == "minecraft:standing_sign", meta: state.meta(), light: color(sky, block), glyphs: Vec::new() });
+                continue;
+            }
+            if state.block().name == "minecraft:skull" {
+                let nbt = self.map.get(&pos).and_then(|te| te.nbt.as_ref()).or_else(|| world.tile_entity(pos));
+                let byte = |key| nbt.and_then(|nbt| nbt.get(key)).and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                let (sky, block) = world.light(pos.x, pos.y, pos.z);
+                out.push(TileFrame::Skull { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    facing: state.meta() & 7, rotation: byte("Rot"), kind: byte("SkullType"), light: color(sky, block) });
                 continue;
             }
             let Some(kind) = Kind::of(state) else { continue };
@@ -458,6 +466,19 @@ mod tests {
         assert!(long.len() < 100 && !long.is_empty());
         let unicode = sign_glyphs(r#"{"text":"中"}"#, 0, &mut font, &lang, true);
         assert_eq!(unicode[0].texture.as_deref(), Some("textures/font/unicode_page_4e.png"));
+    }
+
+    #[test]
+    fn skull_frame_uses_server_nbt_and_block_facing() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:skull").unwrap().state_from_meta(1).unwrap();
+        world.set_block_state(p, state);
+        let mut tiles = Tiles::default();
+        tiles.on_nbt(p, Some([(String::from("SkullType"), mc_core::nbt::Tag::Byte(2)),
+            (String::from("Rot"), mc_core::nbt::Tag::Byte(7))].into_iter().collect()));
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]);
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Skull { facing: 1, rotation: 7, kind: 2, .. }]));
     }
 
     #[test]

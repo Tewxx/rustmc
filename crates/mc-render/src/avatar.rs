@@ -1823,6 +1823,7 @@ mod particle_instance_tests {
             skin: crate::tile::ChestSkin::Normal, x_shift: false, z_shift: false, lid: 0.5, light: [1.;3] });
         frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(0.3, -1., 2.5), standing: true, meta: 3, light: [1.;3], glyphs: Vec::new() });
         frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 3.), standing: false, meta: 2, light: [1.;3], glyphs: Vec::new() });
+        frame.tiles.push(crate::tile::TileFrame::Skull { pos: Vec3::new(-0.2, -0.5, 2.), facing: 1, rotation: 5, kind: 2, light: [1.;3] });
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
         assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "objects and tiles must be visible");

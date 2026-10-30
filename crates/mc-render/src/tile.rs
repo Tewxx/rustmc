@@ -14,6 +14,7 @@ use glam::{Mat4, Vec3};
 /// Atlas keys this module samples (added to the entity atlas at startup).
 pub const TEXTURES: &[&str] = &[
     "sign",
+    "steve",
     "chest/normal",
     "chest/trapped",
     "chest/ender",
@@ -87,13 +88,19 @@ pub struct ChestModels {
     large: ChestModel,
     sign_board: Part,
     sign_stick: Part,
+    skull_32: Part,
+    skull_64: Part,
+    skull_overlay: Part,
 }
 
 impl Default for ChestModels {
     fn default() -> Self {
         Self { simple: ChestModel::new(false), large: ChestModel::new(true),
             sign_board: Part::new().add_box([64., 32.], [0., 0.], [-12., -14., -1.], [24, 12, 2], 0., false),
-            sign_stick: Part::new().add_box([64., 32.], [0., 14.], [-1., -2., -1.], [2, 14, 2], 0., false) }
+            sign_stick: Part::new().add_box([64., 32.], [0., 14.], [-1., -2., -1.], [2, 14, 2], 0., false),
+            skull_32: Part::new().add_box([64., 32.], [0., 0.], [-4., -8., -4.], [8, 8, 8], 0., false),
+            skull_64: Part::new().add_box([64., 64.], [0., 0.], [-4., -8., -4.], [8, 8, 8], 0., false),
+            skull_overlay: Part::new().add_box([64., 64.], [32., 0.], [-4., -8., -4.], [8, 8, 8], 0.25, false) }
     }
 }
 
@@ -104,6 +111,7 @@ pub struct SignGlyph { pub pos: [[f32; 2]; 4], pub uv: [[f32; 2]; 4], pub color:
 #[derive(Clone, Debug)]
 pub enum TileFrame {
     Sign { pos: Vec3, standing: bool, meta: u8, light: [f32; 3], glyphs: Vec<SignGlyph> },
+    Skull { pos: Vec3, facing: u8, rotation: u8, kind: u8, light: [f32; 3] },
     /// `TileEntityChestRenderer.renderTileEntityAt`
     Chest {
         /// The tile's block position in world space.
@@ -126,7 +134,7 @@ pub enum TileFrame {
 impl TileFrame {
     pub fn light(&self) -> [f32; 3] {
         match self {
-            TileFrame::Chest { light, .. } | TileFrame::Sign { light, .. } => *light,
+            TileFrame::Chest { light, .. } | TileFrame::Sign { light, .. } | TileFrame::Skull { light, .. } => *light,
         }
     }
 }
@@ -148,6 +156,22 @@ pub fn render(f: &TileFrame, models: &ChestModels, out: &mut dyn FnMut(&Layer, M
             let layer = Layer { tex: Tex::Mob("sign"), tint: [1.; 3], overlay: None, additive: false, glint: false };
             models.sign_board.render(m, &mut |pm, q| out(&layer, pm, q));
             if *standing { models.sign_stick.render(m, &mut |pm, q| out(&layer, pm, q)); }
+        }
+        TileFrame::Skull { pos, facing, rotation, kind, .. } => {
+            let (offset, yaw) = match facing & 7 {
+                1 => (Vec3::new(0.5, 0., 0.5), *rotation as f32 * 360. / 16.),
+                2 => (Vec3::new(0.5, 0.25, 0.74), 0.),
+                3 => (Vec3::new(0.5, 0.25, 0.26), 180.),
+                4 => (Vec3::new(0.74, 0.25, 0.5), 270.),
+                _ => (Vec3::new(0.26, 0.25, 0.5), 90.),
+            };
+            let m = Mat4::from_translation(*pos + offset) * Mat4::from_scale(Vec3::new(-1., -1., 1.)) * Mat4::from_rotation_y(yaw.to_radians());
+            let key = match kind { 1 => "skeleton/wither_skeleton", 2 => "zombie/zombie", 3 => "steve", 4 => "creeper/creeper", _ => "skeleton/skeleton" };
+            let layer = Layer { tex: Tex::Mob(key), tint: [1.;3], overlay: None, additive: false, glint: false };
+            let humanoid = *kind == 2 || *kind == 3;
+            let model = if humanoid { &models.skull_64 } else { &models.skull_32 };
+            model.render(m, &mut |pm, q| out(&layer, pm, q));
+            if humanoid { models.skull_overlay.render(m, &mut |pm, q| out(&layer, pm, q)); }
         }
         TileFrame::Chest { pos, meta, large, skin, x_shift, z_shift, lid, .. } => {
             let model = if *large { &models.large } else { &models.simple };
@@ -211,6 +235,20 @@ mod tests {
             render(&frame, &ChestModels::default(), &mut |layer, _, _| { assert!(matches!(layer.tex, Tex::Mob("sign"))); count += 1; });
             assert_eq!(count, expected);
         }
+    }
+
+    #[test]
+    fn skull_models_match_java_head_layers() {
+        for (kind, expected) in [(0, 6), (1, 6), (2, 12), (3, 12), (4, 6)] {
+            let frame = TileFrame::Skull { pos: Vec3::ZERO, facing: 1, rotation: 4, kind, light: [1.;3] };
+            let mut count = 0; render(&frame, &ChestModels::default(), &mut |_, _, _| count += 1);
+            assert_eq!(count, expected);
+        }
+        let frame = TileFrame::Skull { pos: Vec3::ZERO, facing: 1, rotation: 0, kind: 0, light: [1.;3] };
+        let mut lo = Vec3::splat(f32::INFINITY); let mut hi = Vec3::splat(f32::NEG_INFINITY);
+        render(&frame, &ChestModels::default(), &mut |_, m, q| for p in q.pos { let p = (m * p.extend(1.)).truncate(); lo = lo.min(p); hi = hi.max(p); });
+        assert_eq!(lo, Vec3::new(0.25, 0., 0.25));
+        assert_eq!(hi, Vec3::new(0.75, 0.5, 0.75));
     }
 
     /// `ModelChest`'s three parts, in `renderAll` order: 6 quads each.
