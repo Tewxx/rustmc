@@ -600,10 +600,13 @@ impl App {
                 C::AttachEntity(a) => {
                     if a.leash != 0 {
                         // Leash to `vehicle_id`; the leash renderer is not ported yet.
-                    } else if a.vehicle_id == 0 {
-                        self.attached.remove(&a.entity_id);
-                    } else {
-                        self.attached.insert(a.entity_id, a.vehicle_id);
+                    } else if a.entity_id == n.entity_id || self.remote.map.contains_key(&a.entity_id) {
+                        // EntityLivingBase.mountEntity(null) dismounts on the client without repositioning.
+                        if a.vehicle_id == -1 || !self.remote.map.contains_key(&a.vehicle_id) {
+                            self.attached.remove(&a.entity_id);
+                        } else {
+                            self.attached.insert(a.entity_id, a.vehicle_id);
+                        }
                     }
                 }
                 C::EntityIdle(_) => {}

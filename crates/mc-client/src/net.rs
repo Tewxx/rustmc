@@ -655,6 +655,7 @@ mod tests {
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for name in [
+            "vehicle_input",
             "server_replies",
             "respawn",
             "inventory_clicks",
@@ -741,6 +742,11 @@ mod tests {
             let mut inventory_screen = None;
             for tk in script {
                 match tk["op"].as_str() {
+                    Some("mount") => {
+                        app.remote.map.insert(77, crate::entities::Remote::new(77, crate::entities::Kind::Object(10), 16, 2048, 16, 0, 0));
+                        app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());
+                    }
+                    Some("dismount") => { app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: -1, leash: 0 }), &mut Vec::new()); }
                     Some("keepalive") => {
                         let a = tk["a"].as_array().unwrap();
                         app.handle_packet(PlayClientbound::KeepAliveS(KeepAliveS { key: num(&a[0]) as i32 }), &mut Vec::new());

@@ -145,6 +145,8 @@ impl App {
         let (px, pz) = (self.entity.pos.x.floor() as i32, self.entity.pos.z.floor() as i32);
         if self.is_local() || self.world.is_chunk_loaded(px >> 4, pz >> 4) {
             self.tick_item_in_use();
+            let riding = self.net.as_ref().and_then(|n| self.attached.get(&n.entity_id)).copied();
+            if riding.is_some() { self.entity.motion = mc_core::Vec3::new(0., 0., 0.); }
             self.entity.tick(&self.world, &mut self.geometry, keys);
             let player = Vec3::new(self.entity.pos.x as f32, self.entity.pos.y as f32, self.entity.pos.z as f32);
             self.particles.tick(&self.world, &mut self.geometry, &mut self.rand, player, &self.remote.map, &self.models);
@@ -175,6 +177,15 @@ impl App {
                 } else {
                     n.update_walking(e.sprinting, e.is_sneaking(), self.camera_entity.is_none(), None, e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
                 }
+            }
+            // Entity.updateRidden repositions the passenger after its onUpdate packet emission.
+            if let Some(vehicle) = riding.and_then(|id| self.remote.map.get(&id)) {
+                let (dx, dz, dy) = match vehicle.kind {
+                    entities::Kind::Object(10) => (0.0, 0.0, 0.0),
+                    entities::Kind::Object(1) => { let yaw = vehicle.yaw as f64 * std::f64::consts::PI / 180.0; (yaw.cos() * 0.4, yaw.sin() * 0.4, -0.3) },
+                    _ => (0.0, 0.0, vehicle.height * 0.75),
+                };
+                self.entity.set_position(mc_core::Vec3::new(vehicle.pos.x + dx, vehicle.pos.y + dy - 0.35, vehicle.pos.z + dz));
             }
         }
         // `World.updateEntities`: tile entities tick after the world's entities.

@@ -278,6 +278,11 @@ final class DumpPackets {
                 p.dropOneItem(t.arg[0] != 0);
             } else if ("respawn".equals(t.op)) {
                 p.respawnPlayer();
+            } else if ("mount".equals(t.op)) {
+                net.minecraft.entity.item.EntityMinecartEmpty cart = new net.minecraft.entity.item.EntityMinecartEmpty(world, 0.5, 64.0, 0.5);
+                cart.setEntityId(77); world.ents.add(cart); p.mountEntity(cart);
+            } else if ("dismount".equals(t.op)) {
+                p.mountEntity(null);
             } else if ("openwindow".equals(t.op)) {
                 p.openContainer = new net.minecraft.inventory.ContainerChest(p.inventory, new net.minecraft.inventory.InventoryBasic("test", false, 27), p);
                 p.openContainer.windowId = t.arg[0];
@@ -295,7 +300,7 @@ final class DumpPackets {
             if (t.useDown && (Integer) get(mc, Minecraft.class, "rightClickDelayTimer") == 0 && !p.isUsingItem()) call(mc, Minecraft.class, "rightClickMouse");
             call(mc, Minecraft.class, "sendClickBlockToController", t.attackDown);
 
-            p.onUpdate();
+            if (p.ridingEntity != null) p.updateRidden(); else p.onUpdate();
 
             JsonArray r = new JsonArray();
             for (String h : cap.out) r.add(new JsonPrimitive(h));
@@ -393,6 +398,10 @@ final class DumpPackets {
 
         s = new Sc("inventory_clicks").floor().item(0, "stone", 64).item(9, "dirt", 8).item(10, "apple", 2);
         s.idle(2).op("inventory").idle(2).op("click", 0, 36, 0, 0).op("click", 0, 20, 0, 0).op("click", 0, 9, 1, 0).op("click", 0, 10, 0, 1).op("click", 0, 36, 1, 2).op("click", 0, 11, 0, 0).op("click", 0, -999, 0, 0).op("click", 0, 36, 0, 4).op("close").idle(3).op("drop", 0).op("drop", 1).idle(2);
+        l.add(s);
+
+        s = new Sc("vehicle_input").floor();
+        s.idle(2).op("mount").keys(3, F).keys(2, L | F | J).keys(2, S | R).look(33.5f, 8f).idle(2).op("dismount").idle(3);
         l.add(s);
 
         s = new Sc("server_replies").floor();
