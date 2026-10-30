@@ -58,11 +58,10 @@ V3 weather/stars/day-night/mipmaps/animated textures · V4 remaining GUI screens
 U1 GUI draw layer mirroring vanilla's GL path (`GlStateManager`/`Tessellator`/`FontRenderer`) — the
 seam Forge mod UIs will later draw through.
 
-## Wave 5 — Forge
-FG0 (running) static analysis of a test corpus (RavenB4, LunarForge, Meowtils, AccountManager — never executed) → `docs/FORGE_COMPAT.md` ranked API surface; general compatibility, not per-mod hacks. **Loader policy: never load OptiFine.** ·
+## Wave 5 — Forge (architecture: `docs/FORGE_ARCHITECTURE.md` — Rust core, shadow vanilla bytecode, per-method hosting decided by the mod set; never fall back to running real Minecraft)
+FG0 (merged) static analysis of a test corpus (RavenB4, LunarForge, Meowtils, AccountManager — never executed) → `docs/FORGE_COMPAT.md` ranked API surface; general compatibility, not per-mod hacks. **Loader policy: never load OptiFine.** ·
 WM0 (merged) `docs/WASM_MODS.md`: spec for JVM-free native WASM mods ·
 FS1 (running) full Forge 1.8.9 contract from the real artifacts (universal jar, Forge src + patches, LaunchWrapper, Mixin, MCP mappings) → `docs/forge-spec/` (API dump, event catalogue with fire sites, loading/runtime SPEC.md, coverage IDs) ·
 FT1 (running) differential test suite `tests/forge/`: our own per-area test mods emitting traces, golden traces from real Forge, rustmc runner (0/N until the bridge exists), corpus smoke tier ·
 FG1 join Forge 1.8.9 servers: FML handshake (`FML|HS` channel, mod list, registry sync), `REGISTER`/plugin channels ·
-FG2 embedded HotSpot (JNI invocation, Prism's Java 8 from `INST_JAVA`) spike: load one simple content mod with stand-in
-`net.minecraft` classes backed by Rust · FG3 mod GUIs/HUD through U1's GL-path draw layer · then the full class surface.
+FG2 spike per FORGE_ARCHITECTURE §9.1: shadow jar (binpatches + SRG), embedded HotSpot + LaunchClassLoader + Mixin, FT1's mixin test mod, hooked-method diff, JNI dispatch cost · FG3 mod GUIs/HUD through U1's GL-path draw layer · then the full class surface.
