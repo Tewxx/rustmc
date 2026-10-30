@@ -1,0 +1,2 @@
+FMLCorePlugin: ft.core.Plugin
+FMLCorePluginContainsFMLMod: true

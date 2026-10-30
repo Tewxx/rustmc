@@ -9,3 +9,5 @@ This is an incomplete suite: the recorded traces are not yet validated as determ
 `tools/forgetest/run-rustmc.sh` lists trace IDs in the source as not implemented and exits nonzero. It is a progress inventory, not a compatibility test: it neither runs mods nor compares traces. To add a test, add a mod directory to `mods/ORDER`, use `ft.Trace` with a stable ID, and add it to `SERVER_MODS` only if its server side is needed. Build and validate its traces in real Forge before treating them as an oracle.
 
 The intended future corpus smoke tier checks load, GUI and HUD behavior for user-selected jars. Third-party mods are not run by this suite; `.mc-tools/mod-corpus/` contains the local scan inputs described in `docs/FORGE_COMPAT.md`.
+
+`tools/forgetest/check-core.sh` builds the coremod and checks its transformer against a controlled class without opening a window. The `CORE-01` trace still needs a real Forge oracle run to verify loader registration and execution order.
