@@ -88,6 +88,45 @@ fn encode(msg: &Message) -> Vec<u8> {
     w.buf
 }
 
+/// A single `FML|MP` server payload. Forge sends a channel/part-count/length preamble,
+/// then parts numbered from zero. Bound the retained data while mod transport is unavailable.
+pub const MAX_MULTIPART_BYTES: usize = 16 * 1024 * 1024;
+pub struct Multipart {
+    channel: String,
+    parts: u8,
+    next: u8,
+    length: usize,
+    data: Vec<u8>,
+}
+impl Multipart {
+    pub fn new(preamble: &[u8]) -> Result<Self, String> {
+        let mut r = Reader::new(preamble);
+        let channel = r.string(20).map_err(|e| e.to_string())?;
+        let parts = r.u8().map_err(|e| e.to_string())?;
+        let length = r.i32().map_err(|e| e.to_string())?;
+        if r.remaining() != 0 || channel.is_empty() || channel == "FML|MP" || channel.contains('\0') || parts == 0 || length <= 0 || length as usize > MAX_MULTIPART_BYTES {
+            return Err("invalid or unsupported Forge multipart preamble".into());
+        }
+        Ok(Self { channel, parts, next: 0, length: length as usize, data: Vec::new() })
+    }
+    /// Returns the reassembled channel and payload only after all declared bytes arrive.
+    pub fn push(&mut self, part: &[u8]) -> Result<Option<(String, Vec<u8>)>, String> {
+        let (&number, payload) = part.split_first().ok_or("empty Forge multipart packet")?;
+        if number != self.next || payload.is_empty() || payload.len() > self.length.saturating_sub(self.data.len()) {
+            return Err("invalid Forge multipart sequence or length".into());
+        }
+        self.data.extend_from_slice(payload);
+        self.next += 1;
+        if self.next == self.parts {
+            if self.data.len() != self.length { return Err("incomplete Forge multipart payload".into()); }
+            Ok(Some((self.channel.clone(), std::mem::take(&mut self.data))))
+        } else {
+            if self.data.len() == self.length { return Err("Forge multipart payload finished before its last part".into()); }
+            Ok(None)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase { Hello, Mods, Registries, Pending, Complete, Done }
 
@@ -147,6 +186,21 @@ mod tests {
         assert!(h.is_complete());
         assert!(h.accept(&[254], |_| Ok(())).unwrap().is_empty());
         assert!(!h.is_complete());
+    }
+    fn preamble(channel: &str, parts: u8, len: i32) -> Vec<u8> {
+        let mut w = Writer::new(); w.string(channel); w.u8(parts); w.i32(len); w.buf
+    }
+    #[test]
+    fn multipart_reassembles_and_rejects_bad_sequences() {
+        let mut m = Multipart::new(&preamble("FML|HS", 2, 5)).unwrap();
+        assert_eq!(m.push(&[0, 1, 2]).unwrap(), None);
+        assert_eq!(m.push(&[1, 3, 4, 5]).unwrap(), Some(("FML|HS".into(), vec![1, 2, 3, 4, 5])));
+        assert!(Multipart::new(&preamble("FML|MP", 1, 1)).is_err());
+        assert!(Multipart::new(&preamble("FML", 0, 1)).is_err());
+        assert!(Multipart::new(&preamble("FML", 1, MAX_MULTIPART_BYTES as i32 + 1)).is_err());
+        assert!(Multipart::new(&preamble("FML", 2, 2)).unwrap().push(&[1, 3]).is_err());
+        assert!(Multipart::new(&preamble("FML", 1, 2)).unwrap().push(&[0, 3]).is_err());
+        assert!(Multipart::new(&preamble("FML", 1, 1)).unwrap().push(&[0, 3, 4]).is_err());
     }
     #[test]
     fn malformed_and_out_of_order_messages_fail() {

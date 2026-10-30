@@ -10,7 +10,7 @@ The current implementation supports the handshake with an unmodified Forge
 before acknowledging it and rejects additional mods, remapped or extra registry
 entries, custom dimensions, and unsupported Forge runtime messages. It tracks
 REGISTER and UNREGISTER channel names, but does not yet deliver arbitrary mod
-messages or implement multipart payloads. This is not general Forge mod support;
+messages. Multipart payloads are reassembled up to 16 MiB; larger payloads are rejected. This is not general Forge mod support;
 those features require the mod runtime and registry remapping described in the
 Forge architecture document.
 

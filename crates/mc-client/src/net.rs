@@ -17,6 +17,7 @@ pub enum Incoming {
 pub struct Net {
     writer: Writer,
     forge: Option<mc_protocol::forge::ClientHandshake>,
+    multipart: Option<mc_protocol::forge::Multipart>,
     pub channels: std::collections::HashSet<String>,
     rx: Receiver<Incoming>,
     pub entity_id: i32,
@@ -98,6 +99,7 @@ impl Net {
             writer,
             forge: forge.then(|| mc_protocol::forge::ClientHandshake::new(crate::forge::client_mods())),
             channels: Default::default(),
+            multipart: None,
             rx,
             entity_id: 0,
             uuid: parse_uuid(&ok.uuid),
@@ -154,9 +156,25 @@ impl Net {
         }
     }
 
-    pub fn forge_multipart(&mut self) {
+    pub fn forge_multipart(&mut self, data: &[u8]) -> Option<(String, Vec<u8>)> {
+        self.forge.as_ref()?;
+        if self.multipart.is_none() {
+            match mc_protocol::forge::Multipart::new(data) {
+                Ok(m) => self.multipart = Some(m),
+                Err(e) => { self.closed = Some(format!("Forge multipart failed: {e}")); self.disconnect(); }
+            }
+            return None;
+        }
+        match self.multipart.as_mut().unwrap().push(data) {
+            Ok(Some(message)) => { self.multipart = None; Some(message) }
+            Ok(None) => None,
+            Err(e) => { self.multipart = None; self.closed = Some(format!("Forge multipart failed: {e}")); self.disconnect(); None }
+        }
+    }
+
+    pub fn forge_internal(&mut self) {
         if self.forge.is_some() {
-            self.closed = Some("Forge multipart payloads are not yet supported".into());
+            self.closed = Some("Forge mod messages require the unavailable mod runtime".into());
             self.disconnect();
         }
     }
@@ -459,6 +477,26 @@ mod tests {
             }
         });
         (Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default(), false).unwrap(), srv)
+    }
+
+    #[test]
+    fn multipart_hello_reaches_the_handshake_and_channels_unregister() {
+        let (mut n, srv) = loopback(3);
+        n.forge = Some(mc_protocol::forge::ClientHandshake::new(crate::forge::client_mods()));
+        n.update_channels(true, b"FML|HS\0FORGE\0example");
+        n.update_channels(false, b"example");
+        assert!(n.channels.contains("FORGE") && !n.channels.contains("example"));
+        let mut preamble = mc_protocol::Writer::new();
+        preamble.string("FML|HS"); preamble.u8(2); preamble.i32(6);
+        assert!(n.forge_multipart(&preamble.buf).is_none());
+        assert!(n.forge_multipart(&[0,0,2]).is_none());
+        let (channel, data) = n.forge_multipart(&[1,0,0,0,0]).unwrap();
+        assert_eq!(channel, "FML|HS");
+        n.forge_message(&data);
+        let messages = srv.join().unwrap();
+        assert!(matches!(&messages[0], PlayServerbound::PluginMessageC(p) if p.channel == "REGISTER"));
+        assert!(matches!(&messages[1], PlayServerbound::PluginMessageC(p) if p.channel == "FML|HS" && p.data == [1,2]));
+        assert!(matches!(&messages[2], PlayServerbound::PluginMessageC(p) if p.channel == "FML|HS" && p.data[0] == 2));
     }
 
     /// Replays Java's actual EntityPlayerSP packet stream through the client movement path.

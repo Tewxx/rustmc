@@ -622,15 +622,20 @@ impl App {
                     self.camera_entity = if c.entity_id == n.entity_id { None } else { Some(c.entity_id) };
                 }
                 C::WorldBorder(w) => self.world_border(w),
-                C::PluginMessageS(p) => {
+                C::PluginMessageS(mut p) => {
+                    if p.channel == "FML|MP" {
+                        let Some((channel, data)) = n.forge_multipart(&p.data) else { return };
+                        p.channel = channel;
+                        p.data = data;
+                    }
                     if p.channel == "REGISTER" || p.channel == "UNREGISTER" {
                         n.update_channels(p.channel == "REGISTER", &p.data);
                     } else if p.channel == "FML|HS" {
                         n.forge_message(&p.data);
-                    } else if p.channel == "FML|MP" {
-                        n.forge_multipart();
                     } else if p.channel == "FORGE" {
                         n.forge_runtime(&p.data);
+                    } else if p.channel == "FML" {
+                        n.forge_internal();
                     } else if p.channel == "MC|Brand" {
                         // The payload is a VarInt-prefixed UTF-8 string.
                         self.brand = packet_string(&p.data);
