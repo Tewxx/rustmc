@@ -1,4 +1,3 @@
-use mc_core::nbt::{Compound, Tag};
 use mc_protocol::chunk::{self, WireSection};
 use mc_protocol::frame;
 use mc_protocol::packets::*;
