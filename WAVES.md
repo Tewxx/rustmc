@@ -31,7 +31,7 @@ performance → Forge. Max 5 agents at once.
 | P1 | Prism launch-argument module (not wired in) | new `mc-client/src/launch.rs` |
 | B1 | Busy-scene benchmarks + profiler feature + baseline | `mc-client/src/bench.rs`, `mc-protocol/examples/mock_server.rs` |
 
-## Wave 2 — stabilise existing features (merged: F1, F5, D1, G2; paused mid-task at usage limit, work in their worktree branches: F3, F6, M1, RP1; queued: F2, F4, M2)
+## Wave 2 — stabilise existing features (merged: F1, F5, F6, D1, G2, M1, RP1; running: SP0, F3; queued: F2, F4, M2)
 | Id | Task |
 |---|---|
 | F1 | Movement replay harness vs Java `EntityPlayerSP`; fix divergences (bit-exact) |
@@ -49,7 +49,7 @@ performance → Forge. Max 5 agents at once.
 
 ## Wave 3 — performance (parallel with Wave 2)
 R1 mesh/light worker pool + 18³ snapshots · R2 GPU arena/compact vertex/multi-draw-indirect ·
-R3 `VisGraph` cave culling · R6 per-frame sort (18%) and drawable-acquire stall (BENCH.md) · R4 GPU instanced entities/particles · R5 frame pacing, buffer reuse.
+R3 `VisGraph` cave culling · R6 (running) per-frame sort (18%) and drawable-acquire stall (BENCH.md) · R4 GPU instanced entities/particles · R5 frame pacing, buffer reuse.
 Then profile on Metal; native Metal only where wgpu overhead shows.
 
 ## Wave 4 — missing client parity (everything a server can show)
@@ -59,6 +59,8 @@ U1 GUI draw layer mirroring vanilla's GL path (`GlStateManager`/`Tessellator`/`F
 seam Forge mod UIs will later draw through.
 
 ## Wave 5 — Forge
+FG0 (running) static analysis of a test corpus (RavenB4, LunarForge, Meowtils, AccountManager — never executed) → `docs/FORGE_COMPAT.md` ranked API surface; general compatibility, not per-mod hacks. **Loader policy: never load OptiFine.** ·
+WM0 (running) `docs/WASM_MODS.md`: spec for JVM-free native WASM mods ·
 FG1 join Forge 1.8.9 servers: FML handshake (`FML|HS` channel, mod list, registry sync), `REGISTER`/plugin channels ·
 FG2 embedded HotSpot (JNI invocation, Prism's Java 8 from `INST_JAVA`) spike: load one simple content mod with stand-in
 `net.minecraft` classes backed by Rust · FG3 mod GUIs/HUD through U1's GL-path draw layer · then the full class surface.
