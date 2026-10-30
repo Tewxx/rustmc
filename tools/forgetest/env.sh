@@ -4,7 +4,7 @@
 FT_HERE=$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)
 FT_REPO=$(cd "$FT_HERE/../.." && pwd)
 # Shared untracked inputs live in the main checkout, not in worktrees.
-: "${RUSTMC_MAIN:=$(cd "$(git -C "$FT_REPO" rev-parse --git-common-dir)/.." && pwd)}"
+: "${RUSTMC_MAIN:=$(cd "$(git -C "$FT_REPO" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)}"
 : "${PRISM:=/Volumes/SSD/PrismLauncher}"
 : "${JDK8:=$RUSTMC_MAIN/.mc-tools/jdk8/Contents/Home}"
 [ -x "$JDK8/bin/javac" ] || JDK8="$RUSTMC_MAIN/.mc-tools/jdk8"
