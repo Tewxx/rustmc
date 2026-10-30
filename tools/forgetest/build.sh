@@ -24,7 +24,12 @@ if [ ! -f "$FORGE_DEV" ] || [ "$FT_HERE/Reobf.java" -nt "$FORGE_DEV" ]; then
   "$FT_JAVA" -cp "$FT_BUILD/tools:$ASM" Reobf deobf "$MCP/conf/joined.srg" "$MCP/conf/methods.csv" "$MCP/conf/fields.csv" "$FORGE_JAR" "$FORGE_DEV" "$VANILLA" "$ASM"
 fi
 BASECP="$MCP/bin/minecraft:$FORGE_DEV:$(ft_libs)"
-if [ $# -gt 0 ]; then LIST="$*"; else LIST=$(grep -v '^#' "$MODS_SRC/ORDER" | grep -v '^$'); fi
+if [ $# -gt 0 ]; then
+  LIST="$*"
+else
+  rm -f "$FT_BUILD"/dev/*.jar "$FT_BUILD"/mods/*.jar
+  LIST=$(grep -v '^#' "$MODS_SRC/ORDER" | grep -v '^$')
+fi
 
 for m in $LIST; do
   d="$MODS_SRC/$m"
