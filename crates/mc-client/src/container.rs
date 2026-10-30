@@ -92,7 +92,7 @@ impl Window {
     fn output_slot(&self, i: usize) -> bool {
         match self.kind.as_str() {
             "minecraft:crafting_table" => i == 0,
-            "minecraft:furnace" => i == 2,
+            "minecraft:furnace" | "minecraft:anvil" => i == 2,
             "player" => i == 0,
             _ => false,
         }
@@ -167,6 +167,10 @@ impl ContainerScreen {
                 slots: std::iter::once((124, 35)).chain((0..9).map(|i| (30 + i % 3 * 18, 17 + i / 3 * 18))).collect(),
                 inv: (8, 84),
                 rows: None,
+            },
+            "minecraft:anvil" => Layout {
+                texture: "textures/gui/container/anvil.png", w: 176, h: 166,
+                slots: vec![(27, 47), (76, 47), (134, 47)], inv: (8, 84), rows: None,
             },
             "minecraft:brewing_stand" => Layout {
                 texture: "textures/gui/container/brewing_stand.png", w: 176, h: 166,
@@ -349,6 +353,14 @@ impl ContainerScreen {
                 (9..=35, _) => (36..45).collect(),
                 _ => (9..36).collect(),
             };
+            let rest = self.merge(w, ui, s, range);
+            w.set(ui, i, rest);
+            return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
+        }
+        if w.kind == "minecraft:anvil" {
+            let range = if i == 2 { (3..39).rev().collect() }
+                else if i < 2 { (3..39).collect() }
+                else { (0..2).collect() };
             let rest = self.merge(w, ui, s, range);
             w.set(ui, i, rest);
             return (rest.map_or(0, |r| r.count) != s.count).then_some(s);

@@ -27,7 +27,7 @@ final class DumpContainers {
     static JsonObject run(String name, String kind, int[][] initial, int[][] clicks) {
         Player p = new Player();
         p.capabilities.isCreativeMode = name.startsWith("creative");
-        Container c = kind.equals("player") ? p.inventoryContainer : kind.equals("minecraft:furnace") ? new ContainerFurnace(p.inventory, new TileEntityFurnace()) : kind.equals("minecraft:crafting_table") ? new ContainerWorkbench(p.inventory, p.worldObj, net.minecraft.util.BlockPos.ORIGIN) : kind.equals("minecraft:enchanting_table") ? new ContainerEnchantment(p.inventory, p.worldObj) : kind.equals("minecraft:brewing_stand") ? new ContainerBrewingStand(p.inventory, new InventoryBasic("brew", false, 4)) : kind.equals("minecraft:beacon") ? new ContainerBeacon(p.inventory, new InventoryBasic("beacon", false, 1)) : new ContainerChest(p.inventory, new InventoryBasic("chest", false, 27), p);
+        Container c = kind.equals("player") ? p.inventoryContainer : kind.equals("minecraft:furnace") ? new ContainerFurnace(p.inventory, new TileEntityFurnace()) : kind.equals("minecraft:crafting_table") ? new ContainerWorkbench(p.inventory, p.worldObj, net.minecraft.util.BlockPos.ORIGIN) : kind.equals("minecraft:anvil") ? new ContainerRepair(p.inventory, p.worldObj, p) : kind.equals("minecraft:enchanting_table") ? new ContainerEnchantment(p.inventory, p.worldObj) : kind.equals("minecraft:brewing_stand") ? new ContainerBrewingStand(p.inventory, new InventoryBasic("brew", false, 4)) : kind.equals("minecraft:beacon") ? new ContainerBeacon(p.inventory, new InventoryBasic("beacon", false, 1)) : new ContainerChest(p.inventory, new InventoryBasic("chest", false, 27), p);
         JsonObject out = new JsonObject(); out.addProperty("name", name); out.addProperty("kind", kind); out.addProperty("creative", p.capabilities.isCreativeMode);
         JsonArray init = new JsonArray();
         for (int[] x : initial) {
@@ -56,6 +56,7 @@ final class DumpContainers {
         a.add(run("failed shift", "minecraft:chest", full, new int[][] {{0,0,1}}));
         a.add(run("armor slots", "player", new int[][] {{36,1,5,0}, {37,306,1,0}}, new int[][] {{36,0,0},{5,0,0},{36,0,0},{37,0,1},{5,0,2}}));
         a.add(run("shift double", "minecraft:chest", new int[][] {{0,1,10,0},{1,1,5,0},{2,4,4,0},{3,1,2,0}}, new int[][] {{0,0,1},{0,0,1}}));
+        a.add(run("anvil slots", "minecraft:anvil", new int[][] {{30,1,4,0},{31,4,3,0}}, new int[][] {{30,0,0},{2,0,0},{30,0,0},{30,0,1},{31,0,1},{0,0,1},{1,0,1}}));
         a.add(run("brewing transfer", "minecraft:brewing_stand", new int[][] {{31,377,4,0},{32,374,3,0},{33,1,5,0}}, new int[][] {{31,0,1},{32,0,1},{33,0,1},{3,0,1}}));
         a.add(run("enchanting transfer", "minecraft:enchanting_table", new int[][] {{29,351,8,4},{30,1,3,0},{31,4,1,0}}, new int[][] {{29,0,1},{30,0,1},{31,0,1},{0,0,1},{1,0,1}}));
         a.add(run("workbench transfer", "minecraft:crafting_table", new int[][] {{1,4,2,0},{10,1,8,0},{37,3,7,0}}, new int[][] {{10,0,1},{37,0,1},{1,0,1}}));

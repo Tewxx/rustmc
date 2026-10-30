@@ -13,7 +13,7 @@ The replay uses the real MCP `ContainerChest` and `ContainerPlayer` and checks a
 
 Known outstanding parity work:
 
-- Furnace shift-click routing, fuel acceptance and bucket limits use rules extracted from Java. Workbench transfer routing, brewing and enchanting slots, and beacon payment rules have Java traces. Other specialized containers need their own `transferStackInSlot` and slot validation; beacon power selection and enchanting controls still need implementation.
+- Furnace shift-click routing, fuel acceptance and bucket limits use rules extracted from Java. Workbench transfer routing, brewing and enchanting slots, and beacon payment rules have Java traces. Anvil input and ordinary transfer routing have Java traces; repair costs, output callbacks and renaming are still missing. Other specialized containers need their own `transferStackInSlot` and slot validation; beacon power selection and enchanting controls still need implementation.
 - Crafting and other result slots have pickup callbacks and can regenerate their contents. Prediction currently does not model those callbacks or repeated shift-clicks.
 - Creative middle-click cloning (mode 3), drop key (mode 4), drag splitting (mode 5) and double-click collection (mode 6) have basic Java traces. Shift-double-click and creative drag filling have basic chest traces; drag preview remains unimplemented.
 - Exercise NBT, full inventories, damaged items, all armor and crafting cases, and transaction rejection/resynchronization against a server and the Java oracle.
