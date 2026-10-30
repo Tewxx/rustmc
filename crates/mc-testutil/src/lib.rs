@@ -22,7 +22,7 @@ pub fn require(what: &Path, found: bool) -> Option<PathBuf> {
 
 /// `<repo>/golden/<name>`.
 pub fn golden(name: &str) -> Option<PathBuf> {
-    let p = root().join("golden").join(name);
+    let p = std::env::var_os("RUSTMC_GOLDEN_DIR").map(PathBuf::from).unwrap_or_else(|| root().join("golden")).join(name);
     require(&p, p.is_file())
 }
 
