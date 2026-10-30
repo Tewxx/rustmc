@@ -1,6 +1,6 @@
 # Native component host (experimental)
 
-The client loads `.rmod` files from the game directory’s `mods-wasm/` on a worker thread; bounded tick and frame messages feed its latest completed HUD to the GUI. World resets invalidate queued output. The current host runs `rustmc:plugin@1.0.0` components with lifecycle, `game.player`,
+The client loads `.rmod` files from the game directory’s `mods-wasm/` on a worker thread; bounded tick and frame messages feed its latest completed HUD to the GUI. World resets invalidate queued output. Frame requests may be dropped when the queue is busy; if the bounded queue fills on a tick, all native mods are disabled for that session and stale output is removed rather than silently losing ordered tick events. The current host runs `rustmc:plugin@1.0.0` components with lifecycle, `game.player`,
 `game.game-time`, `ui-draw.submit`, and logging. It links no WASI; components built with
 `wasm32-wasip2` commonly import WASI and are rejected. The `accounts` interface is reserved
 only and is not linked. Hot reload, input, screens, network, configuration, mod permissions UI and the
