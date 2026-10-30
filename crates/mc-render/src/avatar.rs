@@ -227,6 +227,8 @@ pub struct AvatarRenderer {
     entity_scratch: Vec<EntityInstance>,
     damage_pipeline: wgpu::RenderPipeline,
     sign_text_pipeline: wgpu::RenderPipeline,
+    sign_text_layout: wgpu::BindGroupLayout,
+    sign_textures: std::collections::HashMap<String, wgpu::BindGroup>,
     vertices: [wgpu::Buffer; 3],
     bind_group: wgpu::BindGroup,
     steve: PlayerModel,
@@ -325,6 +327,7 @@ const SRGB:bool={};
 @group(0) @binding(7) var mobs:texture_2d<f32>;
 struct ParticleGlobals {{ vp:mat4x4<f32>, camera:vec4<f32> }};
 @group(1) @binding(0) var<uniform> particle_globals:ParticleGlobals;
+@group(1) @binding(1) var sign_font:texture_2d<f32>;
 struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) color:vec4<f32>, @location(2) @interpolate(flat) kind:u32, @location(3) overlay:vec4<f32> }};
 @vertex fn vs(@location(0) p:vec4<f32>,@location(1) uv:vec2<f32>,@location(2) color:vec4<f32>,@location(3) kind:f32,@location(4) overlay:vec4<f32>)->V {{
  var o:V;o.pos=p;o.uv=uv;o.color=color;o.kind=u32(kind);o.overlay=overlay;return o;
@@ -347,6 +350,12 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(vertex==1u) {{p=p1;uv=u1;}} else if(vertex==2u || vertex==4u) {{p=p2;uv=u2;}} else if(vertex==5u) {{p=p3;uv=u3;}}
  var o:V; o.pos=mat4x4<f32>(m0,m1,m2,m3)*vec4<f32>(p,1.0);
  o.uv=uv; o.color=color; o.kind=u32(kind); o.overlay=overlay; return o;
+}}
+@fragment fn fs_sign(v:V)->@location(0) vec4<f32> {{
+ var c=v.color;
+ if(v.kind!=3u) {{c*=textureSampleLevel(sign_font,samp,v.uv,0.0); if(c.a<=0.1) {{discard;}} }}
+ if(SRGB) {{c=vec4<f32>(select(c.rgb/12.92,pow((c.rgb+vec3<f32>(0.055))/1.055,vec3<f32>(2.4)),c.rgb>vec3<f32>(0.04045)),c.a);}}
+ return c;
 }}
 @fragment fn fs(v:V)->@location(0) vec4<f32> {{
  var c=v.color;
@@ -412,8 +421,14 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             multiview: None,
             cache: None,
         });
+        let sign_text_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("sign font texture"), entries: &[texture_entry(1)],
+        });
+        let sign_text_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sign text"), bind_group_layouts: &[&layout, &sign_text_layout], push_constant_ranges: &[],
+        });
         let sign_text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("sign text"), layout: Some(&pl),
+            label: Some("sign text"), layout: Some(&sign_text_pl),
             vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs"), compilation_options: Default::default(),
                 buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -422,7 +437,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: false,
                 depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
             multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs"), compilation_options: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_sign"), compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
             multiview: None, cache: None,
         });
@@ -679,7 +694,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             particle_capacity,
             use_particle_instancing: std::env::var_os("RUSTMC_NO_PARTICLE_INSTANCING").is_none(),
             particle_scratch: Vec::new(), entity_scratch: Vec::new(),
-            damage_pipeline, sign_text_pipeline,
+            damage_pipeline, sign_text_pipeline, sign_text_layout, sign_textures: Default::default(),
             vertices,
             bind_group,
             steve: PlayerModel::new(false),
@@ -728,12 +743,12 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         height: f32,
         far: f32,
         frame: &AvatarFrame,
-        _assets: &AssetSource,
+        assets: &AssetSource,
         hand_stage: bool,
     ) {
         let mut verts = Vec::new();
         let mut damage = Vec::new();
-        let mut sign_text_range = None;
+        let mut sign_text_runs: Vec<(std::ops::Range<usize>, String)> = Vec::new();
         let mut particles = std::mem::take(&mut self.particle_scratch);
         let mut entities = std::mem::take(&mut self.entity_scratch);
         particles.clear(); entities.clear();
@@ -768,24 +783,36 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 self.tile(&mut verts, &mut entities, self.use_entity_instancing, t, world_vp, cam.pos);
                 record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
-            let sign_start = verts.len();
             for tile in &frame.tiles {
                 let crate::tile::TileFrame::Sign { pos, standing, meta, glyphs, .. } = tile else { continue };
                 let m = world_vp * Mat4::from_translation(-cam.pos) * crate::tile::sign_transform(*pos, *standing, *meta)
                     * Mat4::from_translation(Vec3::new(0., 0.5 * (2. / 3.), 0.07 * (2. / 3.)))
                     * Mat4::from_scale(Vec3::new(1. / 96., -1. / 96., 1. / 96.));
-                let r = self.mob_atlas.get("font_ascii").copied().unwrap_or([0.; 4]);
                 for glyph in glyphs {
+                    let key = glyph.texture.as_deref().unwrap_or("");
+                    if !self.sign_textures.contains_key(key) {
+                        let img = if key.is_empty() { image::RgbaImage::from_pixel(1, 1, image::Rgba([255; 4])) }
+                            else { assets.read(key).and_then(|bytes| image::load_from_memory(&bytes).ok()).map(|img| img.to_rgba8())
+                                .unwrap_or_else(|| image::RgbaImage::new(1, 1)) };
+                        let tex = texture(device, queue, &img);
+                        let view = tex.create_view(&Default::default());
+                        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("sign font texture"),
+                            layout: &self.sign_text_layout, entries: &[wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) }] });
+                        self.sign_textures.insert(key.to_owned(), bg);
+                    }
+                    let start = verts.len();
                     let color = glyph.color.map(|v| v as f32 / 255.);
                     for i in [0, 1, 2, 0, 2, 3] {
                         let [x,y] = glyph.pos[i]; let [u,v] = glyph.uv[i];
                         verts.push(Vertex { clip: (m * Vec3::new(x,y,0.).extend(1.)).to_array(),
-                            uv: [r[0] + u*r[2], r[1] + v*r[3]], color,
-                            kind: if glyph.textured { MOB } else { LINE }, overlay: [0.; 4] });
+                            uv: [u, v], color,
+                            kind: if glyph.texture.is_some() { MOB } else { LINE }, overlay: [0.; 4] });
                     }
+                    if let Some((range, _)) = sign_text_runs.last_mut().filter(|(range, texture)| range.end == start && texture == key) {
+                        range.end = verts.len();
+                    } else { sign_text_runs.push((start..verts.len(), key.to_owned())); }
                 }
             }
-            if verts.len() > sign_start { sign_text_range = Some(sign_start..verts.len()); }
             for b in &frame.billboards {
                 // RenderSnowball: translate, scale 0.5, rotate(-playerViewY, Y),
                 // rotate(playerViewX, X), then the item's GROUND transform.
@@ -911,11 +938,12 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.set_vertex_buffer(0, buf.slice(..));
             start = at;
         }
-        if let Some(range) = sign_text_range {
+        for (range, key) in &sign_text_runs {
             let first = (split as usize + range.start).min(end as usize) as u32;
             let last = (split as usize + range.end).min(end as usize) as u32;
             pass.draw(start..first, 0..1);
             pass.set_pipeline(&self.sign_text_pipeline);
+            pass.set_bind_group(1, &self.sign_textures[key], &[]);
             pass.draw(first..last, 0..1);
             pass.set_pipeline(&self.pipeline);
             start = last;
@@ -1805,12 +1833,20 @@ mod particle_instance_tests {
         if let crate::tile::TileFrame::Sign { glyphs, .. } = &mut frame.tiles[0] {
             glyphs.push(crate::tile::SignGlyph { pos: [[-8.,-8.],[-8.,8.],[8.,8.],[8.,-8.]],
                 uv: [[8./128.,32./128.], [8./128.,40./128.], [16./128.,40./128.], [16./128.,32./128.]],
-                color: [0,0,0,255], textured: true });
+                color: [0,0,0,255], texture: Some("textures/font/ascii.png".to_string()) });
         }
         let legacy = render(&mut renderer, &frame, false);
         let instanced = render(&mut renderer, &frame, true);
         assert_ne!(blank, instanced, "sign text must be visible on the board");
         assert_eq!(legacy, instanced);
+        if let crate::tile::TileFrame::Sign { glyphs, .. } = &mut frame.tiles[0] {
+            glyphs.push(crate::tile::SignGlyph { pos: [[4.,-8.],[4.,8.],[20.,8.],[20.,-8.]],
+                uv: [[208./256.,32./256.], [208./256.,48./256.], [224./256.,48./256.], [224./256.,32./256.]],
+                color: [0,0,0,255], texture: Some("textures/font/unicode_page_4e.png".into()) });
+        }
+        let unicode = render(&mut renderer, &frame, true);
+        assert_ne!(instanced, unicode, "Unicode sign glyph must be visible");
+        assert!(renderer.sign_textures.contains_key("textures/font/unicode_page_4e.png"));
         frame.tiles.clear();
         frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
         let old = render(&mut renderer, &frame, false);

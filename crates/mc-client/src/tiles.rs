@@ -302,11 +302,9 @@ pub fn sign_glyphs(raw: &str, line: usize, font: &mut mc_gui::font::FontRenderer
     let mut glyphs = Vec::new();
     for item in batch.items {
         let mc_gui::batch::Item::Draw(draw) = item else { continue };
-        // shortcut: Unicode page textures are not in the entity atlas; add dynamic font pages to render them.
-        let textured = match draw.texture.as_deref() { Some("textures/font/ascii.png") => true, None => false, _ => continue };
         for quad in draw.vertices.chunks_exact(4) {
             glyphs.push(mc_render::tile::SignGlyph { pos: std::array::from_fn(|i| quad[i].pos),
-                uv: std::array::from_fn(|i| quad[i].uv), color: quad[0].color, textured });
+                uv: std::array::from_fn(|i| quad[i].uv), color: quad[0].color, texture: draw.texture.clone() });
         }
     }
     glyphs
@@ -458,6 +456,8 @@ mod tests {
         assert!(glyphs[0].pos[0][0] < 0. && glyphs[0].pos[0][1] == -10.);
         let long = sign_glyphs(&format!("\"{}\"", "A".repeat(100)), 0, &mut font, &lang, true);
         assert!(long.len() < 100 && !long.is_empty());
+        let unicode = sign_glyphs(r#"{"text":"中"}"#, 0, &mut font, &lang, true);
+        assert_eq!(unicode[0].texture.as_deref(), Some("textures/font/unicode_page_4e.png"));
     }
 
     #[test]

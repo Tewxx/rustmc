@@ -98,7 +98,7 @@ impl Default for ChestModels {
 }
 
 #[derive(Clone, Debug)]
-pub struct SignGlyph { pub pos: [[f32; 2]; 4], pub uv: [[f32; 2]; 4], pub color: [u8; 4], pub textured: bool }
+pub struct SignGlyph { pub pos: [[f32; 2]; 4], pub uv: [[f32; 2]; 4], pub color: [u8; 4], pub texture: Option<String> }
 
 /// One tile-entity draw.
 #[derive(Clone, Debug)]
