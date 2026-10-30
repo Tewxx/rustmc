@@ -13,7 +13,7 @@ Note `cpu_ms` is the whole `update + draw_frame`, so it **includes time blocked 
 
 Client remeshing uses a bounded persistent worker pool. Each job captures three vertical sections from each of the 3×3 neighboring columns, their biomes, heightmaps and nearby tile entities; revisions discard results invalidated by later changes or unloads. The main thread creates at most four snapshots per frame and performs GPU uploads. The current AO code can read two blocks past a face, so an 18³ snapshot would not preserve the current results without changing its sampling semantics. This is a larger snapshot than the R1 target, and incremental lighting still runs on the main thread.
 
-No before/after FPS, frame-time, image-parity, or cross-platform GPU measurements have been made for this change. The baseline below predates it.
+A headless CPU-only synthetic terrain test (`RUSTMC_REQUIRE_GOLDEN=1 cargo test --release -p mc-client mesh_worker_headless_bench -- --ignored --nocapture`) meshed 169 sections twice on this shared Mac. The old blocking parallel call took 23.51 / 92.79 ms; the new queue took 56.73 / 95.15 ms wall time, with worst individual polls of 0.11 / 0.51 ms. The queue test sleeps 1 ms between polls, and both runs were affected by concurrent builds; these are not comparable frame rates or reliable throughput estimates. The test confirms matching index counts, not pixel parity. No before/after FPS, frame-time, full image-parity, or cross-platform GPU measurements have been made. The baseline below predates this change.
 
 ## Busy scenarios (mock server, `crates/mc-protocol/examples/mock_server.rs`)
 

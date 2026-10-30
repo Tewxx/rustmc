@@ -1,7 +1,7 @@
 //! Bounded asynchronous section meshing. The main thread snapshots and owns the world;
 //! workers only read immutable snapshots and never touch the GPU.
 use crate::*;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{mpsc, Mutex};
 
 pub(crate) type Key = (i32, i32, i32);
@@ -14,6 +14,7 @@ pub(crate) struct MeshWorkers {
     revisions: HashMap<Key, u64>,
     pending: HashMap<Key, u64>,
     order: VecDeque<Key>,
+    queued: HashSet<Key>,
     next_revision: u64,
     in_flight: usize,
     capacity: usize,
@@ -40,7 +41,7 @@ impl MeshWorkers {
                 }
             }).expect("spawn mesh worker");
         }
-        Self { tx, rx: done_rx, revisions: HashMap::new(), pending: HashMap::new(), order: VecDeque::new(), next_revision: 0, in_flight: 0, capacity }
+        Self { tx, rx: done_rx, revisions: HashMap::new(), pending: HashMap::new(), order: VecDeque::new(), queued: HashSet::new(), next_revision: 0, in_flight: 0, capacity }
     }
 
     pub(crate) fn invalidate(&mut self, key: Key, schedule: bool) {
@@ -48,7 +49,8 @@ impl MeshWorkers {
         let rev = self.next_revision;
         if schedule {
             self.revisions.insert(key, rev);
-            if self.pending.insert(key, rev).is_none() { self.order.push_back(key); }
+            self.pending.insert(key, rev);
+            if self.queued.insert(key) { self.order.push_back(key); }
         } else {
             self.revisions.remove(&key);
             self.pending.remove(&key);
@@ -57,7 +59,7 @@ impl MeshWorkers {
 
     pub(crate) fn clear(&mut self) {
         self.next_revision = self.next_revision.wrapping_add(1);
-        self.revisions.clear(); self.pending.clear(); self.order.clear();
+        self.revisions.clear(); self.pending.clear(); self.order.clear(); self.queued.clear();
     }
 
     pub(crate) fn poll(&mut self, world: &World, smooth: bool, fancy: bool) -> Vec<(Key, mesh::ChunkMesh)> {
@@ -70,14 +72,17 @@ impl MeshWorkers {
             }
         }
         let mut dispatched = 0;
-        while self.in_flight < self.capacity && dispatched < 4 {
+        let mut examined = 0;
+        while self.in_flight < self.capacity && dispatched < 4 && examined < 128 {
             let Some(key) = self.order.pop_front() else { break };
+            self.queued.remove(&key);
+            examined += 1;
             let Some(revision) = self.pending.remove(&key) else { continue };
             if !world.is_chunk_loaded(key.0, key.2) { continue; }
             let job = Job { key, revision, world: world.mesh_snapshot(key.0, key.1, key.2), smooth, fancy };
             match self.tx.try_send(job) {
                 Ok(()) => { self.in_flight += 1; dispatched += 1; },
-                Err(mpsc::TrySendError::Full(_)) => { self.pending.insert(key, revision); self.order.push_front(key); break; }
+                Err(mpsc::TrySendError::Full(_)) => { self.pending.insert(key, revision); self.queued.insert(key); self.order.push_front(key); break; }
                 Err(mpsc::TrySendError::Disconnected(_)) => { eprintln!("mesh workers disconnected"); break; }
             }
         }
@@ -172,6 +177,59 @@ mod tests {
         world.chunks.get_mut(&(0, 0)).unwrap().set(15, 32, 15, 4, 0);
         assert_eq!(snapshot.get(15, 32, 15), before);
         assert_ne!(world.get(15, 32, 15), before);
+    }
+
+    /// Run with `cargo test --release -p mc-client mesh_worker_headless_bench -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "manual headless CPU benchmark"]
+    fn mesh_worker_headless_bench() {
+        let models = models().expect("benchmark needs the vanilla jar");
+        let mut world = World::default();
+        let mut keys = Vec::new();
+        for cx in -6..=6 { for cz in -6..=6 {
+            let mut c = Chunk::new(cx, cz);
+            for x in 0..16 { for z in 0..16 {
+                for y in 32..38 { c.set(x, y, z, 1, 0); }
+                c.set(x, 38, z, 2, 0);
+                if (x + z + (cx * cx + cz * cz) as usize) % 11 == 0 { c.set(x, 39, z, 31, 1); }
+            }}
+            c.generate_height_map(); world.insert(c); keys.push((cx, 2, cz));
+        }}
+        let t = std::time::Instant::now();
+        let baseline = crate::world_load::mesh_parallel(&world, &models, &keys, true, true);
+        let blocking = t.elapsed();
+        let expected: usize = baseline.iter().map(|(_, m)| m.indices.len()).sum();
+        let mut workers = MeshWorkers::new(&models);
+        for &key in &keys { workers.invalidate(key, true); }
+        let start = std::time::Instant::now(); let mut worst = std::time::Duration::ZERO;
+        let mut count = 0; let mut indices = 0;
+        while count < keys.len() && start.elapsed() < std::time::Duration::from_secs(60) {
+            let t = std::time::Instant::now();
+            let ready = workers.poll(&world, true, true);
+            worst = worst.max(t.elapsed());
+            count += ready.len(); indices += ready.iter().map(|(_, m)| m.indices.len()).sum::<usize>();
+            if count < keys.len() { std::thread::sleep(std::time::Duration::from_millis(1)); }
+        }
+        let elapsed = start.elapsed();
+        assert_eq!(count, keys.len()); assert_eq!(indices, expected);
+        eprintln!("headless mesh CPU: {} sections, blocking {:.2} ms, asynchronous wall {:.2} ms, worst poll {:.2} ms (no GPU/present)",
+            count, blocking.as_secs_f64()*1000., elapsed.as_secs_f64()*1000., worst.as_secs_f64()*1000.);
+    }
+
+    #[test]
+    fn repeated_unload_reload_coalesces_queue_entries() {
+        let Some(models) = models() else { return };
+        let mut workers = MeshWorkers::new(&models);
+        let key = (0, 2, 0);
+        for _ in 0..10_000 {
+            workers.invalidate(key, true);
+            workers.invalidate(key, false);
+        }
+        workers.invalidate(key, true);
+        assert_eq!(workers.order.len(), 1);
+        assert_eq!(workers.pending.len(), 1);
+        workers.clear();
+        assert!(workers.order.is_empty() && workers.queued.is_empty() && workers.pending.is_empty());
     }
 
     #[test]
