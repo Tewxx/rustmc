@@ -37,7 +37,7 @@ impl Kind {
 }
 
 fn is_rendered_tile(state: mc_data::StateId) -> bool {
-    Kind::of(state).is_some() || matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign" | "minecraft:skull")
+    Kind::of(state).is_some() || matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign" | "minecraft:skull" | "minecraft:standing_banner" | "minecraft:wall_banner")
 }
 
 /// `EnumFacing.getIndex()` for the chest's `facing` property (`BlockChest.getMetaFromState`).
@@ -245,6 +245,23 @@ impl Tiles {
                 let (sky, block) = world.light(pos.x, pos.y, pos.z);
                 out.push(TileFrame::Sign { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
                     standing: state.block().name == "minecraft:standing_sign", meta: state.meta(), light: color(sky, block), glyphs: Vec::new() });
+                continue;
+            }
+            if matches!(state.block().name, "minecraft:standing_banner" | "minecraft:wall_banner") {
+                let Some(nbt) = self.map.get(&pos).and_then(|te| te.nbt.as_ref()).or_else(|| world.tile_entity(pos)) else { continue };
+                let base = nbt.get("Base").and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                let mut patterns = vec![("b".to_string(), base)];
+                if let Some(list) = nbt.get("Patterns").and_then(mc_core::nbt::Tag::as_list) {
+                    for entry in list.iter().filter_map(mc_core::nbt::Tag::as_compound) {
+                        if let Some(id) = entry.get("Pattern").and_then(mc_core::nbt::Tag::as_str) {
+                            let color = entry.get("Color").and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                            patterns.push((id.to_owned(), color));
+                        }
+                    }
+                }
+                let (sky, block) = world.light(pos.x, pos.y, pos.z);
+                out.push(TileFrame::Banner { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    standing: state.block().name == "minecraft:standing_banner", meta: state.meta(), age: 0., patterns, light: color(sky, block) });
                 continue;
             }
             if state.block().name == "minecraft:skull" {
@@ -466,6 +483,20 @@ mod tests {
         assert!(long.len() < 100 && !long.is_empty());
         let unicode = sign_glyphs(r#"{"text":"中"}"#, 0, &mut font, &lang, true);
         assert_eq!(unicode[0].texture.as_deref(), Some("textures/font/unicode_page_4e.png"));
+    }
+
+    #[test]
+    fn banner_frame_keeps_server_patterns() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:standing_banner").unwrap().state_from_meta(7).unwrap();
+        world.set_block_state(p, state);
+        let pattern = mc_core::nbt::Tag::Compound([(String::from("Pattern"), mc_core::nbt::Tag::String("cr".into())),
+            (String::from("Color"), mc_core::nbt::Tag::Int(4))].into_iter().collect());
+        let mut tiles = Tiles::default(); tiles.on_nbt(p, Some([(String::from("Base"), mc_core::nbt::Tag::Int(2)),
+            (String::from("Patterns"), mc_core::nbt::Tag::List(10, vec![pattern]))].into_iter().collect()));
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]);
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Banner { meta: 7, patterns, .. }] if patterns == &vec![("b".to_string(), 2), ("cr".to_string(), 4)]));
     }
 
     #[test]

@@ -91,6 +91,7 @@ pub struct ChestModels {
     skull_32: Part,
     skull_64: Part,
     skull_overlay: Part,
+    banner_slate: Part, banner_stand: Part, banner_top: Part,
 }
 
 impl Default for ChestModels {
@@ -100,7 +101,10 @@ impl Default for ChestModels {
             sign_stick: Part::new().add_box([64., 32.], [0., 14.], [-1., -2., -1.], [2, 14, 2], 0., false),
             skull_32: Part::new().add_box([64., 32.], [0., 0.], [-4., -8., -4.], [8, 8, 8], 0., false),
             skull_64: Part::new().add_box([64., 64.], [0., 0.], [-4., -8., -4.], [8, 8, 8], 0., false),
-            skull_overlay: Part::new().add_box([64., 64.], [32., 0.], [-4., -8., -4.], [8, 8, 8], 0.25, false) }
+            skull_overlay: Part::new().add_box([64., 64.], [32., 0.], [-4., -8., -4.], [8, 8, 8], 0.25, false),
+            banner_slate: Part::new().add_box([64., 64.], [0., 0.], [-10., 0., -2.], [20, 40, 1], 0., false).at(0., -32., 0.),
+            banner_stand: Part::new().add_box([64., 64.], [44., 0.], [-1., -30., -1.], [2, 42, 2], 0., false),
+            banner_top: Part::new().add_box([64., 64.], [0., 42.], [-10., -32., -1.], [20, 2, 2], 0., false) }
     }
 }
 
@@ -112,6 +116,7 @@ pub struct SignGlyph { pub pos: [[f32; 2]; 4], pub uv: [[f32; 2]; 4], pub color:
 pub enum TileFrame {
     Sign { pos: Vec3, standing: bool, meta: u8, light: [f32; 3], glyphs: Vec<SignGlyph> },
     Skull { pos: Vec3, facing: u8, rotation: u8, kind: u8, light: [f32; 3] },
+    Banner { pos: Vec3, standing: bool, meta: u8, age: f32, patterns: Vec<(String, u8)>, light: [f32; 3] },
     /// `TileEntityChestRenderer.renderTileEntityAt`
     Chest {
         /// The tile's block position in world space.
@@ -134,7 +139,7 @@ pub enum TileFrame {
 impl TileFrame {
     pub fn light(&self) -> [f32; 3] {
         match self {
-            TileFrame::Chest { light, .. } | TileFrame::Sign { light, .. } | TileFrame::Skull { light, .. } => *light,
+            TileFrame::Chest { light, .. } | TileFrame::Sign { light, .. } | TileFrame::Skull { light, .. } | TileFrame::Banner { light, .. } => *light,
         }
     }
 }
@@ -156,6 +161,17 @@ pub fn render(f: &TileFrame, models: &ChestModels, out: &mut dyn FnMut(&Layer, M
             let layer = Layer { tex: Tex::Mob("sign"), tint: [1.; 3], overlay: None, additive: false, glint: false };
             models.sign_board.render(m, &mut |pm, q| out(&layer, pm, q));
             if *standing { models.sign_stick.render(m, &mut |pm, q| out(&layer, pm, q)); }
+        }
+        TileFrame::Banner { pos, standing, meta, age, .. } => {
+            let mut m = sign_transform(*pos, *standing, *meta);
+            if !standing { m *= Mat4::from_translation(Vec3::new(0., -2. / 3., 0.)); }
+            m *= Mat4::from_scale(Vec3::new(2. / 3., -2. / 3., -2. / 3.));
+            let phase = (pos.x as i32).wrapping_mul(7).wrapping_add((pos.y as i32).wrapping_mul(9)).wrapping_add((pos.z as i32).wrapping_mul(13)) as f32 + age;
+            let slate = Part { rot: Vec3::new((-0.0125 + 0.01 * mc_core::math::cos(phase * std::f32::consts::PI * 0.02)) * std::f32::consts::PI, 0., 0.), ..models.banner_slate.clone() };
+            let layer = Layer { tex: Tex::Mob("banner"), tint: [1.;3], overlay: None, additive: false, glint: false };
+            slate.render(m, &mut |pm, q| out(&layer, pm, q));
+            if *standing { models.banner_stand.render(m, &mut |pm, q| out(&layer, pm, q)); }
+            models.banner_top.render(m, &mut |pm, q| out(&layer, pm, q));
         }
         TileFrame::Skull { pos, facing, rotation, kind, .. } => {
             let (offset, yaw) = match facing & 7 {
@@ -249,6 +265,15 @@ mod tests {
         render(&frame, &ChestModels::default(), &mut |_, m, q| for p in q.pos { let p = (m * p.extend(1.)).truncate(); lo = lo.min(p); hi = hi.max(p); });
         assert_eq!(lo, Vec3::new(0.25, 0., 0.25));
         assert_eq!(hi, Vec3::new(0.75, 0.5, 0.75));
+    }
+
+    #[test]
+    fn banner_models_match_java_part_visibility() {
+        for (standing, expected) in [(true, 18), (false, 12)] {
+            let frame = TileFrame::Banner { pos: Vec3::ZERO, standing, meta: 0, age: 0., patterns: vec![], light: [1.;3] };
+            let mut count = 0; render(&frame, &ChestModels::default(), &mut |_, _, _| count += 1);
+            assert_eq!(count, expected);
+        }
     }
 
     /// `ModelChest`'s three parts, in `renderAll` order: 6 quads each.

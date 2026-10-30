@@ -265,6 +265,7 @@ impl App {
                 };
                 let mut frames = self.tiles.frames(&self.world, pt, self.camera.pos.to_array(), self.christmas, &color);
                 for tile in &mut frames {
+                    if let mc_render::tile::TileFrame::Banner { age, .. } = tile { *age = self.info.total_time as f32 + pt; }
                     let mc_render::tile::TileFrame::Sign { pos, glyphs, .. } = tile else { continue };
                     let p = mc_core::BlockPos::new(pos.x as i32, pos.y as i32, pos.z as i32);
                     for line in 0..4 {

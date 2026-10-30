@@ -227,6 +227,7 @@ pub struct AvatarRenderer {
     entity_scratch: Vec<EntityInstance>,
     damage_pipeline: wgpu::RenderPipeline,
     sign_text_pipeline: wgpu::RenderPipeline,
+    banner_pipeline: wgpu::RenderPipeline,
     sign_text_layout: wgpu::BindGroupLayout,
     sign_textures: std::collections::HashMap<String, wgpu::BindGroup>,
     vertices: [wgpu::Buffer; 3],
@@ -435,6 +436,20 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                     attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4] }] },
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
             depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_sign"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
+        });
+        let banner_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("banner"), layout: Some(&sign_text_pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4] }] },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_sign"), compilation_options: Default::default(),
@@ -694,7 +709,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             particle_capacity,
             use_particle_instancing: std::env::var_os("RUSTMC_NO_PARTICLE_INSTANCING").is_none(),
             particle_scratch: Vec::new(), entity_scratch: Vec::new(),
-            damage_pipeline, sign_text_pipeline, sign_text_layout, sign_textures: Default::default(),
+            damage_pipeline, sign_text_pipeline, banner_pipeline, sign_text_layout, sign_textures: Default::default(),
             vertices,
             bind_group,
             steve: PlayerModel::new(false),
@@ -749,6 +764,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let mut verts = Vec::new();
         let mut damage = Vec::new();
         let mut sign_text_runs: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+        let mut banner_runs: Vec<(std::ops::Range<usize>, String)> = Vec::new();
         let mut particles = std::mem::take(&mut self.particle_scratch);
         let mut entities = std::mem::take(&mut self.entity_scratch);
         particles.clear(); entities.clear();
@@ -779,9 +795,30 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for t in &frame.tiles {
+                if matches!(t, crate::tile::TileFrame::Banner { .. }) { continue; }
                 let vertex_start = verts.len(); let instance_start = entities.len();
                 self.tile(&mut verts, &mut entities, self.use_entity_instancing, t, world_vp, cam.pos);
                 record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
+            }
+            for tile in &frame.tiles {
+                let crate::tile::TileFrame::Banner { patterns, .. } = tile else { continue };
+                let key = format!("banner:{patterns:?}");
+                if !self.sign_textures.contains_key(&key) {
+                    let img = banner_image(assets, patterns);
+                    let tex = texture(device, queue, &img); let view = tex.create_view(&Default::default());
+                    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("banner texture"), layout: &self.sign_text_layout,
+                        entries: &[wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) }] });
+                    self.sign_textures.insert(key.clone(), bg);
+                }
+                let start = verts.len(); let light = tile.light(); let lights = lights_in(Mat3::IDENTITY);
+                crate::tile::render(tile, &self.chests, &mut |_, pm, q| {
+                    let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+                    let shade = standard_lighting(n, lights);
+                    let color = [shade * light[0], shade * light[1], shade * light[2], 1.];
+                    let clip = q.pos.map(|p| world_vp * ((pm * p.extend(1.)).truncate() - cam.pos).extend(1.));
+                    for i in [0, 1, 2, 0, 2, 3] { verts.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color, kind: MOB, overlay: [0.;4] }); }
+                });
+                banner_runs.push((start..verts.len(), key));
             }
             for tile in &frame.tiles {
                 let crate::tile::TileFrame::Sign { pos, standing, meta, glyphs, .. } = tile else { continue };
@@ -938,6 +975,13 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.set_vertex_buffer(0, buf.slice(..));
             start = at;
         }
+        for (range, key) in &banner_runs {
+            let first = (split as usize + range.start).min(end as usize) as u32;
+            let last = (split as usize + range.end).min(end as usize) as u32;
+            pass.draw(start..first, 0..1);
+            pass.set_pipeline(&self.banner_pipeline); pass.set_bind_group(1, &self.sign_textures[key], &[]);
+            pass.draw(first..last, 0..1); pass.set_pipeline(&self.pipeline); start = last;
+        }
         for (range, key) in &sign_text_runs {
             let first = (split as usize + range.start).min(end as usize) as u32;
             let last = (split as usize + range.end).min(end as usize) as u32;
@@ -969,6 +1013,13 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.set_pipeline(&self.glint_pipeline);
             pass.draw(glint_start..end, 0..1);
         }
+        drop(pass);
+        let mut kept = 0;
+        self.sign_textures.retain(|key, _| {
+            if !key.starts_with("banner:") { return true; }
+            kept += 1;
+            kept <= 256
+        });
     }
 
     /// `GuiInventory.drawEntityOnScreen`: the player in the inventory, drawn over the GUI
@@ -1621,6 +1672,40 @@ fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
+fn banner_image(assets: &AssetSource, patterns: &[(String, u8)]) -> image::RgbaImage {
+    let load = |path: &str| assets.read(path).and_then(|v| image::load_from_memory(&v).ok()).map(|i| i.to_rgba8());
+    let Some(base) = load("textures/entity/banner_base.png") else { return image::RgbaImage::new(1, 1) };
+    let mut out = base.clone();
+    let colors: [u32; 16] = [16777215,14188339,11685080,6724056,15066419,8375321,15892389,5000268,10066329,5013401,8339378,3361970,6704179,6717235,10040115,1644825];
+    let mut layers = 0;
+    for (id, dye) in patterns {
+        let name = match id.as_str() {
+            "b"=>"base", "bl"=>"square_bottom_left", "br"=>"square_bottom_right", "tl"=>"square_top_left", "tr"=>"square_top_right",
+            "bs"=>"stripe_bottom", "ts"=>"stripe_top", "ls"=>"stripe_left", "rs"=>"stripe_right", "cs"=>"stripe_center", "ms"=>"stripe_middle",
+            "drs"=>"stripe_downright", "dls"=>"stripe_downleft", "ss"=>"small_stripes", "cr"=>"cross", "sc"=>"straight_cross",
+            "bt"=>"triangle_bottom", "tt"=>"triangle_top", "bts"=>"triangles_bottom", "tts"=>"triangles_top", "ld"=>"diagonal_left",
+            "rd"=>"diagonal_up_right", "lud"=>"diagonal_up_left", "rud"=>"diagonal_right", "mc"=>"circle", "mr"=>"rhombus",
+            "vh"=>"half_vertical", "hh"=>"half_horizontal", "vhr"=>"half_vertical_right", "hhb"=>"half_horizontal_bottom",
+            "bo"=>"border", "cbo"=>"curly_border", "cre"=>"creeper", "gra"=>"gradient", "gru"=>"gradient_up", "bri"=>"bricks",
+            "sku"=>"skull", "flo"=>"flower", "moj"=>"mojang", _=>continue,
+        };
+        if layers == 17 { break; }
+        layers += 1;
+        let Some(mut mask) = load(&format!("textures/entity/banner/{name}.png")) else { continue };
+        if mask.dimensions() != base.dimensions() { continue; }
+        let color = colors[15 - if *dye < 16 { *dye as usize } else { 0 }];
+        for (x, y, pixel) in mask.enumerate_pixels_mut() {
+            if pixel[3] == 0 { continue; }
+            let src = base.get_pixel(x, y);
+            *pixel = image::Rgba([((src[0] as u32 * ((color >> 16) & 255)) / 255) as u8,
+                ((src[1] as u32 * ((color >> 8) & 255)) / 255) as u8,
+                ((src[2] as u32 * (color & 255)) / 255) as u8, pixel[0]]);
+        }
+        image::imageops::overlay(&mut out, &mask, 0, 0);
+    }
+    out
+}
+
 fn texture(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::RgbaImage) -> wgpu::Texture {
     use wgpu::util::DeviceExt;
     device.create_texture_with_data(
@@ -1848,6 +1933,16 @@ mod particle_instance_tests {
         let unicode = render(&mut renderer, &frame, true);
         assert_ne!(instanced, unicode, "Unicode sign glyph must be visible");
         assert!(renderer.sign_textures.contains_key("textures/font/unicode_page_4e.png"));
+        frame.tiles.clear();
+        frame.tiles.push(crate::tile::TileFrame::Banner { pos: Vec3::new(-0.5,-0.5,2.), standing: true, meta: 8, age: 10.,
+            patterns: vec![("b".into(), 1), ("cr".into(), 4)], light: [1.;3] });
+        let banner = render(&mut renderer, &frame, true);
+        assert!(banner.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "banner must be visible");
+        assert_eq!(banner, render(&mut renderer, &frame, false));
+        if let crate::tile::TileFrame::Banner { patterns, .. } = &mut frame.tiles[0] { patterns[0].1 = 15; }
+        let recolored = render(&mut renderer, &frame, true);
+        assert_ne!(banner, recolored, "banner dye must change the visible texture");
+        assert!(renderer.sign_textures.keys().any(|key| key.starts_with("banner:")));
         frame.tiles.clear();
         frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
         let old = render(&mut renderer, &frame, false);
