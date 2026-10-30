@@ -46,6 +46,7 @@ mod render_entities;
 mod render_frame;
 mod resource_pack;
 mod screens_glue;
+mod session;
 mod screenshot;
 mod sound_glue;
 mod tick;
@@ -123,22 +124,6 @@ fn main() {
             eprintln!("skipping pack {}: {e}", p.display());
         }
     }
-    // `ServerData.ServerResourceMode` is remembered per server; an accepted pack from an
-    // earlier join is pushed on top of the stack before the atlases are baked.
-    let server_key = args.connect.as_deref().map(normalize_server_key).unwrap_or_default();
-    let pack_store = pack::Store::load();
-    let pack_mode = args.pack_mode.unwrap_or_else(|| pack_store.mode_for(&server_key));
-    let mut cached_applied = None;
-    if let Some(cached) = pack_store.cached_for(&server_key) {
-        if let Err(e) = assets.push(&cached) {
-            eprintln!("skipping cached server pack {}: {e}", cached.display());
-        } else {
-            println!("using cached server resource pack {}", cached.display());
-            let hash = pack_store.servers.get(&server_key).map(|s| s.hash.clone()).unwrap_or_default();
-            cached_applied = Some((hash, cached));
-        }
-    }
-
     let t = Instant::now();
     let models = BlockModels::load(&assets);
     println!(
@@ -148,43 +133,9 @@ fn main() {
         t.elapsed().as_secs_f64() * 1e3
     );
 
-    let mut connection = None;
-    let mut connect_error: Option<String> = None;
-    if let Some(addr) = args.connect.as_deref() {
-        let (host, port) = match addr.rsplit_once(':') {
-            Some((h, p)) if p.parse::<u16>().is_ok() => (h.to_string(), p.parse().unwrap()),
-            _ => (addr.to_string(), 25565),
-        };
-        let session = if prism_session.is_some() {
-            prism_session
-        } else if args.online {
-            match auth::login() {
-                Ok(s) => {
-                    println!("Signed in as {}", s.name);
-                    Some(s)
-                }
-                Err(e) => {
-                    connect_error = Some(format!("Microsoft sign-in failed: {e}"));
-                    None
-                }
-            }
-        } else {
-            None
-        };
-        if connect_error.is_none() {
-            let name = session.as_ref().map_or(args.name.clone(), |s| s.name.clone());
-            match net::Net::connect(&host, port, &name, session.as_ref()) {
-                Ok(n) => connection = Some((n, name)),
-                Err(e) => {
-                    let reason = chat::format(&e, &mc_gui::lang::Lang::default());
-                    eprintln!("Failed to connect to the server: {reason}");
-                    connect_error = Some(reason);
-                }
-            }
-        }
-    }
+    let connecting = args.connect.is_some();
     #[cfg(feature = "singleplayer")]
-    let (world, center, seed) = if connection.is_some() {
+    let (world, center, seed) = if connecting {
         let mut w = World::default();
         w.track_dirty = true;
         (w, (8, 8), 0)
@@ -192,7 +143,7 @@ fn main() {
         load_world(&args)
     };
     #[cfg(feature = "singleplayer")]
-    if world.chunks.is_empty() && connection.is_none() {
+    if world.chunks.is_empty() && !connecting {
         eprintln!("no chunks loaded around {center:?}");
         std::process::exit(1);
     }
@@ -200,7 +151,7 @@ fn main() {
     // benchmark need a connection (mock server); menu screens need nothing.
     #[cfg(not(feature = "singleplayer"))]
     let (world, center, seed) = {
-        if args.bench.is_some() && connection.is_none() {
+        if args.bench.is_some() && !connecting {
             eprintln!("--bench needs a world: pass --connect <host:port> (BENCH.md has the mock server commands)");
             std::process::exit(1);
         }
@@ -218,7 +169,6 @@ fn main() {
     app.tiles.seed_from_world(&app.world);
     app.info.seed = seed;
     mc_gui::screens::SINGLEPLAYER_AVAILABLE.store(cfg!(feature = "singleplayer"), std::sync::atomic::Ordering::Relaxed);
-    app.in_game = connection.is_some();
     #[cfg(feature = "singleplayer")]
     {
         app.in_game |= args.play;
@@ -236,23 +186,21 @@ fn main() {
             eprintln!("sound: .minecraft/assets with the 1.8 index not found; running silent");
         }
     }
-    app.name = connection.as_ref().map_or(args.name.clone(), |c| c.1.clone());
+    app.name = args.name.clone();
     app.ui.player_name = app.name.clone();
-    app.net = connection.map(|c| c.0);
-    app.packs = pack::ResourcePacks::new(pack_mode);
-    app.packs.applied = cached_applied;
-    app.pack_store = pack_store;
-    app.server_key = server_key;
     app.jar = jar.clone();
     app.base_packs = args.packs.clone();
     app.screenshot = args.screenshot.clone().map(|p| (p, args.screen.clone()));
     app.bench = args
         .bench
         .map(|s| Bench::new(s, Vec3::new(center.0 as f32 + 0.5, surface_y as f32 + 6., center.1 as f32 + 0.5)));
-    if let Some(reason) = connect_error {
-        app.in_game = false;
-        app.ui.in_world = false;
-        app.open(Box::new(screens::Disconnected::new(reason)), false);
+    // `--connect` and Prism's quick-join go through the same in-process path as the server list.
+    app.session = prism_session;
+    if let Some(addr) = args.connect.as_deref() {
+        app.start_connect(addr, &args.name, args.online, args.pack_mode);
+        if app.screenshot.is_some() || app.bench.is_some() {
+            app.wait_connect();
+        }
     }
     event_loop.run_app(&mut app).expect("run app");
 }

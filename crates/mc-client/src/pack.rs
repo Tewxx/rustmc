@@ -287,16 +287,6 @@ impl Store {
         self.servers.get(key).map_or(Mode::Prompt, |s| s.mode)
     }
 
-    /// The cached pack to pre-apply on the next join, when the mode is Enabled.
-    pub fn cached_for(&self, key: &str) -> Option<PathBuf> {
-        let s = self.servers.get(key)?;
-        if s.mode != Mode::Enabled || s.path.is_empty() {
-            return None;
-        }
-        let p = PathBuf::from(&s.path);
-        p.is_file().then_some(p)
-    }
-
     pub fn set(&mut self, key: &str, mode: Mode, hash: &str, path: Option<&Path>) {
         self.servers.insert(
             key.to_string(),

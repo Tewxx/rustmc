@@ -5,7 +5,7 @@ use crate::*;
 impl App {
     /// `--screenshot`: set up the requested screen, render once off-screen, exit.
     pub(crate) fn take_screenshot(&mut self, path: &Path, which: &str) {
-        let in_game = !matches!(which, "title" | "title-options") && !which.starts_with("multiplayer") && !which.starts_with("mp-");
+        let in_game = !matches!(which, "title" | "title-options" | "connecting" | "disconnected" | "connect-failed") && !which.starts_with("multiplayer") && !which.starts_with("mp-");
         self.in_game = in_game;
         self.ui.in_world = in_game;
         if self.net.is_some() {
@@ -233,6 +233,9 @@ impl App {
                 self.send_chat("/gamemode creative");
                 self.open(Box::new(screens::Chat::with_text("/help")), false);
             }
+            "connecting" => self.open(Box::new(screens::Connecting::new(Default::default())), false),
+            "disconnected" => self.open(Box::new(screens::Disconnected::new("disconnect.lost", "Internal Exception: io.netty.handler.timeout.ReadTimeoutException")), false),
+            "connect-failed" => self.open(Box::new(screens::Disconnected::new("connect.failed", "Unknown host")), false),
             "title" => self.open(Box::new(screens::MainMenu::default()), false),
             "title-options" => self.open(Box::new(screens::Options::default()), false),
             "pause" => self.open(Box::new(screens::PauseMenu::default()), false),

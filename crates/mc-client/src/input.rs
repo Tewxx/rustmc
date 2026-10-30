@@ -84,7 +84,9 @@ impl ApplicationHandler for App {
             self.grab(true);
             return;
         }
-        self.open(Box::new(screens::MainMenu::default()), false);
+        if self.screen.is_none() {
+            self.open(Box::new(screens::MainMenu::default()), false);
+        }
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {

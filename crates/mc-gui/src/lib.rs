@@ -126,6 +126,8 @@ pub struct Ui {
     pub splash: String,
     /// True when a world is loaded (pause menu, world-tinted backgrounds).
     pub in_world: bool,
+    /// The world belongs to a server connection (the pause menu says Disconnect).
+    pub remote: bool,
     /// The local player's name, for screens that prefill it (`GuiMultiplayer`'s edit box).
     pub player_name: String,
     /// Client ticks (20/s) plus partial tick, for animations.
@@ -152,6 +154,7 @@ impl Ui {
             settings,
             splash: random_splash(assets),
             in_world: false,
+            remote: false,
             player_name: "Player".into(),
             ticks: 0.0,
             sounds: Vec::new(),

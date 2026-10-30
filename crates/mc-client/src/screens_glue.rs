@@ -120,41 +120,24 @@ impl App {
                 self.grab(true);
             }
             Action::QuitToTitle => {
-                if let Some(n) = &mut self.net {
-                    n.disconnect();
-                }
-                self.net = None;
-                self.disconnect_shown = false;
-                self.in_game = false;
-                self.ui.in_world = false;
+                self.cancel_connect();
+                self.leave_world();
                 self.parents.clear();
                 self.screen = None;
                 self.open(Box::new(screens::MainMenu::default()), false);
             }
+            Action::Disconnect if self.net.is_some() => self.disconnect_to_server_list(),
+            Action::Disconnect => self.handle(Action::QuitToTitle, el),
+            Action::CancelConnect => {
+                self.cancel_connect();
+                self.close_screen();
+            }
             Action::Connect { address, name, online, pack_mode } => {
-                // The vanilla screens have no account or name fields: join online when a
-                // Microsoft account is cached (`rustmc_account.json`), else offline as `name`.
-                let online = online || Path::new("rustmc_account.json").exists();
-                eprintln!("[connect] address={address:?} name={name:?} online={online} pack_mode={pack_mode:?}");
-                // A running App has no world-reset/connection-switch path yet, so hand the
-                // direct-connect request to a fresh client process and stop this one.
-                let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from(format!("rustmc{}", std::env::consts::EXE_SUFFIX)));
-                let mut cmd = std::process::Command::new(exe);
-                cmd.arg("--connect").arg(&address).arg("--name").arg(&name);
-                if online {
-                    cmd.arg("--online");
-                }
+                // `new GuiConnecting(...)`: connects in-process; the pack choice is the saved server's.
                 if let Some(mode) = pack_mode {
                     server_list::apply_connect_mode(&address, mode);
-                    cmd.arg("--pack-mode").arg(mode);
                 }
-                if !self.jar.as_os_str().is_empty() {
-                    cmd.arg("--jar").arg(&self.jar);
-                }
-                match cmd.spawn() {
-                    Ok(_) => el.exit(),
-                    Err(e) => eprintln!("could not start the client for {address}: {e}"),
-                }
+                self.start_connect(&address, &name, online, pack_mode.map(pack::Mode::parse));
             }
             Action::Quit => el.exit(),
             Action::CloseAll => self.close_all(),

@@ -2,7 +2,7 @@
 //! `Chunk.fillChunk` conversion, and `EntityPlayerSP.onUpdateWalkingPlayer`'s movement packets.
 use mc_core::Vec3;
 use mc_protocol::chunk::WireChunk;
-use mc_protocol::net::{login, Writer};
+use mc_protocol::net::{login_with_socket, Writer};
 use mc_protocol::packets::*;
 use mc_world::chunk::{Chunk, Section};
 use std::sync::mpsc::{self, Receiver};
@@ -36,16 +36,38 @@ pub struct Net {
     done_loading_terrain: bool,
 }
 
+/// Closing the socket also ends the reader thread, so a dropped connection leaks nothing.
+impl Drop for Net {
+    fn drop(&mut self) {
+        self.writer.shutdown();
+    }
+}
+
 impl Net {
     /// `GuiConnecting`: blocks until login succeeds, then reads packets on a thread.
-    pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>) -> Result<Net, String> {
-        let mut join = |hash: &str| match session {
+    /// `stage` flips to "Logging in..." once the server asks for authentication.
+    pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>, stage: &std::sync::atomic::AtomicU8, socket: &std::sync::Mutex<Option<std::net::TcpStream>>, cancel: &std::sync::atomic::AtomicBool) -> Result<Net, String> {
+        let mut join = |hash: &str| {
+            stage.store(mc_gui::screens::STAGE_LOGGING_IN, std::sync::atomic::Ordering::Relaxed);
+            match session {
             Some(s) => crate::auth::join_server(s, hash),
             None => Err("This server is online-mode. Sign in with --online (Microsoft account), or join an offline-mode server with --name <name>.".into()),
+            }
         };
-        let (mut reader, writer, ok) = login(host, port, name, Some(&mut join)).map_err(|e| match e {
+        let (mut reader, writer, ok) = login_with_socket(host, port, name, Some(&mut join), |stream| {
+            let mut slot = socket.lock().unwrap();
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "connection cancelled"));
+            }
+            *slot = Some(stream.try_clone()?);
+            stage.store(mc_gui::screens::STAGE_LOGGING_IN, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }).map_err(|e| match e {
             mc_protocol::net::LoginError::Kicked(json) => json,
+            mc_protocol::net::LoginError::Io(e) if e.to_string().contains("lookup address") || e.to_string().contains("not known") => "Unknown host".into(),
             mc_protocol::net::LoginError::Io(e) => format!("Could not connect to {host}:{port}: {e}"),
+            // `UnknownHostException`
+            mc_protocol::net::LoginError::Protocol(s) if s.starts_with("Unknown host") => "Unknown host".into(),
             mc_protocol::net::LoginError::Auth(s) | mc_protocol::net::LoginError::Protocol(s) => s,
         })?;
         let (tx, rx) = mpsc::channel();
@@ -352,7 +374,7 @@ mod tests {
                 d.feed(&buf[..n]);
             }
         });
-        (Net::connect("127.0.0.1", port, "a", None).unwrap(), srv)
+        (Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default()).unwrap(), srv)
     }
 
     #[test]

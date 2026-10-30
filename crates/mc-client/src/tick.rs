@@ -6,16 +6,10 @@ impl App {
     /// `NetHandlerPlayClient`: a closed connection shows `GuiDisconnected` instead of leaving
     /// the player in a frozen world.
     pub(crate) fn poll_disconnect(&mut self) {
-        if self.disconnect_shown {
-            return;
-        }
         let Some(reason) = self.net.as_ref().and_then(|n| n.closed.clone()) else { return };
-        self.disconnect_shown = true;
         let text = chat::format(&reason, &self.ui.lang);
-        self.in_game = false;
-        self.ui.in_world = false;
-        self.grab(false);
-        self.open(Box::new(screens::Disconnected::new(text)), false);
+        self.leave_world();
+        self.show_disconnected("disconnect.lost", text);
     }
 
     pub(crate) fn update(&mut self, dt: f32) {
@@ -23,6 +17,7 @@ impl App {
             let _z = crate::bench::zone(crate::bench::Phase::Net);
             self.process_net();
         }
+        self.poll_connecting();
         self.poll_disconnect();
         self.flush_window();
         for (cell, rgba) in self.skins.poll() {

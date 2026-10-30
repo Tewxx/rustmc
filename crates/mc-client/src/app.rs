@@ -68,8 +68,10 @@ pub(crate) struct App {
     pub(crate) bench: Option<Bench>,
     /// The server connection when playing multiplayer.
     pub(crate) net: Option<net::Net>,
-    /// `GuiDisconnected` already shown for this connection.
-    pub(crate) disconnect_shown: bool,
+    /// The connection being made on a background thread (`GuiConnecting`).
+    pub(crate) connecting: Option<session::Connector>,
+    /// The launcher-provided (Prism) session, used for every connection.
+    pub(crate) session: Option<auth::Session>,
     pub(crate) name: String,
     pub(crate) remote: entities::Entities,
     pub(crate) music: music::MusicTicker,
@@ -209,7 +211,8 @@ impl App {
             screenshot: None,
             bench: None,
             net: None,
-            disconnect_shown: false,
+            connecting: None,
+            session: None,
             name: "Player".into(),
             remote: entities::Entities::default(),
             music: music::MusicTicker::default(),

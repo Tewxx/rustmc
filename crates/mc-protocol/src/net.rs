@@ -111,8 +111,14 @@ impl From<io::Error> for LoginError {
 /// `GuiConnecting.connect`: TCP connect, handshake, login start, then the login packets until
 /// `LoginSuccess`. `auth` is called with the server hash when the server asks for encryption.
 pub fn login(host: &str, port: u16, name: &str, auth: Option<Authenticate>) -> Result<(Reader, Writer, LoginSuccess), LoginError> {
+    login_with_socket(host, port, name, auth, |_| Ok(()))
+}
+
+/// Like `login`, notifying the caller when the socket is available for cancellation.
+pub fn login_with_socket(host: &str, port: u16, name: &str, auth: Option<Authenticate>, on_socket: impl FnOnce(&TcpStream) -> io::Result<()>) -> Result<(Reader, Writer, LoginSuccess), LoginError> {
     let addr = (host, port).to_socket_addrs()?.next().ok_or_else(|| LoginError::Protocol(format!("Unknown host '{host}'")))?;
     let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(30))?;
+    on_socket(&stream)?;
     stream.set_nodelay(true)?;
     // `ReadTimeoutHandler(30)`: a silent server ends the connection instead of hanging it.
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;

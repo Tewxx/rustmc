@@ -17,8 +17,6 @@ impl App {
                 net::Incoming::Closed(reason) => {
                     if let Some(n) = &mut self.net {
                         if n.closed.is_none() {
-                            let text = chat::format(&reason, &self.ui.lang);
-                            self.hud.add_chat(format!("{}: {text}", self.ui.lang.get("disconnect.lost")));
                             n.closed = Some(reason);
                         }
                     }
@@ -57,7 +55,6 @@ impl App {
                 C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
-                    self.disconnect_shown = false;
                     self.particles.clear();
                     // A new WorldClient brings a fresh Scoreboard; the player info map stays.
                     let players = std::mem::take(&mut self.scoreboard.players);
@@ -682,8 +679,6 @@ impl App {
                     // channel check.
                 }
                 C::Disconnect(d) => {
-                    let text = chat::format(&d.reason, &self.ui.lang);
-                    self.hud.add_chat(format!("{}: {text}", self.ui.lang.get("disconnect.lost")));
                     n.closed = Some(d.reason);
                     n.disconnect();
                 }
@@ -963,16 +958,16 @@ mod hostile_tests {
         let mut app = App::new(assets, models, world, (8, 8), Settings::default());
         app.in_game = true;
         let port = serve(bodies);
-        app.net = Some(net::Net::connect("127.0.0.1", port, "a", None).unwrap());
+        app.net = Some(net::Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default()).unwrap());
         let t = Instant::now();
-        while app.net.as_ref().unwrap().closed.is_none() && t.elapsed().as_secs() < 60 {
+        while app.net.is_some() && t.elapsed().as_secs() < 60 {
             app.update(0.05);
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         for _ in 0..40 {
             app.update(0.05);
         }
-        let closed = app.net.as_ref().unwrap().closed.clone();
+        let closed = if app.net.is_none() { Some("disconnected".to_string()) } else { None };
         eprintln!("hostile: {n} packets processed, connection ended with {closed:?}");
         closed
     }

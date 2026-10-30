@@ -19,6 +19,10 @@ pub enum Action {
     Open(Box<dyn Screen>),
     StartGame,
     QuitToTitle,
+    /// Pause menu "Disconnect": a server world returns to the server list, a local one to the title.
+    Disconnect,
+    /// `GuiConnecting`'s Cancel button.
+    CancelConnect,
     Quit,
     SendChat(String),
     /// `GuiChat.sendAutocompleteRequest`: the text before the cursor.
@@ -341,58 +345,108 @@ impl Screen for MainMenu {
     }
 }
 
-// ---------------------------------------------------------------- disconnected
+// ---------------------------------------------------------------- connecting / disconnected
 
-/// `GuiDisconnected`: the reason a connection failed or ended, without closing the window.
+/// What `GuiConnecting.drawScreen` shows: `networkManager == null` is Connecting, else Logging in.
+pub const STAGE_CONNECTING: u8 = 0;
+pub const STAGE_LOGGING_IN: u8 = 1;
+
+/// `GuiConnecting`: the connection runs on a background thread owned by the client; the stage
+/// is shared with it.
+pub struct Connecting {
+    buttons: Vec<Button>,
+    stage: std::sync::Arc<std::sync::atomic::AtomicU8>,
+}
+
+impl Connecting {
+    pub fn new(stage: std::sync::Arc<std::sync::atomic::AtomicU8>) -> Self {
+        Self { buttons: Vec::new(), stage }
+    }
+}
+
+impl Screen for Connecting {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        self.buttons = vec![Button::new(0, w / 2 - 100, h / 4 + 120 + 12, ui.lang.get("gui.cancel"))];
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        default_background(ui, b, w, h);
+        let key = if self.stage.load(std::sync::atomic::Ordering::Relaxed) == STAGE_CONNECTING { "connect.connecting" } else { "connect.authorizing" };
+        ui.font.draw_centered(b, &ui.lang.get(key), w / 2, h / 2 - 50, 0xFFFF_FFFF);
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+    }
+
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        match click_buttons(&mut self.buttons, ui, mx, my) {
+            Some(0) => Action::CancelConnect,
+            _ => Action::None,
+        }
+    }
+
+    /// `GuiConnecting.keyTyped` is empty: Escape does nothing.
+    fn key(&mut self, _ui: &mut Ui, _key: Key) -> Action {
+        Action::None
+    }
+}
+
+/// `GuiDisconnected`: a title (`reasonLocalizationKey`) over the wrapped reason and a single
+/// "Back to server list" button that returns to the screen the connection started from.
 pub struct Disconnected {
     buttons: Vec<Button>,
+    title_key: String,
     pub reason: String,
+    lines: Vec<String>,
 }
 
 impl Disconnected {
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self { buttons: Vec::new(), reason: reason.into() }
+    pub fn new(title_key: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self { buttons: Vec::new(), title_key: title_key.into(), reason: reason.into(), lines: Vec::new() }
     }
 }
 
 impl Screen for Disconnected {
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
-        self.buttons = vec![
-            Button::new(0, w / 2 - 100, h / 2 + 40, ui.lang.get("gui.toTitle")),
-            Button::new(1, w / 2 - 100, h / 2 + 64, ui.lang.get("menu.quit")),
-        ];
-    }
-
-    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
-        default_background(ui, b, w, h);
-        ui.font.draw_centered(b, &ui.lang.get("disconnect.lost"), w / 2, h / 2 - 60, 0xFFFF_FFFF);
-        // `GuiDisconnected` wraps the reason with `fontRendererObj.listFormattedStringToWidth`.
-        let mut lines = Vec::new();
+        // `fontRendererObj.listFormattedStringToWidth(message, width - 50)`
+        self.lines.clear();
         let mut line = String::new();
         for word in self.reason.split_whitespace() {
             let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
-            if !line.is_empty() && ui.font.width(&candidate) > w - 40 {
-                lines.push(std::mem::take(&mut line));
+            if !line.is_empty() && ui.font.width(&candidate) > w - 50 {
+                self.lines.push(std::mem::take(&mut line));
                 line = word.to_string();
             } else {
                 line = candidate;
             }
         }
         if !line.is_empty() {
-            lines.push(line);
+            self.lines.push(line);
         }
-        for (i, l) in lines.iter().take(8).enumerate() {
-            ui.font.draw_centered(b, l, w / 2, h / 2 - 40 + i as i32 * 10, 0xFFA0_A0A0);
+        let total = self.lines.len() as i32 * 9;
+        self.buttons = vec![Button::new(0, w / 2 - 100, h / 2 + total / 2 + 9, ui.lang.get("gui.toMenu"))];
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        default_background(ui, b, w, h);
+        let total = self.lines.len() as i32 * 9;
+        ui.font.draw_centered(b, &ui.lang.get(&self.title_key), w / 2, h / 2 - total / 2 - 9 * 2, 0xFFAA_AAAA);
+        let mut y = h / 2 - total / 2;
+        for l in &self.lines {
+            ui.font.draw_centered(b, l, w / 2, y, 0xFFFF_FFFF);
+            y += 9;
         }
         draw_buttons(&mut self.buttons, ui, b, mx, my);
     }
 
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         match click_buttons(&mut self.buttons, ui, mx, my) {
-            Some(0) => Action::QuitToTitle,
-            Some(1) => Action::Quit,
+            Some(0) => Action::Close,
             _ => Action::None,
         }
+    }
+
+    /// `GuiDisconnected.keyTyped` is empty.
+    fn key(&mut self, _ui: &mut Ui, _key: Key) -> Action {
+        Action::None
     }
 }
 
@@ -408,7 +462,7 @@ impl Screen for PauseMenu {
         let t = |k: &str| ui.lang.get(k);
         let i = -16;
         self.buttons = vec![
-            Button::new(1, w / 2 - 100, h / 4 + 120 + i, t("menu.returnToMenu")),
+            Button::new(1, w / 2 - 100, h / 4 + 120 + i, t(if ui.remote { "menu.disconnect" } else { "menu.returnToMenu" })),
             Button::new(4, w / 2 - 100, h / 4 + 24 + i, t("menu.returnToGame")),
             Button::sized(0, w / 2 - 100, h / 4 + 96 + i, 98, 20, t("menu.options")),
             Button::sized(7, w / 2 + 2, h / 4 + 96 + i, 98, 20, t("menu.shareToLan")).disabled(),
@@ -426,7 +480,7 @@ impl Screen for PauseMenu {
 
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         match click_buttons(&mut self.buttons, ui, mx, my) {
-            Some(1) => Action::QuitToTitle,
+            Some(1) => Action::Disconnect,
             Some(4) => Action::Close,
             Some(0) => Action::Open(Box::new(Options::default())),
             _ => Action::None,
