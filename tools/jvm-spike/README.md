@@ -10,4 +10,4 @@ The program loads the specified JVM, finds a static `value()I` method and calls 
 
 This does not boot LaunchClassLoader, Forge or Mixin, diff transformed methods, host Minecraft methods or bridge game state. Those remain required parts of FG2.
 
-`build.sh` also builds an experimental LaunchWrapper/Mixin harness. The embedded run `spike/Run 1` currently fails: LaunchWrapper starts, but its test target returns 1 rather than the expected injected value 2. A real headless Forge server does apply the same mixin. This harness records a reproducible bootstrap gap; it is not a passing FG2 test.
+`tools/jvm-spike/run-mixin.sh` builds a controlled LaunchWrapper/Mixin harness and checks that the embedded JVM returns 2 after injection (the original method returns 1). It succeeds locally on JDK 8/macOS ARM64, although Mixin reports a bootstrap timing warning and an unknown side. It does not launch FML, use the shadow jar, diff methods, or exercise a Minecraft class.
