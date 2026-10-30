@@ -52,6 +52,13 @@ final class DumpPackets {
     static final int F = 1, B = 2, L = 4, R = 8, J = 16, S = 32, P = 64;
 
     /** `NetworkManager` that keeps the serialised packets instead of writing them to a channel. */
+    /** Keep the real join handler while avoiding rendering and window setup in the oracle. */
+    static final class HeadlessMinecraft extends Minecraft {
+        HeadlessMinecraft() { super(null); }
+        public void loadWorld(net.minecraft.client.multiplayer.WorldClient world) { this.theWorld = world; }
+        public void displayGuiScreen(net.minecraft.client.gui.GuiScreen screen) {}
+    }
+
     static final class Capture extends NetworkManager {
         final List<String> out = new ArrayList<String>();
         Capture() { super(EnumPacketDirection.CLIENTBOUND); }
@@ -171,7 +178,7 @@ final class DumpPackets {
     }
 
     static JsonObject run(Sc sc) throws Exception {
-        Minecraft mc = (Minecraft) alloc(Minecraft.class);
+        Minecraft mc = (Minecraft) alloc(HeadlessMinecraft.class);
         put(mc, Minecraft.class, "theMinecraft", mc);
         put(mc, Minecraft.class, "mcThread", Thread.currentThread());
         Capture cap = new Capture();
@@ -188,6 +195,8 @@ final class DumpPackets {
         }
         WorldSettings.GameType gt = sc.mode.equals("creative") ? WorldSettings.GameType.CREATIVE : WorldSettings.GameType.SURVIVAL;
         GameSettings gs = new GameSettings();
+        put(gs, GameSettings.class, "mc", mc);
+        gs.renderDistanceChunks = 12;
         put(mc, Minecraft.class, "gameSettings", gs);
         put(mc, Minecraft.class, "mcProfiler", new Profiler());
         put(mc, Minecraft.class, "theWorld", world);
@@ -278,6 +287,16 @@ final class DumpPackets {
                 p.dropOneItem(t.arg[0] != 0);
             } else if ("respawn".equals(t.op)) {
                 p.respawnPlayer();
+            } else if ("settings".equals(t.op)) {
+                gs.renderDistanceChunks = t.arg[0];
+                gs.chatVisibility = net.minecraft.entity.player.EntityPlayer.EnumChatVisibility.getEnumChatVisibility(t.arg[1]);
+                gs.chatColours = t.arg[2] != 0;
+                java.util.Set<net.minecraft.entity.player.EnumPlayerModelParts> parts = new java.util.HashSet<net.minecraft.entity.player.EnumPlayerModelParts>();
+                for (net.minecraft.entity.player.EnumPlayerModelParts part : net.minecraft.entity.player.EnumPlayerModelParts.values()) if ((part.getPartMask() & t.arg[3]) != 0) parts.add(part);
+                put(gs, GameSettings.class, "setModelParts", parts);
+                gs.sendSettingsToServer();
+            } else if ("join".equals(t.op)) {
+                nh.handleJoinGame(new net.minecraft.network.play.server.S01PacketJoinGame(1, WorldSettings.GameType.SURVIVAL, false, 0, net.minecraft.world.EnumDifficulty.NORMAL, 20, net.minecraft.world.WorldType.DEFAULT, false));
             } else if ("mount".equals(t.op)) {
                 net.minecraft.entity.item.EntityMinecartEmpty cart = new net.minecraft.entity.item.EntityMinecartEmpty(world, 0.5, 64.0, 0.5);
                 cart.setEntityId(77); world.ents.add(cart); p.mountEntity(cart);
@@ -406,6 +425,10 @@ final class DumpPackets {
 
         s = new Sc("inventory_clicks").floor().item(0, "stone", 64).item(9, "dirt", 8).item(10, "apple", 2);
         s.idle(2).op("inventory").idle(2).op("click", 0, 36, 0, 0).op("click", 0, 20, 0, 0).op("click", 0, 9, 1, 0).op("click", 0, 10, 0, 1).op("click", 0, 36, 1, 2).op("click", 0, 11, 0, 0).op("click", 0, -999, 0, 0).op("click", 0, 36, 0, 4).op("close").idle(3).op("drop", 0).op("drop", 1).idle(2);
+        l.add(s);
+
+        s = new Sc("join_replies").floor();
+        s.op("join").op("settings", 5, 1, 0, 21).op("settings", 12, 0, 1, 127).idle(2);
         l.add(s);
 
         s = new Sc("vehicle_input").floor();

@@ -212,16 +212,20 @@ impl App {
     pub(crate) fn apply_settings(&mut self) {
         let s = self.ui.settings.clone();
         self.camera.fov_deg = s.fov;
-        let Some(r) = &mut self.renderer else { return };
-        r.render_distance_blocks = (s.render_distance * 16) as f32;
-        r.set_vsync(s.vsync);
-        // GameSettings.sendSettingsToServer when a synced option changes.
+        // Settings are protocol state even when no renderer has been created yet.
         let a = &self.applied;
         if (s.chat_visibility, s.chat_colors, s.model_parts, s.render_distance) != (a.chat_visibility, a.chat_colors, a.model_parts, a.render_distance) {
             if let Some(n) = &mut self.net {
                 n.send_settings("en_US", s.render_distance as i8, s.chat_visibility as i8, s.chat_colors, s.model_parts);
             }
+            self.applied.chat_visibility = s.chat_visibility;
+            self.applied.chat_colors = s.chat_colors;
+            self.applied.model_parts = s.model_parts;
+            self.applied.render_distance = s.render_distance;
         }
+        let Some(r) = &mut self.renderer else { return };
+        r.render_distance_blocks = (s.render_distance * 16) as f32;
+        r.set_vsync(s.vsync);
         if s.fullscreen != self.applied.fullscreen {
             if let Some(w) = &self.window {
                 w.set_fullscreen(s.fullscreen.then(|| winit::window::Fullscreen::Borderless(None)));

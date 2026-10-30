@@ -655,6 +655,7 @@ mod tests {
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for name in [
+            "join_replies",
             "place_blocked_by_entity",
             "place_through_item",
             "vehicle_input",
@@ -745,6 +746,17 @@ mod tests {
             let mut inventory_screen = None;
             for tk in script {
                 match tk["op"].as_str() {
+                    Some("settings") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.ui.settings.render_distance = num(&a[0]) as i32;
+                        app.ui.settings.chat_visibility = num(&a[1]) as i32;
+                        app.ui.settings.chat_colors = num(&a[2]) != 0;
+                        app.ui.settings.model_parts = num(&a[3]) as u8;
+                        app.apply_settings();
+                    }
+                    Some("join") => {
+                        app.handle_packet(PlayClientbound::JoinGame(JoinGame { entity_id: 1, game_mode: 0, hardcore: false, dimension: 0, difficulty: 2, max_players: 20, level_type: "default".into(), reduced_debug_info: false }), &mut Vec::new());
+                    }
                     Some("mount") => {
                         app.remote.map.insert(77, crate::entities::Remote::new(77, crate::entities::Kind::Object(10), 16, 2048, 16, 0, 0));
                         app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());

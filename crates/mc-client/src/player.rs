@@ -89,7 +89,6 @@ impl Player {
                 self.e.flying = false;
             }
         }
-        self.e.abilities_dirty = true;
     }
     /// `PlayerCapabilities.allowEdit`
     pub fn allow_edit(&self) -> bool {
