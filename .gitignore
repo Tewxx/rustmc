@@ -40,3 +40,5 @@ CLAUDE.local.md
 /.mc-tools
 __pycache__/
 /tests/forge/build
+
+/crates/mc-mods/tests/guest/target
