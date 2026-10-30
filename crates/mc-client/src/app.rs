@@ -3,6 +3,8 @@
 use crate::*;
 
 pub(crate) struct App {
+    #[cfg(feature = "wasm-mods")]
+    pub(crate) mods: Option<mc_mods::worker::ModWorker>,
     pub(crate) entity: player::Player,
     pub(crate) spawn: mc_core::Vec3,
     pub(crate) catalogue: Arc<inventory::Catalogue>,
@@ -157,6 +159,8 @@ impl App {
         entity.prev_yaw = -45.;
         entity.prev_pitch = 20.;
         Self {
+            #[cfg(feature = "wasm-mods")]
+            mods: None,
             entity,
             spawn,
             catalogue,

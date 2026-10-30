@@ -1,6 +1,6 @@
 # Native WASM mods for rustmc
 
-Status: design spec (WM0). Nothing here is implemented. Target: rustmc 1.8.9 client, multiplayer only.
+Status: design spec (WM0). An experimental subset exists; see [`crates/mc-mods/README.md`](../crates/mc-mods/README.md) for its actual implementation, security limits, and `rustmc:plugin@1.0.0` ABI. The milestones below remain goals. Target: rustmc 1.8.9 client, multiplayer only.
 
 A WASM mod is a sandboxed, JVM-free plugin loaded by rustmc through an embedded WebAssembly runtime. One
 `.wasm` runs unchanged on macOS, Windows and Linux. This is the "light mod" path (HUDs, utilities,

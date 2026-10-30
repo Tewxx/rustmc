@@ -14,7 +14,9 @@ impl exports::rustmc::plugin::lifecycle::Guest for Guest {
 }
 impl exports::rustmc::plugin::render::Guest for Guest {
     fn render_hud(_: exports::rustmc::plugin::render::FrameCtx) {
-        rustmc::plugin::ui_draw::submit(b"RMD1");
+        let mut stream = b"RMD1\0".to_vec();
+        for v in [1u32, 2, 3, 4, 0xff010203] { stream.extend(v.to_le_bytes()); }
+        rustmc::plugin::ui_draw::submit(&stream);
     }
 }
 export!(Guest);

@@ -238,6 +238,8 @@ impl App {
                 lv.random_ticks(&chunks, speed);
             });
         }
+        #[cfg(feature = "wasm-mods")]
+        self.mod_tick();
         self.info.total_time += 1;
         if self.info.rules.get_bool("doDaylightCycle") {
             self.info.time += 1;

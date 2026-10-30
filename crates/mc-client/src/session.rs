@@ -159,6 +159,8 @@ impl App {
 
     /// Replaces every piece of per-world state with its fresh value.
     pub(crate) fn reset_world_state(&mut self) {
+        #[cfg(feature = "wasm-mods")]
+        if let Some(mods) = &self.mods { mods.clear(); }
         let mut world = World::default();
         world.track_dirty = true;
         self.world = world;

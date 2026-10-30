@@ -53,6 +53,8 @@ mod sound_glue;
 mod tick;
 mod world_load;
 mod mesh_worker;
+#[cfg(feature = "wasm-mods")]
+mod wasm_mods;
 #[cfg(test)]
 mod tests;
 
@@ -168,6 +170,8 @@ fn main() {
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App::new(assets, models, world, center, settings);
+    #[cfg(feature = "wasm-mods")]
+    { app.mods = mc_mods::worker::ModWorker::start(Path::new("mods-wasm")); }
     app.tiles.seed_from_world(&app.world);
     app.info.seed = seed;
     mc_gui::screens::SINGLEPLAYER_AVAILABLE.store(cfg!(feature = "singleplayer"), std::sync::atomic::Ordering::Relaxed);

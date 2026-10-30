@@ -371,6 +371,8 @@ impl App {
             };
             self.hud.render(&mut self.ui, &mut self.batch, sr, &self.player, &debug, chat_open, &mut items);
         }
+        #[cfg(feature = "wasm-mods")]
+        if hud_visible && !self.ui.settings.hide_gui { self.mod_hud(sr, mx, my); }
         if let Some(s) = &mut self.screen {
             s.draw(&mut self.ui, &mut self.batch, sr.width, sr.height, mx, my);
         }

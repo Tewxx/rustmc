@@ -1,5 +1,6 @@
 //! Native component-model mod runtime. No WASI or ambient host resources are linked.
 pub mod draw;
+pub mod worker;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::{fs::File, io::Read, path::Path};
@@ -113,11 +114,15 @@ impl ModInstance {
         if !self.store.data().hud { return Ok(None); }
         self.store.data_mut().draw = None;
         self.store.set_fuel(8_000_000)?;
+        if let Err(e) = self.bindings.rustmc_plugin_lifecycle().call_on_frame(&mut self.store, frame.clone()) {
+            self.disabled = true; return Err(e);
+        }
         if let Err(e) = self.bindings.rustmc_plugin_render().call_render_hud(&mut self.store, frame) {
             self.disabled = true; self.store.data_mut().draw = None; return Err(e);
         }
         Ok(self.store.data_mut().draw.take())
     }
+    fn reset_snapshot(&mut self) { self.store.data_mut().snapshot = Snapshot::default(); }
     pub fn tick(&mut self, snapshot: Snapshot) -> Result<()> {
         if self.disabled { bail!("mod disabled"); }
         self.store.data_mut().snapshot = snapshot;
@@ -164,7 +169,8 @@ mod tests {
         m.tick(snap.clone()).unwrap();
         let v = types::Vec3 { x: 0., y: 0., z: 0. };
         let frame = FrameCtx { partial_ticks: 0., fps: 60, gui_width: 854, gui_height: 480, gui_scale: 1, mouse_x: 0, mouse_y: 0, cam: v, cam_yaw: 0., cam_pitch: 0., fov: 70. };
-        assert_eq!(m.render_hud(frame).unwrap().as_deref(), Some(b"RMD1".as_slice()));
+        let output = m.render_hud(frame).unwrap().unwrap();
+        assert_eq!(draw::decode(&output).unwrap(), vec![draw::Draw::Rect { left: 1, top: 2, right: 3, bottom: 4, argb: 0xff010203 }]);
         snap.ticks = 43;
         assert!(m.tick(snap).is_err());
         assert!(m.tick(Snapshot::default()).is_err());

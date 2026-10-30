@@ -3,7 +3,7 @@ package rustmc:plugin@1.0.0;
 /// Reserved host-owned interface. Credentials and session tokens never cross this boundary.
 /// The current runtime does not link this interface yet.
 interface accounts {
-  enum account-kind { offline, microsoft }
+  enum account-kind { offline, microsoft, legacy-premium, access-token, refresh-token, cookie }
   variant ban-status { none, temporary(u64), permanent }
   record account { id: string, username: string, uuid: option<string>, kind: account-kind, ban: ban-status }
   variant operation-state { pending, complete, failed(string) }
@@ -16,5 +16,7 @@ interface accounts {
   initiate-add: func(kind: account-kind) -> result<u32, string>;
   operation: func(id: u32) -> option<operation-state>;
   move-before: func(id: string, before: option<string>) -> result<_, string>;
+  /// Milliseconds until expiry; none means no temporary ban.
+  ban-remaining-ms: func(id: string) -> option<u64>;
   set-ban-status: func(id: string, status: ban-status) -> result<_, string>;
 }

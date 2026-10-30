@@ -1556,6 +1556,7 @@ dependencies = [
  "mc-gen",
  "mc-gui",
  "mc-logic",
+ "mc-mods",
  "mc-protocol",
  "mc-render",
  "mc-sound",
@@ -1569,6 +1570,7 @@ dependencies = [
  "wgpu",
  "winit",
  "winresource",
+ "zip",
 ]
 
 [[package]]
@@ -1631,6 +1633,7 @@ dependencies = [
  "anyhow",
  "serde",
  "toml 0.8.23",
+ "wasmparser 0.221.3",
  "wasmtime",
  "wit-component",
  "zip",
