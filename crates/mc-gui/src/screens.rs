@@ -9,6 +9,8 @@ use crate::Ui;
 pub const OPTIONS_BACKGROUND: &str = "textures/gui/options_background.png";
 const TITLE: &str = "textures/gui/title/minecraft.png";
 
+pub use crate::multiplayer::MultiplayerScreen;
+
 /// What a screen asks the client to do.
 pub enum Action {
     None,
@@ -17,6 +19,10 @@ pub enum Action {
     Open(Box<dyn Screen>),
     StartGame,
     QuitToTitle,
+    /// Pause menu "Disconnect": a server world returns to the server list, a local one to the title.
+    Disconnect,
+    /// `GuiConnecting`'s Cancel button.
+    CancelConnect,
     Quit,
     SendChat(String),
     /// `GuiChat.sendAutocompleteRequest`: the text before the cursor.
@@ -24,10 +30,13 @@ pub enum Action {
     /// A line for the chat log (several completion matches).
     PrintChat(String),
     Respawn,
+    Enchant { window_id: u8, choice: u8 },
+    Beacon { window_id: u8, primary: i32, secondary: i32 },
     /// `GuiYesNo` answer for the pending `S48PacketResourcePackSend`.
     ResourcePackDecision(bool),
     /// Join a server from the multiplayer screens (`GuiConnecting`).
-    Connect { address: String, name: String, online: bool },
+    /// `pack_mode` is the saved server's `acceptTextures` (`enabled`/`disabled`/`prompt`).
+    Connect { address: String, name: String, online: bool, pack_mode: Option<&'static str> },
     /// `displayGuiScreen(null)`: close this screen and every parent.
     CloseAll,
     /// `GuiChat` Page Up/Down: scroll the chat by `lineCount - 1` in that direction.
@@ -159,6 +168,8 @@ impl Screen for ResourcePackPrompt {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
     Inventory,
+    Drop,
+    PickItem,
     Number(usize),
     Escape,
     Enter,
@@ -185,7 +196,10 @@ pub trait Screen {
     /// Returns the clicked button's id, if any (`actionPerformed`).
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action;
     fn right_click(&mut self, _ui:&mut Ui, _mx:i32, _my:i32)->Action {Action::None}
+    fn pick_item(&mut self, _ui: &mut Ui, _mx: i32, _my: i32) -> Action { Action::None }
     fn release(&mut self, _ui: &mut Ui) {}
+    fn mouse_move(&mut self, _ui: &mut Ui, _mx: i32, _my: i32) {}
+    fn release_at(&mut self, ui: &mut Ui, _mx: i32, _my: i32, _button: u8) { self.release(ui); }
     fn key(&mut self, _ui: &mut Ui, key: Key) -> Action {
         if key == Key::Escape { Action::Close } else { Action::None }
     }
@@ -205,6 +219,11 @@ pub trait Screen {
     fn tick(&mut self) {}
     /// `GuiInventory.drawEntityOnScreen(posX, posY, scale, ...)` for the local player.
     fn entity_preview(&self) -> Option<(i32, i32, i32)> {
+        None
+    }
+    /// The vanilla Java screen this one stands for (`"main_menu"`, `"multiplayer"`, `"ingame_menu"`), so Forge mods
+    /// can add buttons to it.
+    fn java_screen(&self) -> Option<&'static str> {
         None
     }
     /// `doesGuiPauseGame`
@@ -231,7 +250,7 @@ pub fn default_background(ui: &Ui, b: &mut GuiBatch, w: i32, h: i32) {
 }
 
 /// `drawBackground` / `GuiSlot.overlayBackground`: tiled options texture, gray-tinted.
-fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) {
+pub(crate) fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) {
     let c = [gray, gray, gray, 255];
     let f = 32.0;
     b.quad(
@@ -248,18 +267,22 @@ fn dirt(b: &mut GuiBatch, top: i32, bottom: i32, w: i32, gray: u8, scroll: f32) 
     );
 }
 
-fn draw_buttons(buttons: &mut [Button], ui: &mut Ui, b: &mut GuiBatch, mx: i32, my: i32) {
+pub(crate) fn draw_buttons(buttons: &mut [Button], ui: &mut Ui, b: &mut GuiBatch, mx: i32, my: i32) {
     for btn in buttons {
         btn.draw(ui, b, mx, my);
     }
 }
 
 /// `GuiScreen.mouseClicked`: first button hit wins.
-fn click_buttons(buttons: &mut [Button], ui: &mut Ui, mx: i32, my: i32) -> Option<i32> {
+pub(crate) fn click_buttons(buttons: &mut [Button], ui: &mut Ui, mx: i32, my: i32) -> Option<i32> {
     buttons.iter_mut().find_map(|btn| btn.press(ui, mx, my).then_some(btn.id))
 }
 
 // ---------------------------------------------------------------- title screen
+
+/// Whether the host client can start a local world. When false the title screen shows the
+/// Singleplayer button disabled, like vanilla greys out unavailable buttons.
+pub static SINGLEPLAYER_AVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Default)]
 pub struct MainMenu {
@@ -267,11 +290,18 @@ pub struct MainMenu {
 }
 
 impl Screen for MainMenu {
+    fn java_screen(&self) -> Option<&'static str> {
+        Some("main_menu")
+    }
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let t = |k: &str| ui.lang.get(k);
         let j = h / 4 + 48;
+        let mut single = Button::new(1, w / 2 - 100, j, t("menu.singleplayer"));
+        if !SINGLEPLAYER_AVAILABLE.load(std::sync::atomic::Ordering::Relaxed) {
+            single = single.disabled();
+        }
         self.buttons = vec![
-            Button::new(1, w / 2 - 100, j, t("menu.singleplayer")),
+            single,
             Button::new(2, w / 2 - 100, j + 24, t("menu.multiplayer")),
             Button::new(14, w / 2 - 100, j + 48, t("menu.online")).disabled(),
             Button::sized(0, w / 2 - 100, j + 72 + 12, 98, 20, t("menu.options")),
@@ -330,179 +360,108 @@ impl Screen for MainMenu {
     }
 }
 
-// ---------------------------------------------------------------- multiplayer
+// ---------------------------------------------------------------- connecting / disconnected
 
-/// `GuiMultiplayer`'s direct-connect path. The saved-server list is not ported yet, so this
-/// takes `host[:port]` and the offline name and asks the client to relaunch against it
-/// (`Action::Connect`); a running `App` has no world-reset path.
-pub struct MultiplayerScreen {
+/// What `GuiConnecting.drawScreen` shows: `networkManager == null` is Connecting, else Logging in.
+pub const STAGE_CONNECTING: u8 = 0;
+pub const STAGE_LOGGING_IN: u8 = 1;
+
+/// `GuiConnecting`: the connection runs on a background thread owned by the client; the stage
+/// is shared with it.
+pub struct Connecting {
     buttons: Vec<Button>,
-    address: String,
-    name: String,
-    focus: usize,
-    /// Field/title left edge, captured in `init` (`Screen::click` has no screen size).
-    x: i32,
+    stage: std::sync::Arc<std::sync::atomic::AtomicU8>,
 }
 
-impl MultiplayerScreen {
-    pub fn new() -> Self {
-        Self { buttons: Vec::new(), address: String::new(), name: String::new(), focus: 0, x: 0 }
-    }
-
-    fn submit(&self, online: bool) -> Action {
-        let address = self.address.trim();
-        if address.is_empty() {
-            return Action::None;
-        }
-        let name = if self.name.trim().is_empty() { "Player" } else { self.name.trim() };
-        Action::Connect { address: address.to_string(), name: name.to_string(), online }
-    }
-
-    fn field(&mut self) -> &mut String {
-        if self.focus == 0 { &mut self.address } else { &mut self.name }
+impl Connecting {
+    pub fn new(stage: std::sync::Arc<std::sync::atomic::AtomicU8>) -> Self {
+        Self { buttons: Vec::new(), stage }
     }
 }
 
-fn draw_edit_box(ui: &mut Ui, b: &mut GuiBatch, x: i32, y: i32, text: &str, focused: bool) {
-    b.rect(x - 1, y - 1, x + 201, y + 21, if focused { 0xFFFF_FFFF } else { 0xFFA0_A0A0 });
-    b.rect(x, y, x + 200, y + 20, 0xFF00_0000);
-    ui.font.draw(b, text, (x + 4) as f32, (y + 6) as f32, 0xFFE0_E0E0);
-    if focused && (ui.ticks * 2.0) as i32 % 2 == 0 {
-        let w = ui.font.width(text);
-        ui.font.draw(b, "_", (x + 4 + w) as f32, (y + 6) as f32, 0xFFFF_FFFF);
-    }
-}
-
-impl Screen for MultiplayerScreen {
+impl Screen for Connecting {
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
-        self.x = w / 2 - 100;
-        if self.name.is_empty() {
-            self.name = ui.player_name.clone();
-        }
-        self.buttons = vec![
-            Button::new(0, w / 2 - 100, 140, "Join Server"),
-            Button::new(2, w / 2 - 100, 166, "Join (Microsoft)"),
-            Button::new(1, w / 2 - 100, 192, ui.lang.get("gui.cancel")),
-        ];
-        let _ = h;
+        self.buttons = vec![Button::new(0, w / 2 - 100, h / 4 + 120 + 12, ui.lang.get("gui.cancel"))];
     }
 
     fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
         default_background(ui, b, w, h);
-        let x = w / 2 - 100;
-        ui.font.draw_centered(b, &ui.lang.get("multiplayer.title"), w / 2, 15, 0xFFFF_FFFF);
-        ui.font.draw_shadow(b, "Server Address", x as f32, 52.0, 0xFFA0_A0A0);
-        draw_edit_box(ui, b, x, 64, &self.address, self.focus == 0);
-        ui.font.draw_shadow(b, "Username", x as f32, 92.0, 0xFFA0_A0A0);
-        draw_edit_box(ui, b, x, 104, &self.name, self.focus == 1);
-        self.buttons[0].enabled = !self.address.trim().is_empty();
-        self.buttons[1].enabled = self.buttons[0].enabled;
+        let key = if self.stage.load(std::sync::atomic::Ordering::Relaxed) == STAGE_CONNECTING { "connect.connecting" } else { "connect.authorizing" };
+        ui.font.draw_centered(b, &ui.lang.get(key), w / 2, h / 2 - 50, 0xFFFF_FFFF);
         draw_buttons(&mut self.buttons, ui, b, mx, my);
-        ui.font.draw_centered(b, "Offline-mode servers accept any name.", w / 2, h - 44, 0xFFA0_A0A0);
-        ui.font.draw_centered(b, "Online-mode servers (Hypixel) need --online.", w / 2, h - 30, 0xFFA0_A0A0);
     }
 
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
-        let fx = self.x;
-        if (fx..fx + 200).contains(&mx) {
-            if (64..84).contains(&my) {
-                self.focus = 0;
-                self.address.clear();
-                return Action::None;
-            }
-            if (104..124).contains(&my) {
-                self.focus = 1;
-                self.name.clear();
-                return Action::None;
-            }
-        }
         match click_buttons(&mut self.buttons, ui, mx, my) {
-            Some(0) => self.submit(false),
-            Some(2) => self.submit(true),
-            Some(1) => Action::Close,
+            Some(0) => Action::CancelConnect,
             _ => Action::None,
         }
     }
 
-    fn key(&mut self, _ui: &mut Ui, key: Key) -> Action {
-        match key {
-            Key::Escape => Action::Close,
-            Key::Enter => self.submit(false),
-            Key::Tab => {
-                self.focus ^= 1;
-                Action::None
-            }
-            Key::Backspace | Key::Delete => {
-                self.field().pop();
-                Action::None
-            }
-            _ => Action::None,
-        }
-    }
-
-    fn typed(&mut self, _ui: &mut Ui, c: char) {
-        if c == '\u{a7}' || (c as u32) < 32 {
-            return;
-        }
-        let f = self.field();
-        if f.chars().count() < 128 {
-            f.push(c);
-        }
+    /// `GuiConnecting.keyTyped` is empty: Escape does nothing.
+    fn key(&mut self, _ui: &mut Ui, _key: Key) -> Action {
+        Action::None
     }
 }
 
-// ---------------------------------------------------------------- disconnected
-
-/// `GuiDisconnected`: the reason a connection failed or ended, without closing the window.
+/// `GuiDisconnected`: a title (`reasonLocalizationKey`) over the wrapped reason and a single
+/// "Back to server list" button that returns to the screen the connection started from.
 pub struct Disconnected {
     buttons: Vec<Button>,
+    title_key: String,
     pub reason: String,
+    lines: Vec<String>,
 }
 
 impl Disconnected {
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self { buttons: Vec::new(), reason: reason.into() }
+    pub fn new(title_key: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self { buttons: Vec::new(), title_key: title_key.into(), reason: reason.into(), lines: Vec::new() }
     }
 }
 
 impl Screen for Disconnected {
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
-        self.buttons = vec![
-            Button::new(0, w / 2 - 100, h / 2 + 40, ui.lang.get("gui.toTitle")),
-            Button::new(1, w / 2 - 100, h / 2 + 64, ui.lang.get("menu.quit")),
-        ];
-    }
-
-    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
-        default_background(ui, b, w, h);
-        ui.font.draw_centered(b, &ui.lang.get("disconnect.lost"), w / 2, h / 2 - 60, 0xFFFF_FFFF);
-        // `GuiDisconnected` wraps the reason with `fontRendererObj.listFormattedStringToWidth`.
-        let mut lines = Vec::new();
+        // `fontRendererObj.listFormattedStringToWidth(message, width - 50)`
+        self.lines.clear();
         let mut line = String::new();
         for word in self.reason.split_whitespace() {
             let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
-            if !line.is_empty() && ui.font.width(&candidate) > w - 40 {
-                lines.push(std::mem::take(&mut line));
+            if !line.is_empty() && ui.font.width(&candidate) > w - 50 {
+                self.lines.push(std::mem::take(&mut line));
                 line = word.to_string();
             } else {
                 line = candidate;
             }
         }
         if !line.is_empty() {
-            lines.push(line);
+            self.lines.push(line);
         }
-        for (i, l) in lines.iter().take(8).enumerate() {
-            ui.font.draw_centered(b, l, w / 2, h / 2 - 40 + i as i32 * 10, 0xFFA0_A0A0);
+        let total = self.lines.len() as i32 * 9;
+        self.buttons = vec![Button::new(0, w / 2 - 100, h / 2 + total / 2 + 9, ui.lang.get("gui.toMenu"))];
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        default_background(ui, b, w, h);
+        let total = self.lines.len() as i32 * 9;
+        ui.font.draw_centered(b, &ui.lang.get(&self.title_key), w / 2, h / 2 - total / 2 - 9 * 2, 0xFFAA_AAAA);
+        let mut y = h / 2 - total / 2;
+        for l in &self.lines {
+            ui.font.draw_centered(b, l, w / 2, y, 0xFFFF_FFFF);
+            y += 9;
         }
         draw_buttons(&mut self.buttons, ui, b, mx, my);
     }
 
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         match click_buttons(&mut self.buttons, ui, mx, my) {
-            Some(0) => Action::QuitToTitle,
-            Some(1) => Action::Quit,
+            Some(0) => Action::Close,
             _ => Action::None,
         }
+    }
+
+    /// `GuiDisconnected.keyTyped` is empty.
+    fn key(&mut self, _ui: &mut Ui, _key: Key) -> Action {
+        Action::None
     }
 }
 
@@ -514,11 +473,14 @@ pub struct PauseMenu {
 }
 
 impl Screen for PauseMenu {
+    fn java_screen(&self) -> Option<&'static str> {
+        Some("ingame_menu")
+    }
     fn init(&mut self, ui: &Ui, w: i32, h: i32) {
         let t = |k: &str| ui.lang.get(k);
         let i = -16;
         self.buttons = vec![
-            Button::new(1, w / 2 - 100, h / 4 + 120 + i, t("menu.returnToMenu")),
+            Button::new(1, w / 2 - 100, h / 4 + 120 + i, t(if ui.remote { "menu.disconnect" } else { "menu.returnToMenu" })),
             Button::new(4, w / 2 - 100, h / 4 + 24 + i, t("menu.returnToGame")),
             Button::sized(0, w / 2 - 100, h / 4 + 96 + i, 98, 20, t("menu.options")),
             Button::sized(7, w / 2 + 2, h / 4 + 96 + i, 98, 20, t("menu.shareToLan")).disabled(),
@@ -536,7 +498,7 @@ impl Screen for PauseMenu {
 
     fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
         match click_buttons(&mut self.buttons, ui, mx, my) {
-            Some(1) => Action::QuitToTitle,
+            Some(1) => Action::Disconnect,
             Some(4) => Action::Close,
             Some(0) => Action::Open(Box::new(Options::default())),
             _ => Action::None,
@@ -575,7 +537,7 @@ impl Screen for Options {
             Button::sized(100, w / 2 + 5, h / 6 + 96 - 6, 150, 20, t("options.controls")),
             Button::sized(102, w / 2 - 155, h / 6 + 120 - 6, 150, 20, t("options.language")).disabled(),
             Button::sized(103, w / 2 + 5, h / 6 + 120 - 6, 150, 20, t("options.chat.title")),
-            Button::sized(105, w / 2 - 155, h / 6 + 144 - 6, 150, 20, t("options.resourcepack")).disabled(),
+            Button::sized(105, w / 2 - 155, h / 6 + 144 - 6, 150, 20, t("options.resourcepack")),
             Button::sized(104, w / 2 + 5, h / 6 + 144 - 6, 150, 20, t("options.snooper.view")).disabled(),
             Button::new(200, w / 2 - 100, h / 6 + 168, t("gui.done")),
         ];
@@ -599,6 +561,7 @@ impl Screen for Options {
             Some(103) => Action::Open(Box::new(OptionList::chat())),
             Some(110) => Action::Open(Box::new(OptionList::skin())),
             Some(100) => Action::Open(Box::new(Controls::default())),
+            Some(105) => Action::Open(Box::new(crate::resource_packs::ResourcePacks::default())),
             Some(_) => {
                 self.dirty = true;
                 Action::None
@@ -1370,40 +1333,5 @@ impl Screen for ConfirmOpenLink {
         } else {
             Action::None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn ui() -> Ui {
-        Ui::new(&mc_assets::AssetSource::new(), crate::settings::Settings::default())
-    }
-
-    #[test]
-    fn multiplayer_screen_builds_a_connect_action() {
-        let mut s = MultiplayerScreen::new();
-        for c in "play.example.com:25566".chars() {
-            s.typed(&mut ui(), c);
-        }
-        s.focus = 1;
-        s.name.clear();
-        for c in "ASUISSU".chars() {
-            s.typed(&mut ui(), c);
-        }
-        match s.submit(false) {
-            Action::Connect { address, name, online } => {
-                assert_eq!(address, "play.example.com:25566");
-                assert_eq!(name, "ASUISSU");
-                assert!(!online);
-            }
-            _ => panic!("expected Connect"),
-        }
-    }
-
-    #[test]
-    fn empty_address_does_not_connect() {
-        assert!(matches!(MultiplayerScreen::new().submit(false), Action::None));
     }
 }

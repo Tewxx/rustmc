@@ -70,7 +70,7 @@ pub fn truncate_double_to_int(v: f64) -> i32 {
 #[inline]
 pub fn floor_double(v: f64) -> i32 {
     let i = v as i32;
-    if v < i as f64 { i - 1 } else { i }
+    if v < i as f64 { i.wrapping_sub(1) } else { i }
 }
 
 #[inline]

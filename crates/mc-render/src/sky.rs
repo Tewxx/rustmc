@@ -9,6 +9,7 @@ pub struct Sky {
     pub cloud: [f32; 3],
     pub sunrise: Option<[f32; 4]>,
     pub stars: f32,
+    pub celestial_visibility: f32,
     pub moon: u8,
     pub ticks: f32,
     pub fancy_clouds: bool,
@@ -19,6 +20,8 @@ impl Sky {
     /// `World.getCloudColour`.
     pub fn apply_weather(&mut self, rain: f32, thunder: f32) {
         let lum = |c: &[f32; 3]| c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+        self.celestial_visibility = 1. - rain;
+        self.stars *= self.celestial_visibility;
         if rain > 0. {
             let g = lum(&self.sky) * 0.6;
             let k = 1. - rain * 0.75;
@@ -85,10 +88,26 @@ impl Sky {
             cloud: [daylight * 0.9 + 0.1, daylight * 0.9 + 0.1, daylight * 0.85 + 0.15],
             sunrise,
             stars: stars * stars * 0.5,
+            celestial_visibility: 1.,
             moon: ((time / 24000 % 8 + 8) % 8) as u8,
             ticks: time as f32 + partial,
             fancy_clouds: true,
             clouds: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Sky;
+
+    #[test]
+    fn rain_fades_celestial_objects() {
+        let mut sky = Sky::overworld(18000, 0., 0.8, 8);
+        let clear_stars = sky.stars;
+        assert!(clear_stars > 0.);
+        sky.apply_weather(0.5, 0.);
+        assert_eq!(sky.celestial_visibility, 0.5);
+        assert_eq!(sky.stars, clear_stars * 0.5);
     }
 }

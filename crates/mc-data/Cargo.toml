@@ -8,3 +8,4 @@ mc-core = { path = "../mc-core" }
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }
+mc-testutil = { path = "../mc-testutil" }

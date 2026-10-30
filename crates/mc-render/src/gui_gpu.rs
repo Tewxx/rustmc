@@ -38,6 +38,8 @@ pub struct GuiRenderer {
     tex_layout: wgpu::BindGroupLayout,
     nearest: wgpu::Sampler,
     linear: wgpu::Sampler,
+    vbuf: wgpu::Buffer,
+    scratch: Vec<Vertex>,
     /// [blend][alpha_test]
     pipelines: [[wgpu::RenderPipeline; 2]; 2],
     glint_pipeline: wgpu::RenderPipeline,
@@ -341,6 +343,13 @@ impl GuiRenderer {
             blur_x,
             blur_y,
             textures: HashMap::new(),
+            vbuf: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("gui vertices"),
+                size: 64 * 1024,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            scratch: Vec::new(),
             white,
             pano_pipeline,
             pano_globals,
@@ -424,7 +433,8 @@ impl GuiRenderer {
             Draw { tex: Option<String>, blend: Blend, alpha_test: bool, linear: bool, range: std::ops::Range<u32> },
             Panorama { ticks: f32 },
         }
-        let mut verts: Vec<Vertex> = Vec::new();
+        let mut verts = std::mem::take(&mut self.scratch);
+        verts.clear();
         let mut ops = Vec::new();
         for item in &batch.items {
             match item {
@@ -464,11 +474,17 @@ impl GuiRenderer {
         for &i in &[0usize, 1, 2, 0, 2, 3] {
             verts.push(Vertex { pos: quad[i].0, uv: quad[i].1, color: [255; 4] });
         }
-        let vbuf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("gui vertices"),
-            contents: bytemuck::cast_slice(&verts),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let bytes: &[u8] = bytemuck::cast_slice(&verts);
+        if (self.vbuf.size() as usize) < bytes.len() {
+            self.vbuf = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("gui vertices"),
+                size: (bytes.len().next_power_of_two().max(64 * 1024)) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        queue.write_buffer(&self.vbuf, 0, bytes);
+        let vbuf = &self.vbuf;
 
         // Panorama offscreen pass first (it can't happen inside the screen pass).
         if let Some(Op::Panorama { ticks }) = ops.iter().find(|o| matches!(o, Op::Panorama { .. })) {
@@ -554,6 +570,8 @@ impl GuiRenderer {
                 }
             }
         }
+        drop(pass);
+        self.scratch = verts;
     }
 }
 

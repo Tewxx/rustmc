@@ -1,0 +1,28 @@
+# owner/Class.method (any overload) stubbed to Rust even though the class itself is kept real (keep-real.txt).
+# Forge's EventSubscriptionTransformer would normally override these in each @Cancelable/@HasResult event at class-load time.
+net/minecraftforge/fml/common/eventhandler/Event.isCancelable
+net/minecraftforge/fml/common/eventhandler/Event.hasResult
+# Minecraft and FontRenderer are real (Meowtils mixins need their bodies) except the methods Rust implements.
+net/minecraft/client/Minecraft.func_71410_x
+net/minecraft/client/Minecraft.func_110432_I
+net/minecraft/client/Minecraft.func_147108_a
+net/minecraft/client/Minecraft.func_152344_a
+net/minecraft/client/Minecraft.func_152343_a
+net/minecraft/client/Minecraft.func_147118_V
+net/minecraft/client/Minecraft.func_110434_K
+net/minecraft/client/Minecraft.func_175599_af
+net/minecraft/client/Minecraft.func_147104_D
+net/minecraft/client/Minecraft.func_71387_A
+net/minecraft/client/Minecraft.func_71356_B
+net/minecraft/client/Minecraft.func_175600_c
+net/minecraft/client/Minecraft.func_71386_F
+net/minecraft/client/gui/FontRenderer.func_78256_a
+net/minecraft/client/gui/FontRenderer.func_78263_a
+net/minecraft/client/gui/FontRenderer.func_78269_a
+net/minecraft/client/gui/FontRenderer.func_78262_a
+net/minecraft/client/gui/FontRenderer.func_78276_b
+net/minecraft/client/gui/FontRenderer.func_175063_a
+net/minecraft/client/gui/FontRenderer.func_175065_a
+# Clipboard goes to the system clipboard through Rust (vanilla uses AWT, which runs headless here).
+net/minecraft/client/gui/GuiScreen.func_146277_j
+net/minecraft/client/gui/GuiScreen.func_146275_d

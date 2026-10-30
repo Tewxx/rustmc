@@ -22,10 +22,47 @@ pub struct Vertex {
     pub light: [u8; 4],
 }
 
+/// 20-byte GPU vertex: position relative to the section origin as `(v + 4) * 2048` (exact for all
+/// multiples of 1/2048 in -4..28), full-precision UV, light (block, sky), colour and a layer flag in `color[3]`
+/// (0 solid, 255 cutout, 128 cutout-mipped, 64 translucent).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct PackedVertex {
+    pub pos: [u16; 3],
+    pub light: [u8; 2],
+    pub uv: [f32; 2],
+    pub color: [u8; 4],
+}
+
+impl PackedVertex {
+    /// Only use the compact format when it exactly represents every position.
+    pub fn can_pack(v: &Vertex, origin_y: f32) -> bool {
+        [v.pos[0], v.pos[1] - origin_y, v.pos[2]].iter().all(|&x| {
+            let q = (x + 4.0) * 2048.0;
+            q.is_finite() && q >= 0.0 && q <= 65535.0 && q.fract() == 0.0 && q / 2048.0 - 4.0 == x
+        })
+    }
+    pub fn pack(v: &Vertex, origin_y: f32) -> Self {
+        let q = |x: f32| ((x + 4.0) * 2048.0).round().clamp(0.0, 65535.0) as u16;
+        let flag = match (v.light[2], v.light[3]) {
+            (_, t) if t != 0 => 64,
+            (a, _) => a,
+        };
+        Self {
+            pos: [q(v.pos[0]), q(v.pos[1] - origin_y), q(v.pos[2])],
+            light: [v.light[0], v.light[1]],
+            uv: v.uv,
+            color: [v.color[0], v.color[1], v.color[2], flag],
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ChunkMesh {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    /// Face connectivity for a single section; `None` is conservatively unknown.
+    pub visibility: Option<u64>,
 }
 
 impl ChunkMesh {
@@ -55,6 +92,8 @@ pub fn build_section(world: &World, models: &BlockModels, cx: i32, sy: i32, cz: 
 #[allow(clippy::too_many_arguments)]
 fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: std::ops::Range<usize>, smooth_lighting: bool, fancy_graphics: bool, geometry: &mut BlockGeometry) -> ChunkMesh {
     let mut mesh = ChunkMesh::default();
+    let single_section = range.end == range.start + 1;
+    let mut vis = crate::visibility::VisGraph::default();
     let Some(chunk) = world.chunks.get(&(cx, cz)) else { return mesh };
     let is_opaque = |p: (i32, i32, i32)| {
         world.state_at(p.0, p.1, p.2).block().is_opaque_cube(fancy_graphics)
@@ -72,6 +111,7 @@ fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: 
                     let (id, meta) = chunk.get(lx, y, lz);
                     let stored = StateId::from_raw(id << 4 | meta as u16);
                     let block = stored.block();
+                    if single_section && block.is_opaque_cube(fancy_graphics) { vis.set_opaque(lx, ly as usize, lz); }
                     let layer = block.render_layer(fancy_graphics);
                     if block.render_type == 1 {
                         // `BlockRendererDispatcher` case 1: `BlockFluidRenderer`.
@@ -145,5 +185,6 @@ fn build_sections(world: &World, models: &BlockModels, cx: i32, cz: i32, range: 
             }
         }
     }
+    if single_section { mesh.visibility = Some(vis.compute()); }
     mesh
 }

@@ -1,0 +1,10 @@
+[package]
+name = "rustmc-port-harness"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+wasmtime = { version = "=29.0.1", default-features = false, features = ["std", "runtime", "component-model", "cranelift"] }

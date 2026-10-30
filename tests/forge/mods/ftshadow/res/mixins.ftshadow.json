@@ -1,0 +1,1 @@
+{"target":"@env(DEFAULT)","required":true,"minVersion":"0.8","package":"ft.shadow.mixin","compatibilityLevel":"JAVA_8","mixins":["MathMixin"]}

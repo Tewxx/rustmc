@@ -110,6 +110,23 @@ pub struct Chunk {
 }
 
 impl Chunk {
+    /// Copy only the section and its vertical neighbors while retaining column metadata.
+    pub fn mesh_snapshot(&self, sy: i32) -> Self {
+        let mut c = Self::new(self.x, self.z);
+        for y in (sy - 1).max(0)..=(sy + 1).min(15) { c.sections[y as usize] = self.sections[y as usize].clone(); }
+        c.biomes = self.biomes;
+        let min_y = (sy - 1).max(0) * 16;
+        let max_y = ((sy + 2).min(16) * 16) - 1;
+        c.tile_entities = self.tile_entities.iter().filter(|(p, _)| (min_y..=max_y).contains(&p.y))
+            .map(|(p, tag)| (*p, tag.clone())).collect();
+        c.height_map = self.height_map;
+        c.height_map_minimum = self.height_map_minimum;
+        c.terrain_populated = self.terrain_populated;
+        c.light_populated = self.light_populated;
+        c.ticked = self.ticked;
+        c
+    }
+
     pub fn new(x: i32, z: i32) -> Self {
         Self {
             x,

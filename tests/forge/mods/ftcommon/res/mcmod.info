@@ -1,0 +1,8 @@
+[{
+  "modid": "ftcommon",
+  "name": "FT Common",
+  "description": "Shared trace writer and unattended session driver for the rustmc Forge compatibility suite.",
+  "version": "1.0",
+  "mcversion": "1.8.9",
+  "authorList": ["rustmc"]
+}]

@@ -12,14 +12,17 @@ mc-core = { path = "../mc-core" }
 mc-data = { path = "../mc-data" }
 mc-assets = { path = "../mc-assets" }
 mc-world = { path = "../mc-world" }
-mc-logic = { path = "../mc-logic" }
-mc-gen = { path = "../mc-gen" }
+mc-logic = { path = "../mc-logic", optional = true }
+mc-gen = { path = "../mc-gen", optional = true }
 mc-render = { path = "../mc-render" }
 mc-gui = { path = "../mc-gui" }
 mc-entity = { path = "../mc-entity" }
 mc-protocol = { path = "../mc-protocol" }
 mc-sound = { path = "../mc-sound" }
+mc-forge = { path = "../mc-forge" }
+mc-mods = { path = "../mc-mods", optional = true }
 serde_json = "1"
+dirs = "5"
 ureq = { version = "2", features = ["json"] }
 glam = "0.29"
 pollster = "0.4"
@@ -27,6 +30,20 @@ wgpu = "24"
 winit = "0.30"
 flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
+puffin = { version = "0.19", optional = true }
+puffin_http = { version = "0.16", optional = true }
+
+[features]
+default = ["wasm-mods"]
+wasm-mods = ["dep:mc-mods"]
+# Integrated server, worldgen, local commands, `--play`/`--world`. Off by default: the client is multiplayer-only.
+singleplayer = ["dep:mc-logic", "dep:mc-gen"]
+# `cargo build --release --features profile`: puffin zones + HTTP server on 127.0.0.1:8585.
+profile = ["dep:puffin", "dep:puffin_http"]
 
 [build-dependencies]
 winresource = "0.1"
+
+[dev-dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }
+mc-testutil = { path = "../mc-testutil" }

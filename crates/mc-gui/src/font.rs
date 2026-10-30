@@ -9,6 +9,7 @@ const ASCII: &str = "\u{00c0}\u{00c1}\u{00c2}\u{00c8}\u{00ca}\u{00cb}\u{00cd}\u{
 const ASCII_TEX: &str = "textures/font/ascii.png";
 pub const FONT_HEIGHT: i32 = 9;
 
+#[derive(Clone)]
 pub struct FontRenderer {
     char_width: [i32; 256],
     glyph_width: Vec<u8>,

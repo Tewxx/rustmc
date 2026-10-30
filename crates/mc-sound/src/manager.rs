@@ -84,6 +84,8 @@ pub struct SoundManager {
     events: HashMap<String, Event>,
     cache: HashMap<String, Option<Arc<Decoded>>>,
     read: Reader,
+    /// The vanilla asset index, under any resource pack overlay.
+    base: Reader,
     pub mixer: Mixer,
     pub volumes: HashMap<Category, f32>,
     listener: ([f64; 3], f32),
@@ -102,13 +104,11 @@ struct Stream {
 impl SoundManager {
     /// `read("minecraft/sounds.json")` style paths (relative to `assets/`).
     pub fn new(read: Reader) -> SoundManager {
-        let mut events = HashMap::new();
-        if let Some(json) = read("minecraft/sounds.json").and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
-            parse_events(&json, &mut events);
-        }
+        let events = load_events(&read, &[]);
         SoundManager {
             events,
             cache: HashMap::new(),
+            base: read.clone(),
             read,
             mixer: Mixer::new(),
             volumes: Category::ALL.iter().map(|&c| (c, 1.0)).collect(),
@@ -116,6 +116,16 @@ impl SoundManager {
             rand: 0x2545F4914F6CDD1D ^ std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64),
             streams: HashMap::new(),
         }
+    }
+
+    /// `SoundHandler.onResourceManagerReload` for a new resource pack stack: `overlay` reads
+    /// sound files from the packs (highest first, `None` falls back to the asset index) and
+    /// `sounds_json` holds every pack's `sounds.json`, lowest layer first.
+    pub fn set_packs(&mut self, overlay: Reader, sounds_json: &[Vec<u8>]) {
+        let base = self.base.clone();
+        self.events = load_events(&base, sounds_json);
+        self.read = Arc::new(move |p: &str| overlay(p).or_else(|| base(p)));
+        self.cache.clear();
     }
 
     pub fn event_count(&self) -> usize {
@@ -276,10 +286,28 @@ impl SoundManager {
     }
 }
 
-fn parse_events(json: &Value, out: &mut HashMap<String, Event>) {
+/// The asset index's `sounds.json` first, then each pack's on top (`SoundHandler`).
+fn load_events(base: &Reader, packs: &[Vec<u8>]) -> HashMap<String, Event> {
+    let mut events = HashMap::new();
+    if let Some(json) = base("minecraft/sounds.json").and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
+        merge_events(&json, &mut events);
+    }
+    for p in packs {
+        match serde_json::from_slice::<Value>(p) {
+            Ok(json) => merge_events(&json, &mut events),
+            Err(e) => eprintln!("Invalid sounds.json: {e}"),
+        }
+    }
+    events
+}
+
+/// `SoundHandler.loadSoundResource`: an event seen before gets the new entries appended
+/// unless the list says `"replace": true`; the existing category is kept when appending.
+fn merge_events(json: &Value, out: &mut HashMap<String, Event>) {
     let Some(obj) = json.as_object() else { return };
     for (name, v) in obj {
         let category = Category::by_name(v["category"].as_str().unwrap_or("master"));
+        let replace = v["replace"].as_bool().unwrap_or(false);
         let mut entries = Vec::new();
         for s in v["sounds"].as_array().into_iter().flatten() {
             let e = match s {
@@ -297,7 +325,69 @@ fn parse_events(json: &Value, out: &mut HashMap<String, Event>) {
             entries.push(e);
         }
         let _ = entries.iter().any(|e| e.stream);
-        out.insert(name.clone(), Event { category, entries });
+        match out.get_mut(name) {
+            Some(ev) if !replace => ev.entries.extend(entries),
+            _ => {
+                out.insert(name.clone(), Event { category, entries });
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn events(docs: &[&str]) -> HashMap<String, Event> {
+        let mut m = HashMap::new();
+        for d in docs {
+            merge_events(&serde_json::from_str(d).unwrap(), &mut m);
+        }
+        m
+    }
+
+    fn names(e: &Event) -> Vec<&str> {
+        e.entries.iter().map(|e| e.name.as_str()).collect()
+    }
+
+    #[test]
+    fn malformed_asset_hashes_are_ignored() {
+        let dir = std::env::temp_dir().join(format!("rustmc-sound-index-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("indexes")).unwrap();
+        std::fs::write(dir.join("indexes/1.8.json"), br#"{"objects":{"short":{"hash":"a"},"invalid":{"hash":"../not-a-hash"}}}"#).unwrap();
+        let read = index_reader(&dir, "1.8").unwrap();
+        assert!(read("short").is_none());
+        assert!(read("invalid").is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn packs_append_unless_replace() {
+        let base = r#"{"x.hit":{"category":"block","sounds":["a","b"]},"y":{"category":"music","sounds":["m"]}}"#;
+        let m = events(&[base, r#"{"x.hit":{"category":"hostile","sounds":["c"]},"z":{"sounds":["n"]}}"#]);
+        assert_eq!(names(&m["x.hit"]), ["a", "b", "c"]);
+        assert_eq!(m["x.hit"].category, Category::Blocks, "appending keeps the first category");
+        assert_eq!(names(&m["z"]), ["n"]);
+        let m = events(&[base, r#"{"x.hit":{"replace":true,"category":"hostile","sounds":["c"]}}"#]);
+        assert_eq!(names(&m["x.hit"]), ["c"]);
+        assert_eq!(m["x.hit"].category, Category::Mobs);
+        assert_eq!(names(&m["y"]), ["m"]);
+    }
+
+    #[test]
+    fn set_packs_reads_overlay_first() {
+        let base: Reader = Arc::new(|p| match p {
+            "minecraft/sounds.json" => Some(br#"{"e":{"category":"block","sounds":["f"]}}"#.to_vec()),
+            "minecraft/sounds/f.ogg" => Some(b"base".to_vec()),
+            _ => None,
+        });
+        let mut m = SoundManager::new(base);
+        assert_eq!(m.event_count(), 1);
+        let overlay: Reader = Arc::new(|p| (p == "minecraft/sounds/f.ogg").then(|| b"pack".to_vec()));
+        m.set_packs(overlay, &[br#"{"e":{"replace":true,"sounds":["g"]}}"#.to_vec()]);
+        assert_eq!((m.read)("minecraft/sounds/f.ogg").unwrap(), b"pack");
+        assert_eq!((m.read)("minecraft/sounds.json").is_some(), true);
+        assert_eq!(names(&m.events["e"]), ["g"]);
     }
 }
 
@@ -307,7 +397,11 @@ pub fn index_reader(assets_dir: &std::path::Path, index: &str) -> Option<impl Fn
     let map: HashMap<String, String> = idx["objects"]
         .as_object()?
         .iter()
-        .filter_map(|(k, v)| Some((k.clone(), v["hash"].as_str()?.to_string())))
+        .filter_map(|(k, v)| {
+            let hash = v["hash"].as_str()?;
+            (hash.len() == 40 && hash.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+                .then(|| (k.clone(), hash.to_owned()))
+        })
         .collect();
     let dir = assets_dir.join("objects");
     Some(move |path: &str| {

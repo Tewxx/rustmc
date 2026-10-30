@@ -107,6 +107,17 @@ impl Opt {
     }
 }
 
+/// `gson.fromJson(value, List<String>)`; anything unparsable is an empty list.
+fn parse_list(v: &str) -> Vec<String> {
+    serde_json::from_str(v).unwrap_or_default()
+}
+
+/// `gson.toJson(List<String>)`: compact, with Gson's HTML-safe escapes.
+fn gson_list(l: &[String]) -> String {
+    let s = serde_json::to_string(l).unwrap_or_else(|_| "[]".into());
+    s.replace('<', "\\u003c").replace('>', "\\u003e").replace('&', "\\u0026").replace('=', "\\u003d").replace('\'', "\\u0027")
+}
+
 /// `Options.snapToStep`
 fn snap(v: f32, step: f32) -> f32 {
     if step > 0.0 { step * (v / step).round() } else { v }
@@ -118,6 +129,8 @@ pub struct Settings {
     pub mouse_sensitivity: f32,
     pub gamma: f32,
     pub render_distance: i32,
+    /// `GameSettings.language` from options.txt and C15 client settings.
+    pub language: String,
     pub limit_framerate: i32,
     pub gui_scale: i32,
     pub ambient_occlusion: i32,
@@ -145,6 +158,8 @@ pub struct Settings {
     pub chat_width: f32,
     pub chat_height_focused: f32,
     pub chat_height_unfocused: f32,
+    /// `GameSettings.lastServer`: the direct-connect address last typed.
+    pub last_server: String,
     /// Skin-parts mask sent in `C15PacketClientSettings`.
     pub model_parts: u8,
     /// Rebound keys by description (missing = the binding's default).
@@ -157,7 +172,11 @@ pub struct Settings {
     pub held_item_tooltips: bool,
     /// `soundCategory_<name>` volumes (missing = 1.0).
     pub sound_volumes: std::collections::BTreeMap<String, f32>,
-    path: Option<PathBuf>,
+    /// `resourcePacks`: the selected pack names, lowest priority first.
+    pub resource_packs: Vec<String>,
+    /// `incompatibleResourcePacks`: selected packs whose `pack_format` is not 1.
+    pub incompatible_resource_packs: Vec<String>,
+    pub path: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -168,6 +187,7 @@ impl Default for Settings {
             mouse_sensitivity: 0.5,
             gamma: 0.0,
             render_distance: 12,
+            language: "en_US".into(),
             limit_framerate: 120,
             gui_scale: 0,
             ambient_occlusion: 2,
@@ -192,6 +212,7 @@ impl Default for Settings {
             chat_width: 1.0,
             chat_height_focused: 1.0,
             chat_height_unfocused: 0.44366196,
+            last_server: String::new(),
             model_parts: 0x7f,
             key_codes: Default::default(),
             show_debug: false,
@@ -199,6 +220,8 @@ impl Default for Settings {
             advanced_item_tooltips: false,
             held_item_tooltips: true,
             sound_volumes: Default::default(),
+            resource_packs: Vec::new(),
+            incompatible_resource_packs: Vec::new(),
             path: None,
         }
     }
@@ -220,6 +243,7 @@ impl Settings {
                 "mouseSensitivity" => s.mouse_sensitivity = f.unwrap_or(s.mouse_sensitivity),
                 "gamma" => s.gamma = f.unwrap_or(s.gamma),
                 "renderDistance" => s.render_distance = i.unwrap_or(s.render_distance),
+                "lang" => s.language = v.to_string(),
                 "maxFps" => s.limit_framerate = i.unwrap_or(s.limit_framerate),
                 "guiScale" => s.gui_scale = i.unwrap_or(s.gui_scale),
                 "ao" => {
@@ -258,6 +282,9 @@ impl Settings {
                 "chatWidth" => s.chat_width = f.unwrap_or(s.chat_width),
                 "chatHeightFocused" => s.chat_height_focused = f.unwrap_or(s.chat_height_focused),
                 "chatHeightUnfocused" => s.chat_height_unfocused = f.unwrap_or(s.chat_height_unfocused),
+                "resourcePacks" => s.resource_packs = parse_list(v),
+                "incompatibleResourcePacks" => s.incompatible_resource_packs = parse_list(v),
+                "lastServer" => s.last_server = v.to_string(),
                 _ if k.starts_with("key_") => {
                     if let Some(i) = i {
                         s.key_codes.insert(k[4..].to_string(), i);
@@ -291,6 +318,7 @@ impl Settings {
             ("mouseSensitivity", format!("{}", self.mouse_sensitivity)),
             ("gamma", format!("{}", self.gamma)),
             ("renderDistance", self.render_distance.to_string()),
+            ("lang", self.language.clone()),
             ("maxFps", self.limit_framerate.to_string()),
             ("guiScale", self.gui_scale.to_string()),
             ("ao", self.ambient_occlusion.to_string()),
@@ -317,6 +345,9 @@ impl Settings {
             ("chatWidth", self.chat_width.to_string()),
             ("chatHeightFocused", self.chat_height_focused.to_string()),
             ("chatHeightUnfocused", self.chat_height_unfocused.to_string()),
+            ("resourcePacks", gson_list(&self.resource_packs)),
+            ("incompatibleResourcePacks", gson_list(&self.incompatible_resource_packs)),
+            ("lastServer", self.last_server.clone()),
         ];
         let part_keys: Vec<String> = MODEL_PARTS.iter().map(|p| format!("modelPart_{p}")).collect();
         for (i, k) in part_keys.iter().enumerate() {
@@ -338,6 +369,15 @@ impl Settings {
             .collect();
         out.extend(ours.iter().map(|(k, v)| format!("{k}:{v}")));
         let _ = std::fs::write(path, out.join("\n") + "\n");
+    }
+
+    /// The game directory: where `options.txt` lives (`Minecraft.mcDataDir`). `resourcepacks/`
+    /// and `server-resource-packs/` are inside it.
+    pub fn game_dir(&self) -> PathBuf {
+        match self.path.as_deref().and_then(Path::parent) {
+            Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+            _ => PathBuf::from("."),
+        }
     }
 
     /// A binding's key code (`KeyBinding.getKeyCode`).
@@ -479,6 +519,32 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resource_pack_lists_round_trip() {
+        let dir = std::env::temp_dir().join(format!("rustmc-opts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("options.txt");
+        std::fs::write(&path, "fov:0.5\nlang:fr_FR\nresourcePacks:[\"a.zip\",\"b\"]\nincompatibleResourcePacks:[\"b\"]\nother:keep\n").unwrap();
+        let mut s = Settings::load(&path);
+        assert_eq!(s.language, "fr_FR");
+        assert_eq!(s.resource_packs, ["a.zip", "b"]);
+        assert_eq!(s.incompatible_resource_packs, ["b"]);
+        assert_eq!(s.game_dir(), dir);
+        s.resource_packs = vec!["it's=<x>.zip".into(), "c".into()];
+        s.incompatible_resource_packs.clear();
+        s.save();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("resourcePacks:[\"it\\u0027s\\u003d\\u003cx\\u003e.zip\",\"c\"]\n"), "{text}");
+        assert!(text.contains("incompatibleResourcePacks:[]\n") && text.contains("other:keep\n"));
+        let back = Settings::load(&path);
+        assert_eq!(back.language, "fr_FR");
+        assert_eq!(back.resource_packs, ["it's=<x>.zip", "c"]);
+        assert!(back.incompatible_resource_packs.is_empty());
+        // Vanilla's default (no keys) and malformed lists.
+        std::fs::write(&path, "resourcePacks:oops\n").unwrap();
+        assert!(Settings::load(&path).resource_packs.is_empty());
+    }
 
     #[test]
     fn slider_snapping() {

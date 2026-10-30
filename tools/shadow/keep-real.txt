@@ -1,0 +1,15 @@
+# Classes kept as real (Forge-patched, SRG) bytecode instead of Rust-dispatched stubs. One regex per line,
+# matched with find() against e.g. net/minecraft/client/gui/GuiScreen.class. Real classes call the stubbed
+# ones (Minecraft, FontRenderer, Tessellator...) for everything Rust owns. Add a line to stop stubbing a class
+# whose logic is pure Java; remove it to implement the class in Rust instead.
+# --- GUI base classes mods subclass: vanilla widget logic, Forge's GuiScreenEvent post sites included
+^net/minecraft/client/gui/(Gui|GuiScreen|GuiButton|GuiTextField|GuiSlot|GuiLabel)(\$[^/]*)?\.class$
+# --- plain data
+^net/minecraft/util/(Session|ChatAllowedCharacters|StringUtils|ResourceLocation|ChatComponent[A-Za-z]*|ChatStyle|ClickEvent|HoverEvent|IChatComponent)(\$[^/]*)?\.class$
+# --- Forge events and the reflection helper (pure Java)
+^net/minecraftforge/client/event/
+^net/minecraftforge/event/
+^net/minecraftforge/fml/common/gameevent/
+^net/minecraftforge/fml/common/event/
+^net/minecraftforge/fml/common/eventhandler/(Event|Cancelable|ListenerList|EventPriority|SubscribeEvent|IEventListener)(\$[^/]*)?\.class$
+^net/minecraftforge/fml/relauncher/(ReflectionHelper|Side|SideOnly)(\$[^/]*)?\.class$

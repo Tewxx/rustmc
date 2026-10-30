@@ -1,0 +1,14 @@
+[mod]
+id = "lunarforge_fps"
+name = "LunarForge FPS (partial port)"
+version = "0.1.0"
+entry = "mod.wasm"
+side = "client"
+
+[api]
+version = "1.0"
+min = "1.0"
+
+[capabilities]
+hud = true
+memory_mib = 32

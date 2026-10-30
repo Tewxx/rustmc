@@ -3,7 +3,7 @@
 use mc_assets::AssetSource;
 use std::collections::HashMap;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Lang {
     map: HashMap<String, String>,
 }
@@ -11,15 +11,17 @@ pub struct Lang {
 impl Lang {
     pub fn load(assets: &AssetSource, code: &str) -> Self {
         let mut map = HashMap::new();
-        if let Some(bytes) = assets.read(&format!("lang/{code}.lang")) {
-            for line in String::from_utf8_lossy(&bytes).lines() {
-                if line.starts_with('#') {
-                    continue;
-                }
-                if let Some((k, v)) = line.split_once('=') {
-                    map.insert(k.to_string(), v.to_string());
+        // `LanguageManager`: every pack's file, lowest first, so a partial pack file only overrides.
+        // Vanilla loads English first and overlays the selected language from all packs.
+        let valid = !code.is_empty() && code.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_');
+        for lang in ["en_US", if valid { code } else { "en_US" }] {
+            for bytes in assets.read_all(&format!("lang/{lang}.lang")) {
+                for line in String::from_utf8_lossy(&bytes).lines() {
+                    if line.starts_with('#') { continue; }
+                    if let Some((k, v)) = line.split_once('=') { map.insert(k.to_string(), v.to_string()); }
                 }
             }
+            if lang == code || !valid { break; }
         }
         Self { map }
     }
@@ -62,5 +64,25 @@ impl Lang {
             out.push_str(args.get(idx).copied().unwrap_or(""));
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn selected_language_overlays_english_and_pack_layers() {
+        let root = std::env::temp_dir().join(format!("rustmc-lang-{}", std::process::id()));
+        let base = root.join("base/assets/minecraft/lang");
+        let pack = root.join("pack/assets/minecraft/lang");
+        std::fs::create_dir_all(&base).unwrap(); std::fs::create_dir_all(&pack).unwrap();
+        std::fs::write(base.join("en_US.lang"), "fallback=English\nname=English\n").unwrap();
+        std::fs::write(base.join("fr_FR.lang"), "name=Francais\npack=Base\n").unwrap();
+        std::fs::write(pack.join("fr_FR.lang"), "pack=Override\n").unwrap();
+        let mut assets = AssetSource::new(); assets.push(&root.join("base")).unwrap(); assets.push(&root.join("pack")).unwrap();
+        let lang = Lang::load(&assets, "fr_FR");
+        assert_eq!(lang.get("fallback"), "English"); assert_eq!(lang.get("name"), "Francais"); assert_eq!(lang.get("pack"), "Override");
+        assert_eq!(Lang::load(&assets, "../../other").get("name"), "English");
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

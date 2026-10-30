@@ -4,7 +4,6 @@ use mc_data::geometry::{BlockGeometry, CollisionEntity, MovingPiston};
 use mc_data::{BlockAccess, StateId};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
 
 #[derive(Default)]
 struct Scene {
@@ -38,11 +37,10 @@ fn vec3(v: &Value) -> Vec3 {
 
 #[test]
 fn geometry_matches_java() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../golden/geometry.json");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        eprintln!("skipping: {} (run tools/extract/extract.ps1 geometry)", path.display());
+    let Some(path) = mc_testutil::golden("geometry.json") else {
         return;
     };
+    let text = std::fs::read_to_string(&path).unwrap();
     let rows: Vec<Value> = serde_json::from_str(&text).unwrap();
     assert!(rows.len() >= mc_data::block::STATE_COUNT);
     for (i, row) in rows.iter().take(mc_data::block::STATE_COUNT).enumerate() {

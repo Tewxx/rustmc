@@ -55,14 +55,27 @@ pub fn is_valid(pos: BlockPos) -> bool {
 }
 
 impl World {
+    /// An immutable 3×3-column, three-section neighborhood for one mesh job.
+    pub fn mesh_snapshot(&self, cx: i32, sy: i32, cz: i32) -> Self {
+        let mut out = Self { chunks: FxHashMap::default(), has_sky: self.has_sky, sea_level: self.sea_level,
+            skylight_subtracted: self.skylight_subtracted, dirty: FxHashSet::default(), track_dirty: false, light_queue: Vec::new() };
+        for dx in -1i32..=1 {
+            for dz in -1i32..=1 {
+                let key = (cx.wrapping_add(dx), cz.wrapping_add(dz));
+                if let Some(chunk) = self.chunks.get(&key) { out.chunks.insert(key, chunk.mesh_snapshot(sy)); }
+            }
+        }
+        out
+    }
+
     /// Inserts a chunk as-is (light and heightmap are taken from the chunk).
     pub fn insert(&mut self, c: Chunk) {
         let (x, z) = (c.x, c.z);
         self.chunks.insert((x, z), c);
         if self.track_dirty {
             for sy in 0..16 {
-                for (dx, dz) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)] {
-                    self.dirty.insert((x + dx, sy, z + dz));
+                for (dx, dz) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+                    self.dirty.insert((x.wrapping_add(dx), sy, z.wrapping_add(dz)));
                 }
             }
         }
@@ -349,7 +362,10 @@ impl World {
 
     /// `markBlockForUpdate`
     pub fn mark_block_for_update(&mut self, pos: BlockPos) {
-        self.mark_blocks_for_update(pos.x - 1, pos.y - 1, pos.z - 1, pos.x + 1, pos.y + 1, pos.z + 1);
+        // AO queries two blocks away along a face, so changes near a section boundary
+        // must invalidate both sections even when they are not immediately adjacent.
+        self.mark_blocks_for_update(pos.x.saturating_sub(2), pos.y.saturating_sub(2), pos.z.saturating_sub(2),
+            pos.x.saturating_add(2), pos.y.saturating_add(2), pos.z.saturating_add(2));
     }
 
     /// `notifyLightSet`
@@ -362,7 +378,8 @@ impl World {
 
     /// `markBlockRangeForRenderUpdate`
     pub fn mark_block_range_for_render_update(&mut self, x1: i32, y1: i32, z1: i32, x2: i32, y2: i32, z2: i32) {
-        self.mark_blocks_for_update(x1 - 1, y1 - 1, z1 - 1, x2 + 1, y2 + 1, z2 + 1);
+        self.mark_blocks_for_update(x1.saturating_sub(2), y1.saturating_sub(2), z1.saturating_sub(2),
+            x2.saturating_add(2), y2.saturating_add(2), z2.saturating_add(2));
     }
 
     pub fn take_dirty(&mut self) -> FxHashSet<(i32, i32, i32)> {
@@ -931,6 +948,16 @@ pub fn moving_piston_of(tile: &mc_core::nbt::Compound) -> Option<mc_data::geomet
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalidation_covers_ao_and_diagonal_neighbors() {
+        let mut w = World::default(); w.track_dirty = true;
+        w.mark_block_for_update(BlockPos::new(17, 32, 17));
+        assert!(w.dirty.contains(&(0, 2, 1)));
+        w.dirty.clear();
+        w.insert(Chunk::new(0, 0));
+        assert!(w.dirty.contains(&(1, 2, 1)));
+    }
 
     #[test]
     fn negative_coords_hit_right_chunk() {

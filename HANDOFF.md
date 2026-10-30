@@ -3,7 +3,7 @@
 A Minecraft 1.8.9 client in Rust. Goal: replace PvP clients (Lunar etc.) with something that **looks and
 feels 1:1 vanilla** but runs with **much higher FPS and steadier frame times**.
 
-Reference source: `../MCP-919/src/minecraft/` (decompiled 1.8.9, MCP names). It is a reference only —
+Reference source: `MCP-919/src/minecraft/` (decompiled 1.8.9, MCP names). It is a reference only —
 never copy it into this repo. Assets load at runtime from the user's `1.8.9.jar`.
 
 ---
@@ -133,6 +133,7 @@ Commits cbf3425 … 5bc480a. New since the table above:
 
 Testing: `cargo run -p mc-protocol --example mock_server -- 25599` (env `MOCK_CHEST=1`, `MOCK_SKIN=<png>`, `MOCK_MOBS=1`, `MOCK_OBJECTS=1`, `MOCK_BREAK=1`, `MOCK_SCORE=1`, `MOCK_PARTICLES=1`, `MOCK_WATER=1`, `MOCK_RPACK=<url>` + `MOCK_RPACK_HASH=<sha1>`)
 then `rustmc.exe --connect 127.0.0.1:25599 --screenshot shots/audit/x.png --screen net`.
+In-game screenshot screens (`hud`, `debug`, `chat`, `pause`, ...) and `--bench` run through this same path in the default build.
 
 ## Session log — particles (Oct 2026)
 
@@ -212,8 +213,13 @@ Liquids have no blockstate model in 1.8 (`render_type == 1`), which is why water
   the loaded world remeshed. Measured ~0.6 s for the mock world. A pack that replaces a font
   and `grass_top` recolours both (`shots/pack2.png`, `shots/pack_blocks.png`); a cached pack is
   pre-applied during startup on the next join.
-- **Still missing:** sounds are read from `.minecraft/assets`, not the pack stack, so pack sound
-  overrides are ignored; the pack list UI (`options.resourcepack`) is not ported.
+- **Client packs (RP1):** `Options -> Resource Packs...` opens `mc_gui::resource_packs::ResourcePacks`
+  (`GuiScreenResourcePacks`). Packs come from `<gameDir>/resourcepacks/` (`mc_assets::repository`),
+  the selection persists as `resourcePacks` / `incompatibleResourcePacks` in options.txt, and Done
+  runs `App::reload_resources` (`client_packs.rs`), the single reload path also used by server packs
+  (stack: jar, `--pack`s, selected packs bottom to top, server pack). Pack `sounds.json` files merge
+  per vanilla (`replace`), sound files come from the highest pack, then the asset index.
+  Not done: sounds in non-`minecraft` domains, dropping sound entries whose file is missing at load.
 
 ## User priority: playable game (latest steering)
 
@@ -245,7 +251,8 @@ while the old window is open. The active window does not automatically receive c
 The user explicitly rejected further foundation-only progress while the app remained a spectator
 viewer. The current checkpoint adds a real local player, visible hand/body, a creative inventory,
 world editing and commands. **Keep playability first.** Read `PLAYING.md` for controls and limits;
-double-click `Play-RustMC.cmd` or launch `rustmc --play` to enter directly.
+double-click `Play-RustMC.cmd` to open the title screen. (Superseded: singleplayer is now behind the
+off-by-default `singleplayer` cargo feature; the default build is multiplayer-only. See Testing below.)
 
 Tests exercise ground/wall/ceiling collisions, jump, slab steps, sneak edges, flight, selection,
 menu-to-hotbar operations, command mutation/error atomicity, break/place/pick and preventing placement
@@ -261,15 +268,18 @@ this full parity or claim the new controller has Java golden validation. Next wo
 player traces against Java and extend persistent gameplay and real block/item interaction before
 returning to unrelated foundations.
 
-Run: `cargo run --release --bin rustmc -- --radius 8`
-Screenshot any screen headless: `rustmc --screenshot out.png --screen title|pause|options|video|controls|hud|debug|chat`
+Run: `cargo run --release --bin rustmc` (title screen; Singleplayer greyed out). Add `--features singleplayer` to
+build with the integrated server, worldgen and `--play` / `--world` / `--seed` / `--radius` / `--pos`.
+Screenshot a menu screen headless (no world needed): `rustmc --screenshot out.png --screen title|options|video|controls`.
+Screenshot an in-game screen: start the mock server (`cargo run --release -p mc-protocol --example mock_server -- 25599`) and
+add `--connect 127.0.0.1:25599`, e.g. `rustmc --connect 127.0.0.1:25599 --screenshot out.png --screen hud|debug|chat|pause|net`.
 Tests: `cargo test --release --workspace --offline` (77 tests). Golden/real-jar tests skip when their
 inputs are missing; the local verification used all inputs. New dumps: `models.json` (7806 mappings),
 `colors.json` (7806 states with mixed-biome neighborhoods), `biomes.json` (61 profiles, 200 samples each).
 `geometry.json` replays 37,506 scenes covering every state, 487,578 rays and 112,518 masked collision
 list queries, including 300 moving-piston tile-entity scenes.
-Benchmark: `rustmc --radius 8 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
-Golden data: `powershell -ExecutionPolicy Bypass -File tools/extract/extract.ps1` (needs a JDK 8 and MCP's
+Benchmark (needs the mock server, see BENCH.md): `rustmc --connect 127.0.0.1:25599 --bench 10` → one-line summary + `bench.csv` (vsync/limit overridden in memory only).
+Golden data: `tools/extract/extract.sh` (needs a JDK 8 and MCP's
 compiled `bin/minecraft`; writes `golden/`, which is gitignored because it's derived from Mojang code).
 
 Registry tables: after changing the extractor, rerun it and then `cargo run --release -p gen-data`, which

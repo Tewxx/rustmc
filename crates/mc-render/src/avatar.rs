@@ -191,9 +191,45 @@ struct Vertex {
     overlay: [f32; 4],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct ParticleInstance {
+    pos: [[f32; 3]; 4],
+    uv: [[f32; 2]; 4],
+    color: [f32; 4],
+    kind: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct EntityInstance {
+    pos: [[f32; 3]; 4], uv: [[f32; 2]; 4], mvp: [[f32; 4]; 4],
+    color: [f32; 4], kind: f32, overlay: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct ParticleGlobals { vp: [[f32; 4]; 4], camera: [f32; 4] }
+
 pub struct AvatarRenderer {
     pipeline: wgpu::RenderPipeline,
+    particle_pipeline: wgpu::RenderPipeline,
+    entity_pipeline: wgpu::RenderPipeline,
+    entity_instances: wgpu::Buffer,
+    entity_capacity: usize,
+    use_entity_instancing: bool,
+    particle_globals: wgpu::Buffer,
+    particle_bind_group: wgpu::BindGroup,
+    particle_instances: wgpu::Buffer,
+    particle_capacity: usize,
+    use_particle_instancing: bool,
+    particle_scratch: Vec<ParticleInstance>,
+    entity_scratch: Vec<EntityInstance>,
     damage_pipeline: wgpu::RenderPipeline,
+    sign_text_pipeline: wgpu::RenderPipeline,
+    banner_pipeline: wgpu::RenderPipeline,
+    sign_text_layout: wgpu::BindGroupLayout,
+    sign_textures: std::collections::HashMap<String, wgpu::BindGroup>,
     vertices: [wgpu::Buffer; 3],
     bind_group: wgpu::BindGroup,
     steve: PlayerModel,
@@ -229,6 +265,33 @@ const MOB: f32 = 8.;
 /// Vertices per buffer (a frame's world pass, hand pass and inventory preview).
 const MAX_VERTS: usize = 131072;
 
+fn make_particle_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor { label: Some("particle instances"),
+        size: count as u64 * std::mem::size_of::<ParticleInstance>() as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
+}
+
+fn record_entity_run(verts: &mut Vec<Vertex>, entities: &mut Vec<EntityInstance>, runs: &mut Vec<(usize, std::ops::Range<usize>)>, vertex_start: usize, instance_start: usize, max: usize) {
+    if entities.len() > max {
+        let fallback = entities.drain(instance_start..).flat_map(|instance| {
+            let mvp = Mat4::from_cols_array_2d(&instance.mvp);
+            [0, 1, 2, 0, 2, 3].map(|i| Vertex { clip: (mvp * Vec3::from_array(instance.pos[i]).extend(1.)).to_array(),
+                uv: instance.uv[i], color: instance.color, kind: instance.kind, overlay: instance.overlay })
+        });
+        verts.splice(vertex_start..vertex_start, fallback);
+    } else if entities.len() > instance_start {
+        if let Some((_, range)) = runs.last_mut().filter(|(at, range)| *at == vertex_start && range.end == instance_start) {
+            range.end = entities.len();
+        } else { runs.push((vertex_start, instance_start..entities.len())); }
+    }
+}
+
+fn make_entity_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor { label: Some("entity instances"),
+        size: count as u64 * std::mem::size_of::<EntityInstance>() as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
+}
+
 impl AvatarRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, assets: &AssetSource, atlas: wgpu::TextureView) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -263,9 +326,37 @@ const SRGB:bool={};
 @group(0) @binding(5) var armor:texture_2d<f32>;
 @group(0) @binding(6) var glint:texture_2d<f32>;
 @group(0) @binding(7) var mobs:texture_2d<f32>;
+struct ParticleGlobals {{ vp:mat4x4<f32>, camera:vec4<f32> }};
+@group(1) @binding(0) var<uniform> particle_globals:ParticleGlobals;
+@group(1) @binding(1) var sign_font:texture_2d<f32>;
 struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) color:vec4<f32>, @location(2) @interpolate(flat) kind:u32, @location(3) overlay:vec4<f32> }};
 @vertex fn vs(@location(0) p:vec4<f32>,@location(1) uv:vec2<f32>,@location(2) color:vec4<f32>,@location(3) kind:f32,@location(4) overlay:vec4<f32>)->V {{
  var o:V;o.pos=p;o.uv=uv;o.color=color;o.kind=u32(kind);o.overlay=overlay;return o;
+}}
+@vertex fn vs_particle(@builtin(vertex_index) vertex:u32,
+ @location(0) p0:vec3<f32>, @location(1) p1:vec3<f32>, @location(2) p2:vec3<f32>, @location(3) p3:vec3<f32>,
+ @location(4) u0:vec2<f32>, @location(5) u1:vec2<f32>, @location(6) u2:vec2<f32>, @location(7) u3:vec2<f32>,
+ @location(8) color:vec4<f32>, @location(9) kind:f32)->V {{
+ var p=p0; var uv=u0;
+ if(vertex==1u) {{p=p1;uv=u1;}} else if(vertex==2u || vertex==4u) {{p=p2;uv=u2;}} else if(vertex==5u) {{p=p3;uv=u3;}}
+ var o:V; o.pos=particle_globals.vp*vec4<f32>(p-particle_globals.camera.xyz,1.0);
+ o.uv=uv; o.color=color; o.kind=u32(kind); o.overlay=vec4<f32>(0.0); return o;
+}}
+@vertex fn vs_entity(@builtin(vertex_index) vertex:u32,
+ @location(0) p0:vec3<f32>, @location(1) p1:vec3<f32>, @location(2) p2:vec3<f32>, @location(3) p3:vec3<f32>,
+ @location(4) u0:vec2<f32>, @location(5) u1:vec2<f32>, @location(6) u2:vec2<f32>, @location(7) u3:vec2<f32>,
+ @location(8) m0:vec4<f32>, @location(9) m1:vec4<f32>, @location(10) m2:vec4<f32>, @location(11) m3:vec4<f32>,
+ @location(12) color:vec4<f32>, @location(13) kind:f32, @location(14) overlay:vec4<f32>)->V {{
+ var p=p0; var uv=u0;
+ if(vertex==1u) {{p=p1;uv=u1;}} else if(vertex==2u || vertex==4u) {{p=p2;uv=u2;}} else if(vertex==5u) {{p=p3;uv=u3;}}
+ var o:V; o.pos=mat4x4<f32>(m0,m1,m2,m3)*vec4<f32>(p,1.0);
+ o.uv=uv; o.color=color; o.kind=u32(kind); o.overlay=overlay; return o;
+}}
+@fragment fn fs_sign(v:V)->@location(0) vec4<f32> {{
+ var c=v.color;
+ if(v.kind!=3u) {{c*=textureSampleLevel(sign_font,samp,v.uv,0.0); if(c.a<=0.1) {{discard;}} }}
+ if(SRGB) {{c=vec4<f32>(select(c.rgb/12.92,pow((c.rgb+vec3<f32>(0.055))/1.055,vec3<f32>(2.4)),c.rgb>vec3<f32>(0.04045)),c.a);}}
+ return c;
 }}
 @fragment fn fs(v:V)->@location(0) vec4<f32> {{
  var c=v.color;
@@ -331,6 +422,93 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             multiview: None,
             cache: None,
         });
+        let sign_text_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("sign font texture"), entries: &[texture_entry(1)],
+        });
+        let sign_text_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sign text"), bind_group_layouts: &[&layout, &sign_text_layout], push_constant_ranges: &[],
+        });
+        let sign_text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sign text"), layout: Some(&sign_text_pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4] }] },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_sign"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
+        });
+        let banner_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("banner"), layout: Some(&sign_text_pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x2,2=>Float32x4,3=>Float32,4=>Float32x4] }] },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_sign"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
+        });
+        let particle_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("particle globals"), entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0, visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None,
+            }],
+        });
+        let particle_globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("particle globals"), size: std::mem::size_of::<ParticleGlobals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        let particle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("particle globals"), layout: &particle_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: particle_globals.as_entire_binding() }],
+        });
+        let particle_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("particle pipeline"), bind_group_layouts: &[&layout, &particle_layout], push_constant_ranges: &[],
+        });
+        let particle_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("instanced particles"), layout: Some(&particle_pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_particle"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<ParticleInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x3,3=>Float32x3,4=>Float32x2,5=>Float32x2,6=>Float32x2,7=>Float32x2,8=>Float32x4,9=>Float32],
+                }],
+            },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
+        });
+        let entity_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("instanced entities"), layout: Some(&pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_entity"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<EntityInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x3,3=>Float32x3,4=>Float32x2,5=>Float32x2,6=>Float32x2,7=>Float32x2,8=>Float32x4,9=>Float32x4,10=>Float32x4,11=>Float32x4,12=>Float32x4,13=>Float32,14=>Float32x4],
+                }],
+            },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs"), compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview: None, cache: None,
+        });
+        let entity_capacity = 1024;
+        let entity_instances = make_entity_buffer(device, entity_capacity);
+        let particle_capacity = 1024;
+        let particle_instances = make_particle_buffer(device, particle_capacity);
         // drawBlockDamageTexture: blend (DST_COLOR, SRC_COLOR), polygon offset -3, no depth writes.
         let damage_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("block damage"),
@@ -522,7 +700,16 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
         Self {
             pipeline,
-            damage_pipeline,
+            particle_pipeline,
+            entity_pipeline, entity_instances, entity_capacity,
+            use_entity_instancing: std::env::var_os("RUSTMC_NO_ENTITY_INSTANCING").is_none(),
+            particle_globals,
+            particle_bind_group,
+            particle_instances,
+            particle_capacity,
+            use_particle_instancing: std::env::var_os("RUSTMC_NO_PARTICLE_INSTANCING").is_none(),
+            particle_scratch: Vec::new(), entity_scratch: Vec::new(),
+            damage_pipeline, sign_text_pipeline, banner_pipeline, sign_text_layout, sign_textures: Default::default(),
             vertices,
             bind_group,
             steve: PlayerModel::new(false),
@@ -561,7 +748,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     #[allow(clippy::too_many_arguments)]
     pub fn encode(
         &mut self,
-        _device: &wgpu::Device,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         enc: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
@@ -571,27 +758,97 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         height: f32,
         far: f32,
         frame: &AvatarFrame,
-        _assets: &AssetSource,
+        assets: &AssetSource,
         hand_stage: bool,
     ) {
         let mut verts = Vec::new();
         let mut damage = Vec::new();
+        let mut sign_text_runs: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+        let mut banner_runs: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+        let mut particles = std::mem::take(&mut self.particle_scratch);
+        let mut entities = std::mem::take(&mut self.entity_scratch);
+        particles.clear(); entities.clear();
+        let mut entity_runs: Vec<(usize, std::ops::Range<usize>)> = Vec::new();
+        let max_entities = (device.limits().max_buffer_size / std::mem::size_of::<EntityInstance>() as u64).min(u32::MAX as u64) as usize;
+        let max_instances = (device.limits().max_buffer_size / std::mem::size_of::<ParticleInstance>() as u64).min(u32::MAX as u64) as usize;
+        let use_particle_instancing = self.use_particle_instancing && frame.particles.len() <= max_instances;
+        let mut particle_split = 0;
         let world_vp = cam.view_proj(aspect, far);
         if !hand_stage {
-            if frame.perspective != 0 {
-                self.body(&mut verts, frame, world_vp, cam.pos);
-            }
-            for o in &frame.others {
-                self.body(&mut verts, o, world_vp, cam.pos);
+            for player in (frame.perspective != 0).then_some(frame).into_iter().chain(&frame.others) {
+                let vertex_start = verts.len();
+                let instance_start = entities.len();
+                let use_instances = self.use_entity_instancing && !player.armor.iter().flatten().any(|a| a.glint);
+                self.body(&mut verts, &mut entities, use_instances, player, world_vp, cam.pos);
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for m in &frame.mobs {
-                self.mob(&mut verts, m, world_vp, cam.pos);
+                let vertex_start = verts.len();
+                let instance_start = entities.len();
+                let use_instances = self.use_entity_instancing && !m.armor.iter().flatten().any(|a| a.glint);
+                self.mob(&mut verts, &mut entities, use_instances, m, world_vp, cam.pos);
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for o in &frame.objects {
-                self.object(&mut verts, o, world_vp, cam);
+                let vertex_start = verts.len(); let instance_start = entities.len();
+                self.object(&mut verts, &mut entities, self.use_entity_instancing, o, world_vp, cam);
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for t in &frame.tiles {
-                self.tile(&mut verts, t, world_vp, cam.pos);
+                if matches!(t, crate::tile::TileFrame::Banner { .. }) { continue; }
+                let vertex_start = verts.len(); let instance_start = entities.len();
+                self.tile(&mut verts, &mut entities, self.use_entity_instancing, t, world_vp, cam.pos);
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
+            }
+            for tile in &frame.tiles {
+                let crate::tile::TileFrame::Banner { patterns, .. } = tile else { continue };
+                let key = format!("banner:{patterns:?}");
+                if !self.sign_textures.contains_key(&key) {
+                    let img = banner_image(assets, patterns);
+                    let tex = texture(device, queue, &img); let view = tex.create_view(&Default::default());
+                    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("banner texture"), layout: &self.sign_text_layout,
+                        entries: &[wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) }] });
+                    self.sign_textures.insert(key.clone(), bg);
+                }
+                let start = verts.len(); let light = tile.light(); let lights = lights_in(Mat3::IDENTITY);
+                crate::tile::render(tile, &self.chests, &mut |_, pm, q| {
+                    let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+                    let shade = standard_lighting(n, lights);
+                    let color = [shade * light[0], shade * light[1], shade * light[2], 1.];
+                    let clip = q.pos.map(|p| world_vp * ((pm * p.extend(1.)).truncate() - cam.pos).extend(1.));
+                    for i in [0, 1, 2, 0, 2, 3] { verts.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color, kind: MOB, overlay: [0.;4] }); }
+                });
+                banner_runs.push((start..verts.len(), key));
+            }
+            for tile in &frame.tiles {
+                let crate::tile::TileFrame::Sign { pos, standing, meta, glyphs, .. } = tile else { continue };
+                let m = world_vp * Mat4::from_translation(-cam.pos) * crate::tile::sign_transform(*pos, *standing, *meta)
+                    * Mat4::from_translation(Vec3::new(0., 0.5 * (2. / 3.), 0.07 * (2. / 3.)))
+                    * Mat4::from_scale(Vec3::new(1. / 96., -1. / 96., 1. / 96.));
+                for glyph in glyphs {
+                    let key = glyph.texture.as_deref().unwrap_or("");
+                    if !self.sign_textures.contains_key(key) {
+                        let img = if key.is_empty() { image::RgbaImage::from_pixel(1, 1, image::Rgba([255; 4])) }
+                            else { assets.read(key).and_then(|bytes| image::load_from_memory(&bytes).ok()).map(|img| img.to_rgba8())
+                                .unwrap_or_else(|| image::RgbaImage::new(1, 1)) };
+                        let tex = texture(device, queue, &img);
+                        let view = tex.create_view(&Default::default());
+                        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("sign font texture"),
+                            layout: &self.sign_text_layout, entries: &[wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) }] });
+                        self.sign_textures.insert(key.to_owned(), bg);
+                    }
+                    let start = verts.len();
+                    let color = glyph.color.map(|v| v as f32 / 255.);
+                    for i in [0, 1, 2, 0, 2, 3] {
+                        let [x,y] = glyph.pos[i]; let [u,v] = glyph.uv[i];
+                        verts.push(Vertex { clip: (m * Vec3::new(x,y,0.).extend(1.)).to_array(),
+                            uv: [u, v], color,
+                            kind: if glyph.texture.is_some() { MOB } else { LINE }, overlay: [0.; 4] });
+                    }
+                    if let Some((range, _)) = sign_text_runs.last_mut().filter(|(range, texture)| range.end == start && texture == key) {
+                        range.end = verts.len();
+                    } else { sign_text_runs.push((start..verts.len(), key.to_owned())); }
+                }
             }
             for b in &frame.billboards {
                 // RenderSnowball: translate, scale 0.5, rotate(-playerViewY, Y),
@@ -611,6 +868,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                     verts.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: [q.color[0], q.color[1], q.color[2], 1.], kind: 9., overlay: [0.; 4] });
                 }
             }
+            particle_split = verts.len();
             for q in &frame.particles {
                 let (kind, uv) = match q.tex {
                     ParticleTex::Block => (9., q.uv),
@@ -620,15 +878,14 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                         (10., q.uv.map(|u| [r[0] + u[0] * r[2], r[1] + u[1] * r[3]]))
                     }
                 };
-                let clip = q.pos.map(|p| world_vp * (p - cam.pos).extend(1.));
-                for i in [0, 1, 2, 0, 2, 3] {
-                    verts.push(Vertex {
-                        clip: clip[i].to_array(),
-                        uv: uv[i],
-                        color: [q.color[0] * q.light[0], q.color[1] * q.light[1], q.color[2] * q.light[2], q.color[3]],
-                        kind,
-                        overlay: [0.; 4],
-                    });
+                let color = [q.color[0] * q.light[0], q.color[1] * q.light[1], q.color[2] * q.light[2], q.color[3]];
+                if use_particle_instancing {
+                    particles.push(ParticleInstance { pos: q.pos.map(|p| p.to_array()), uv, color, kind });
+                } else {
+                    let clip = q.pos.map(|p| world_vp * (p - cam.pos).extend(1.));
+                    for i in [0, 1, 2, 0, 2, 3] {
+                        verts.push(Vertex { clip: clip[i].to_array(), uv: uv[i], color, kind, overlay: [0.; 4] });
+                    }
                 }
             }
             for d in &frame.dropped {
@@ -648,17 +905,38 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         }
         // The crack overlay draws right after the terrain, before entities.
         let split = damage.len() as u32;
+        particle_split += split as usize;
         damage.extend(verts);
         let additive_start = damage.len() as u32;
         damage.append(&mut self.additive);
         let glint_start = damage.len() as u32;
         damage.append(&mut self.glint);
         let verts = damage;
-        if verts.is_empty() {
+        if verts.is_empty() && particles.is_empty() && entities.is_empty() {
+            self.particle_scratch = particles; self.entity_scratch = entities;
             return;
         }
+        if !entities.is_empty() {
+            if entities.len() > self.entity_capacity {
+                self.entity_capacity = entities.len().next_power_of_two().min(max_entities);
+                self.entity_instances = make_entity_buffer(device, self.entity_capacity);
+            }
+            queue.write_buffer(&self.entity_instances, 0, bytemuck::cast_slice(&entities));
+        }
+        if !particles.is_empty() {
+            if particles.len() > self.particle_capacity {
+                self.particle_capacity = particles.len().next_power_of_two().min(max_instances);
+                self.particle_instances = make_particle_buffer(device, self.particle_capacity);
+            }
+            queue.write_buffer(&self.particle_instances, 0, bytemuck::cast_slice(&particles));
+            queue.write_buffer(&self.particle_globals, 0, bytemuck::bytes_of(&ParticleGlobals {
+                vp: world_vp.to_cols_array_2d(), camera: cam.pos.extend(0.).to_array(),
+            }));
+        }
+        let particle_count = particles.len();
+        self.particle_scratch = particles; self.entity_scratch = entities;
         let buf = &self.vertices[hand_stage as usize];
-        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)]));
+        if !verts.is_empty() { queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)])); }
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(if hand_stage { "first person" } else { "player" }),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -685,7 +963,48 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.draw(0..split.min(end), 0..1);
         }
         pass.set_pipeline(&self.pipeline);
-        pass.draw(split.min(end)..additive_start.min(end), 0..1);
+        let mut start = split.min(end);
+        for (vertex_start, instances) in &entity_runs {
+            if split as usize + vertex_start > end as usize { break; }
+            let at = (split as usize + vertex_start).min(end as usize) as u32;
+            pass.draw(start..at, 0..1);
+            pass.set_pipeline(&self.entity_pipeline);
+            pass.set_vertex_buffer(0, self.entity_instances.slice(..));
+            pass.draw(0..6, instances.start as u32..instances.end as u32);
+            pass.set_pipeline(&self.pipeline);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            start = at;
+        }
+        for (range, key) in &banner_runs {
+            let first = (split as usize + range.start).min(end as usize) as u32;
+            let last = (split as usize + range.end).min(end as usize) as u32;
+            pass.draw(start..first, 0..1);
+            pass.set_pipeline(&self.banner_pipeline); pass.set_bind_group(1, &self.sign_textures[key], &[]);
+            pass.draw(first..last, 0..1); pass.set_pipeline(&self.pipeline); start = last;
+        }
+        for (range, key) in &sign_text_runs {
+            let first = (split as usize + range.start).min(end as usize) as u32;
+            let last = (split as usize + range.end).min(end as usize) as u32;
+            pass.draw(start..first, 0..1);
+            pass.set_pipeline(&self.sign_text_pipeline);
+            pass.set_bind_group(1, &self.sign_textures[key], &[]);
+            pass.draw(first..last, 0..1);
+            pass.set_pipeline(&self.pipeline);
+            start = last;
+        }
+        if particle_count == 0 {
+            pass.draw(start..additive_start.min(end), 0..1);
+        } else {
+            let at = (particle_split as u32).min(additive_start).min(end);
+            pass.draw(start..at, 0..1);
+            pass.set_pipeline(&self.particle_pipeline);
+            pass.set_bind_group(1, &self.particle_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.particle_instances.slice(..));
+            pass.draw(0..6, 0..particle_count as u32);
+            pass.set_pipeline(&self.pipeline);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            pass.draw(at..additive_start.min(end), 0..1);
+        }
         if additive_start < glint_start.min(end) {
             pass.set_pipeline(&self.additive_pipeline);
             pass.draw(additive_start..glint_start.min(end), 0..1);
@@ -694,6 +1013,13 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.set_pipeline(&self.glint_pipeline);
             pass.draw(glint_start..end, 0..1);
         }
+        drop(pass);
+        let mut kept = 0;
+        self.sign_textures.retain(|key, _| {
+            if !key.starts_with("banner:") { return true; }
+            kept += 1;
+            kept <= 256
+        });
     }
 
     /// `GuiInventory.drawEntityOnScreen`: the player in the inventory, drawn over the GUI
@@ -734,7 +1060,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let lights = lights_in(Mat3::from_mat4(Mat4::from_scale(Vec3::new(-1., 1., 1.)) * Mat4::from_rotation_z(180f32.to_radians()) * Mat4::from_rotation_y(135f32.to_radians())));
         let m = base * Mat4::from_rotation_x(pitch.to_radians());
         let mut verts = Vec::new();
-        self.body_at(&mut verts, &f, ortho, m, lights);
+        self.body_at(&mut verts, &mut Vec::new(), false, &f, ortho, m, lights);
         if verts.is_empty() {
             return;
         }
@@ -769,10 +1095,10 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     }
 
     /// `RendererLivingEntity.doRender` for the local player, plus `LayerHeldItem`.
-    fn body(&mut self, out: &mut Vec<Vertex>, f: &AvatarFrame, vp: Mat4, cam: Vec3) {
+    fn body(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &AvatarFrame, vp: Mat4, cam: Vec3) {
         self.pose(f);
         // World-space model matrix (the view is applied separately so normals stay in world space).
-        self.body_at(out, f, vp, Mat4::from_translation(f.pos - cam), lights_in(Mat3::IDENTITY));
+        self.body_at(out, instances, use_instances, f, vp, Mat4::from_translation(f.pos - cam), lights_in(Mat3::IDENTITY));
     }
 
     /// `RenderPlayer.setModelVisibilities` + `setRotationAngles` on the skin model.
@@ -799,7 +1125,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
     }
 
-    fn body_at(&mut self, out: &mut Vec<Vertex>, f: &AvatarFrame, vp: Mat4, at: Mat4, lights: [Vec3; 2]) {
+    fn body_at(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &AvatarFrame, vp: Mat4, at: Mat4, lights: [Vec3; 2]) {
         let model = if f.slim { &mut self.alex } else { &mut self.steve };
         let m = at
             * Mat4::from_rotation_y((180. - f.body_yaw).to_radians())
@@ -809,8 +1135,17 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let kind = if f.slim { 2. } else { SKIN };
         let light = f.light;
         let start = out.len();
-        model.render(m, &mut |pm, q| model_quad(out, vp, pm, q, kind, lights, light, [1.; 3], false));
+        let instance_start = instances.len();
+        model.render(m, &mut |pm, q| player_quad(out, instances, use_instances, vp, pm, q, kind, lights, light, [1.; 3]));
         retarget_skin(&mut out[start..], f.skin);
+        if let Some(cell) = f.skin {
+            let per = (SKIN_ATLAS / 64) as f32;
+            let (cx, cy) = ((cell % (SKIN_ATLAS / 64)) as f32, (cell / (SKIN_ATLAS / 64)) as f32);
+            for instance in &mut instances[instance_start..] {
+                instance.kind = 5.;
+                instance.uv = instance.uv.map(|[u,v]| [(cx + u) / per, (cy + v) / per]);
+            }
+        }
         // LayerBipedArmor (before LayerHeldItem): helmet, chestplate, leggings, boots.
         let (swing, sneak, held_right, aimed_bow, pose) = (model.swing, model.sneak, model.held_right, model.aimed_bow, model.pose);
         for slot in [4, 3, 2, 1] {
@@ -825,9 +1160,13 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             let layer = (slot == 2) as u32;
             let mut pass = |cell: u32, tint: [f32; 3]| {
                 let start = out.len();
-                am.render(m, &mut |pm, q| model_quad(out, vp, pm, q, ARMOR, lights, light, tint, false));
+                let instance_start = instances.len();
+                am.render(m, &mut |pm, q| player_quad(out, instances, use_instances, vp, pm, q, ARMOR, lights, light, tint));
                 for v in &mut out[start..] {
                     v.uv[1] = (cell as f32 + v.uv[1]) / ARMOR_CELLS as f32;
+                }
+                for instance in &mut instances[instance_start..] {
+                    for uv in &mut instance.uv { uv[1] = (cell as f32 + uv[1]) / ARMOR_CELLS as f32; }
                 }
             };
             if a.material == 0 {
@@ -977,7 +1316,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
 /// Points skin-textured vertices at a downloaded skin's cell in the skin atlas.
 impl AvatarRenderer {
     /// `RendererLivingEntity.doRender` for a mob, then `LayerHeldItem`.
-    fn mob(&mut self, out: &mut Vec<Vertex>, f: &MobFrame, vp: Mat4, cam: Vec3) {
+    fn mob(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &MobFrame, vp: Mat4, cam: Vec3) {
         let base = Mat4::from_translation(f.pos - cam);
         let lights = lights_in(Mat3::IDENTITY);
         let (atlas, glint, additive) = (&self.mob_atlas, &mut self.glint, &mut self.additive);
@@ -995,10 +1334,18 @@ impl AvatarRenderer {
             let shade = standard_lighting(n, lights);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
             let overlay = l.overlay.map_or([0.; 4], |o| [o[0] * light[0], o[1] * light[1], o[2] * light[2], o[3]]);
+            let mvp = vp * pm;
+            if use_instances && !l.additive {
+                instances.push(EntityInstance { pos: q.pos.map(|p| p.to_array()),
+                    uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]),
+                    mvp: mvp.to_cols_array_2d(), color, kind, overlay });
+                return;
+            }
             let target = if l.additive { &mut *additive } else { &mut *out };
+            let clip = q.pos.map(|p| (mvp * p.extend(1.)).to_array());
             for i in [0, 1, 2, 0, 2, 3] {
                 let [u, v] = q.uv[i];
-                target.push(Vertex { clip: (vp * pm * q.pos[i].extend(1.)).to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay });
+                target.push(Vertex { clip: clip[i], uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay });
             }
         });
         if let (Some(item), Some(m)) = (&f.held, held) {
@@ -1007,7 +1354,7 @@ impl AvatarRenderer {
     }
 
     /// Non-living entities: `RenderArrow`, `RenderXPOrb`, `RenderPainting`, `ArmorStandRenderer`.
-    fn object(&mut self, out: &mut Vec<Vertex>, f: &crate::objects::ObjectFrame, vp: Mat4, cam: &Camera) {
+    fn object(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &crate::objects::ObjectFrame, vp: Mat4, cam: &Camera) {
         let lights = lights_in(Mat3::IDENTITY);
         let light = f.light();
         let (atlas, glint, additive) = (&self.mob_atlas, &mut self.glint, &mut self.additive);
@@ -1024,6 +1371,12 @@ impl AvatarRenderer {
             let shade = standard_lighting(n, lights);
             let alpha = crate::objects::layer_alpha(l);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], alpha];
+            if use_instances && !l.additive {
+                instances.push(EntityInstance { pos: q.pos.map(|p| ((pm * p.extend(1.)).truncate() - cam.pos).to_array()),
+                    uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]), mvp: vp.to_cols_array_2d(),
+                    color, kind, overlay: [0.; 4] });
+                return;
+            }
             let target = if l.additive { &mut *additive } else { &mut *out };
             let clip = q.pos.map(|p| vp * ((pm * p.extend(1.)).truncate() - cam.pos).extend(1.));
             for i in [0, 1, 2, 0, 2, 3] {
@@ -1033,7 +1386,7 @@ impl AvatarRenderer {
         });
     }
     /// Tile entities: `TileEntityRendererDispatcher` with the standard item lighting active.
-    fn tile(&mut self, out: &mut Vec<Vertex>, f: &crate::tile::TileFrame, vp: Mat4, cam: Vec3) {
+    fn tile(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &crate::tile::TileFrame, vp: Mat4, cam: Vec3) {
         let lights = lights_in(Mat3::IDENTITY);
         let light = f.light();
         let atlas = &self.mob_atlas;
@@ -1045,6 +1398,12 @@ impl AvatarRenderer {
             let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
             let shade = standard_lighting(n, lights);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
+            if use_instances {
+                instances.push(EntityInstance { pos: q.pos.map(|p| ((pm * p.extend(1.)).truncate() - cam).to_array()),
+                    uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]), mvp: vp.to_cols_array_2d(),
+                    color, kind: MOB, overlay: [0.; 4] });
+                return;
+            }
             let clip = q.pos.map(|p| vp * ((pm * p.extend(1.)).truncate() - cam).extend(1.));
             for i in [0, 1, 2, 0, 2, 3] {
                 let [u, v] = q.uv[i];
@@ -1059,6 +1418,7 @@ impl AvatarRenderer {
 /// translate(0, age * (0.001 + 0.003i) * 20).
 fn armor_glint(glint: &mut Vec<Vertex>, mvp: Mat4, q: &ModelQuad, age: f32, light: [f32; 3]) {
     let color = [0.5 * 0.76 * light[0], 0.25 * 0.76 * light[1], 0.8 * 0.76 * light[2], 1.];
+    let clip = q.pos.map(|p| (mvp * p.extend(1.)).to_array());
     for i in 0..2 {
         let (s, c) = (30. - i as f32 * 60.).to_radians().sin_cos();
         let d = age * (0.001 + i as f32 * 0.003) * 20.;
@@ -1066,7 +1426,7 @@ fn armor_glint(glint: &mut Vec<Vertex>, mvp: Mat4, q: &ModelQuad, age: f32, ligh
             let [u, v] = q.uv[k];
             let v = v + d;
             let uv = [(u * c - v * s) / 3., (u * s + v * c) / 3.];
-            glint.push(Vertex { clip: (mvp * q.pos[k].extend(1.)).to_array(), uv, color, kind: GLINT, overlay: [0.; 4] });
+            glint.push(Vertex { clip: clip[k], uv, color, kind: GLINT, overlay: [0.; 4] });
         }
     }
 }
@@ -1245,12 +1605,24 @@ fn is_back_face(clip: &[Vec4; 4]) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
+fn player_quad(out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f32, lights: [Vec3; 2], light: [f32; 3], tint: [f32; 3]) {
+    if !use_instances { model_quad(out, proj, m, q, kind, lights, light, tint, false); return; }
+    let n = Mat3::from_mat4(m).inverse().transpose() * q.normal;
+    let shade = standard_lighting(n, lights);
+    let color = [tint[0] * shade * light[0], tint[1] * shade * light[1], tint[2] * shade * light[2], 1.];
+    instances.push(EntityInstance { pos: q.pos.map(|p| p.to_array()), uv: q.uv,
+        mvp: (proj * m).to_cols_array_2d(), color, kind, overlay: [0.; 4] });
+}
+
 fn model_quad(out: &mut Vec<Vertex>, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f32, lights: [Vec3; 2], light: [f32; 3], tint: [f32; 3], _cull: bool) {
     let n = Mat3::from_mat4(m).inverse().transpose() * q.normal;
     let shade = standard_lighting(n, lights);
     let c = [tint[0] * shade * light[0], tint[1] * shade * light[1], tint[2] * shade * light[2], 1.];
+    let mvp = proj * m;
+    let clip = q.pos.map(|p| (mvp * p.extend(1.)).to_array());
     for i in [0, 1, 2, 0, 2, 3] {
-        out.push(Vertex { clip: (proj * m * q.pos[i].extend(1.)).to_array(), uv: q.uv[i], color: c, kind, overlay: [0.; 4] });
+        out.push(Vertex { clip: clip[i], uv: q.uv[i], color: c, kind, overlay: [0.; 4] });
     }
 }
 
@@ -1300,6 +1672,40 @@ fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
+fn banner_image(assets: &AssetSource, patterns: &[(String, u8)]) -> image::RgbaImage {
+    let load = |path: &str| assets.read(path).and_then(|v| image::load_from_memory(&v).ok()).map(|i| i.to_rgba8());
+    let Some(base) = load("textures/entity/banner_base.png") else { return image::RgbaImage::new(1, 1) };
+    let mut out = base.clone();
+    let colors: [u32; 16] = [16777215,14188339,11685080,6724056,15066419,8375321,15892389,5000268,10066329,5013401,8339378,3361970,6704179,6717235,10040115,1644825];
+    let mut layers = 0;
+    for (id, dye) in patterns {
+        let name = match id.as_str() {
+            "b"=>"base", "bl"=>"square_bottom_left", "br"=>"square_bottom_right", "tl"=>"square_top_left", "tr"=>"square_top_right",
+            "bs"=>"stripe_bottom", "ts"=>"stripe_top", "ls"=>"stripe_left", "rs"=>"stripe_right", "cs"=>"stripe_center", "ms"=>"stripe_middle",
+            "drs"=>"stripe_downright", "dls"=>"stripe_downleft", "ss"=>"small_stripes", "cr"=>"cross", "sc"=>"straight_cross",
+            "bt"=>"triangle_bottom", "tt"=>"triangle_top", "bts"=>"triangles_bottom", "tts"=>"triangles_top", "ld"=>"diagonal_left",
+            "rd"=>"diagonal_up_right", "lud"=>"diagonal_up_left", "rud"=>"diagonal_right", "mc"=>"circle", "mr"=>"rhombus",
+            "vh"=>"half_vertical", "hh"=>"half_horizontal", "vhr"=>"half_vertical_right", "hhb"=>"half_horizontal_bottom",
+            "bo"=>"border", "cbo"=>"curly_border", "cre"=>"creeper", "gra"=>"gradient", "gru"=>"gradient_up", "bri"=>"bricks",
+            "sku"=>"skull", "flo"=>"flower", "moj"=>"mojang", _=>continue,
+        };
+        if layers == 17 { break; }
+        layers += 1;
+        let Some(mut mask) = load(&format!("textures/entity/banner/{name}.png")) else { continue };
+        if mask.dimensions() != base.dimensions() { continue; }
+        let color = colors[15 - if *dye < 16 { *dye as usize } else { 0 }];
+        for (x, y, pixel) in mask.enumerate_pixels_mut() {
+            if pixel[3] == 0 { continue; }
+            let src = base.get_pixel(x, y);
+            *pixel = image::Rgba([((src[0] as u32 * ((color >> 16) & 255)) / 255) as u8,
+                ((src[1] as u32 * ((color >> 8) & 255)) / 255) as u8,
+                ((src[2] as u32 * (color & 255)) / 255) as u8, pixel[0]]);
+        }
+        image::imageops::overlay(&mut out, &mask, 0, 0);
+    }
+    out
+}
+
 fn texture(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::RgbaImage) -> wgpu::Texture {
     use wgpu::util::DeviceExt;
     device.create_texture_with_data(
@@ -1317,4 +1723,233 @@ fn texture(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::RgbaImage) -
         wgpu::util::TextureDataOrder::LayerMajor,
         img,
     )
+}
+
+#[cfg(test)]
+mod particle_instance_tests {
+    use super::*;
+
+    #[test]
+    fn particle_instance_layout_is_compact() {
+        assert_eq!(std::mem::size_of::<ParticleInstance>(), 100);
+        assert!(std::mem::size_of::<ParticleInstance>() < 6 * std::mem::size_of::<Vertex>());
+    }
+
+    /// CPU-side preparation/encoding only; excludes the time waiting for the GPU and presentation.
+    #[test]
+    #[ignore = "manual headless particle benchmark"]
+    fn particle_headless_bench() {
+        let jar = mc_testutil::jar().expect("benchmark needs the vanilla jar");
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("headless GPU");
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
+        let atlas = texture(&device, &queue, &image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])));
+        let mut renderer = AvatarRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets, atlas.create_view(&Default::default()));
+        let make_texture = |format, usage| device.create_texture(&wgpu::TextureDescriptor { label: None,
+            size: wgpu::Extent3d { width: 128, height: 128, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1,
+            dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] });
+        let color = make_texture(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::RENDER_ATTACHMENT).create_view(&Default::default());
+        let depth = make_texture(wgpu::TextureFormat::Depth32Float, wgpu::TextureUsages::RENDER_ATTACHMENT).create_view(&Default::default());
+        let camera = Camera { pos: Vec3::ZERO, yaw: 0., pitch: 0., fov_deg: 70., bob: Mat4::IDENTITY };
+        let particles = (0..4000).map(|i| {
+            let x = (i % 40) as f32 * 0.05 - 1.; let y = (i / 40 % 40) as f32 * 0.05 - 1.; let z = 3. + (i % 13) as f32 * 0.03;
+            ParticleQuad { pos: [Vec3::new(x,y,z), Vec3::new(x,y+0.04,z), Vec3::new(x+0.04,y+0.04,z), Vec3::new(x+0.04,y,z)],
+                uv: [[0.,1.],[0.,0.],[1.,0.],[1.,1.]], color: [0.8,0.5,0.3,0.8], light: [0.9;3], tex: ParticleTex::Block }
+        }).collect();
+        let frame = AvatarFrame { particles, ..Default::default() };
+        for enabled in [false, true] {
+            renderer.use_particle_instancing = enabled;
+            let mut sum = std::time::Duration::ZERO; let mut max = std::time::Duration::ZERO;
+            for iteration in 0..31 {
+                let mut enc = device.create_command_encoder(&Default::default());
+                {
+                    let _pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor { label: None,
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &color, resolve_target: None,
+                            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth,
+                            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                        timestamp_writes: None, occlusion_query_set: None });
+                }
+                let t = std::time::Instant::now();
+                renderer.encode(&device, &queue, &mut enc, &color, &depth, &camera, 1., 128., 128., &frame, &assets, false);
+                let elapsed = t.elapsed();
+                queue.submit(Some(enc.finish())); device.poll(wgpu::Maintain::Wait);
+                if iteration > 0 { sum += elapsed; max = max.max(elapsed); }
+            }
+            eprintln!("particles {}: 4000 quads, mean encode {:.3} ms, max {:.3} ms, {} upload bytes/frame (CPU only)",
+                if enabled { "instanced" } else { "legacy" }, sum.as_secs_f64()*1000./30., max.as_secs_f64()*1000.,
+                if enabled { 4000 * std::mem::size_of::<ParticleInstance>() } else { 4000 * 6 * std::mem::size_of::<Vertex>() });
+        }
+        let mob = MobFrame { mob: crate::mobs::Mob::Zombie { villager: false }, id: 1,
+            pos: Vec3::new(0., -1., 4.), body_yaw: 15., head_yaw: 10., pitch: 5., limb_swing: 1., limb_amount: 0.5,
+            age: 3., ticks: 3, swing: 0., child: false, hurt: true, death: 0., light: [1.;3], bright: [1.;3],
+            held: None, armor: [None;4] };
+        let frame = AvatarFrame { mobs: vec![mob; 200], ..Default::default() };
+        for (enabled, reuse) in [(false, true), (true, false), (true, true)] {
+            renderer.use_entity_instancing = enabled;
+            let mut sum = std::time::Duration::ZERO;
+            for iteration in 0..31 {
+                let mut enc = device.create_command_encoder(&Default::default());
+                if !reuse { renderer.entity_scratch = Vec::new(); }
+                let t = std::time::Instant::now();
+                renderer.encode(&device, &queue, &mut enc, &color, &depth, &camera, 1., 128., 128., &frame, &assets, false);
+                let elapsed = t.elapsed();
+                queue.submit(Some(enc.finish())); device.poll(wgpu::Maintain::Wait);
+                if iteration > 0 { sum += elapsed; }
+            }
+            eprintln!("mobs {}: 200 zombies, mean CPU encode {:.3} ms", if !enabled { "legacy" } else if reuse { "instanced/reused" } else { "instanced/fresh" }, sum.as_secs_f64()*1000./30.);
+        }
+    }
+
+    #[test]
+    fn instanced_geometry_matches_legacy_pixels_headlessly() {
+        let Some(jar) = crate::gpu_test_jar() else { return };
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let Some(adapter) = crate::headless_adapter(&instance) else { return };
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
+        let atlas = texture(&device, &queue, &image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])));
+        let mut renderer = AvatarRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets, atlas.create_view(&Default::default()));
+        let camera = Camera { pos: Vec3::new(0.15, 0.1, 0.2), yaw: 0., pitch: 0., fov_deg: 70., bob: Mat4::IDENTITY };
+        let quad = |z, color, tex| ParticleQuad {
+            pos: [Vec3::new(-0.8,-0.8,z), Vec3::new(-0.8,0.8,z), Vec3::new(0.8,0.8,z), Vec3::new(0.8,-0.8,z)],
+            uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]], color, light: [0.9, 0.8, 0.7], tex,
+        };
+        let mut frame = AvatarFrame { particles: vec![quad(4., [0.8,0.2,0.3,0.8], ParticleTex::Block),
+            quad(3., [0.2,0.8,0.4,0.6], ParticleTex::Block), quad(2., [1.,1.,1.,0.7], ParticleTex::Misc)], ..Default::default() };
+        frame.mobs.push(MobFrame { mob: crate::mobs::Mob::Zombie { villager: false }, id: 1,
+            pos: Vec3::new(0., -1., 2.5), body_yaw: 15., head_yaw: 10., pitch: 5., limb_swing: 1., limb_amount: 0.5,
+            age: 3., ticks: 3, swing: 0., child: false, hurt: true, death: 0., light: [1.;3], bright: [1.;3],
+            held: None, armor: [None;4] });
+        frame.world_quads.push(WorldQuad { pos: quad(5., [1.;4], ParticleTex::Block).pos,
+            uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]], color: [0.1,0.1,0.5] });
+        frame.damage.push(DamageQuad { pos: quad(6., [1.;4], ParticleTex::Block).pos,
+            uv: [[0.,1.], [0.,0.], [1.,0.], [1.,1.]] });
+        frame.outline = Some(Aabb::new(-0.6, -0.6, 2.5, 0.6, 0.6, 3.5));
+        let render = |renderer: &mut AvatarRenderer, frame: &AvatarFrame, instancing: bool| -> Vec<u8> {
+            renderer.use_particle_instancing = instancing;
+            renderer.use_entity_instancing = instancing;
+            let desc = |format, usage| wgpu::TextureDescriptor { label: None,
+                size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1,
+                dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] };
+            let color = device.create_texture(&desc(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC));
+            let depth = device.create_texture(&desc(wgpu::TextureFormat::Depth32Float, wgpu::TextureUsages::RENDER_ATTACHMENT));
+            let color_view = color.create_view(&Default::default()); let depth_view = depth.create_view(&Default::default());
+            let read = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 64*64*4,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+            let mut enc = device.create_command_encoder(&Default::default());
+            {
+                let _pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor { label: None,
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &color_view, resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view,
+                        depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                    timestamp_writes: None, occlusion_query_set: None });
+            }
+            renderer.encode(&device, &queue, &mut enc, &color_view, &depth_view, &camera, 1., 64., 128., frame, &assets, false);
+            enc.copy_texture_to_buffer(wgpu::TexelCopyTextureInfo { texture: &color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyBufferInfo { buffer: &read, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(256), rows_per_image: Some(64) } },
+                wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 });
+            queue.submit(Some(enc.finish()));
+            let (tx, rx) = std::sync::mpsc::channel();
+            read.slice(..).map_async(wgpu::MapMode::Read, move |r| { tx.send(r).unwrap(); });
+            device.poll(wgpu::Maintain::Wait); rx.recv().unwrap().unwrap();
+            let bytes = read.slice(..).get_mapped_range().to_vec(); read.unmap(); bytes
+        };
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0));
+        assert_eq!(old, new);
+        frame.particles.clear(); frame.world_quads.clear(); frame.damage.clear(); frame.outline = None;
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "mob must be visible");
+        assert_eq!(old, new);
+        let mut spider = frame.mobs[0].clone();
+        spider.mob = crate::mobs::Mob::Spider { cave: false }; spider.pos = Vec3::new(-0.5, -0.8, 3.);
+        let mut enchanted = frame.mobs[0].clone();
+        enchanted.pos.x = 0.5; enchanted.armor[3] = Some(ArmorPiece { material: 2, color: 0xffffff, glint: true });
+        frame.mobs.extend([spider, enchanted, frame.mobs[0].clone()]);
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        frame.mobs.clear();
+        renderer.upload_skin(&queue, 0, &vec![255; 64 * 64 * 4]);
+        let player = AvatarFrame { pos: Vec3::new(-0.3, -1., 2.5), body_yaw: 15., head_yaw: 20.,
+            limb_swing: 1., limb_amount: 0.5, light: [1.;3], skin: Some(0), slim: true,
+            armor: [None, None, Some(ArmorPiece { material: 0, color: 0xa04020, glint: false }), None], ..Default::default() };
+        frame.others.push(player);
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "player must be visible");
+        assert_eq!(old, new);
+        let held_model = ItemModel { quads: vec![mc_assets::model::BakedQuad {
+            pos: [[0.,0.,0.],[0.,1.,0.],[1.,1.,0.],[1.,0.,0.]], uv: [[0.,1.],[0.,0.],[1.,0.],[1.,1.]],
+            face: mc_core::Facing::North, cullface: None, tint_index: -1, shade: 1. }],
+            gui3d: false, builtin: false, transforms: Default::default() };
+        frame.others[0].held = Some(HeldItem { model: Arc::new(held_model), tints: [0xffffff; 4], entity_block: false, glint: false });
+        frame.mobs.push(MobFrame { mob: crate::mobs::Mob::Zombie { villager: false }, id: 2,
+            pos: Vec3::new(0.2, -1., 3.), body_yaw: 0., head_yaw: 0., pitch: 0., limb_swing: 0., limb_amount: 0.,
+            age: 0., ticks: 0, swing: 0., child: false, hurt: false, death: 0., light: [1.;3], bright: [1.;3],
+            held: None, armor: [None;4] });
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        frame.mobs.clear();
+        frame.others[0].armor[2].as_mut().unwrap().glint = true;
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        frame.others.clear();
+        frame.objects.push(crate::objects::ObjectFrame::XpOrb { pos: Vec3::new(-0.2, 0., 2.), icon: 2, color: [0.8, 0.9, 0.2], light: [1.;3] });
+        frame.objects.push(crate::objects::ObjectFrame::ArmorStand { pos: Vec3::new(0.3, -1., 3.), yaw: 30., head_yaw: 10., pitch: 5., flags: 0, light: [1.;3], body_rot: (5., 10., 15.) });
+        frame.tiles.push(crate::tile::TileFrame::Chest { pos: Vec3::new(-0.5, -1., 3.), meta: 2, large: false,
+            skin: crate::tile::ChestSkin::Normal, x_shift: false, z_shift: false, lid: 0.5, light: [1.;3] });
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(0.3, -1., 2.5), standing: true, meta: 3, light: [1.;3], glyphs: Vec::new() });
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 3.), standing: false, meta: 2, light: [1.;3], glyphs: Vec::new() });
+        frame.tiles.push(crate::tile::TileFrame::Skull { pos: Vec3::new(-0.2, -0.5, 2.), facing: 1, rotation: 5, kind: 2, light: [1.;3] });
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "objects and tiles must be visible");
+        assert_eq!(old, new);
+        frame.objects.clear(); frame.tiles.clear();
+        frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 2.), standing: true, meta: 8, light: [1.;3], glyphs: Vec::new() });
+        let blank = render(&mut renderer, &frame, true);
+        if let crate::tile::TileFrame::Sign { glyphs, .. } = &mut frame.tiles[0] {
+            glyphs.push(crate::tile::SignGlyph { pos: [[-8.,-8.],[-8.,8.],[8.,8.],[8.,-8.]],
+                uv: [[8./128.,32./128.], [8./128.,40./128.], [16./128.,40./128.], [16./128.,32./128.]],
+                color: [0,0,0,255], texture: Some("textures/font/ascii.png".to_string()) });
+        }
+        let legacy = render(&mut renderer, &frame, false);
+        let instanced = render(&mut renderer, &frame, true);
+        assert_ne!(blank, instanced, "sign text must be visible on the board");
+        assert_eq!(legacy, instanced);
+        if let crate::tile::TileFrame::Sign { glyphs, .. } = &mut frame.tiles[0] {
+            glyphs.push(crate::tile::SignGlyph { pos: [[4.,-8.],[4.,8.],[20.,8.],[20.,-8.]],
+                uv: [[208./256.,32./256.], [208./256.,48./256.], [224./256.,48./256.], [224./256.,32./256.]],
+                color: [0,0,0,255], texture: Some("textures/font/unicode_page_4e.png".into()) });
+        }
+        let unicode = render(&mut renderer, &frame, true);
+        assert_ne!(instanced, unicode, "Unicode sign glyph must be visible");
+        assert!(renderer.sign_textures.contains_key("textures/font/unicode_page_4e.png"));
+        frame.tiles.clear();
+        frame.tiles.push(crate::tile::TileFrame::Banner { pos: Vec3::new(-0.5,-0.5,2.), standing: true, meta: 8, age: 10.,
+            patterns: vec![("b".into(), 1), ("cr".into(), 4)], light: [1.;3] });
+        let banner = render(&mut renderer, &frame, true);
+        assert!(banner.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "banner must be visible");
+        assert_eq!(banner, render(&mut renderer, &frame, false));
+        if let crate::tile::TileFrame::Banner { patterns, .. } = &mut frame.tiles[0] { patterns[0].1 = 15; }
+        let recolored = render(&mut renderer, &frame, true);
+        assert_ne!(banner, recolored, "banner dye must change the visible texture");
+        assert!(renderer.sign_textures.keys().any(|key| key.starts_with("banner:")));
+        frame.tiles.clear();
+        frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert_eq!(old, new);
+        assert!(renderer.particle_capacity >= 1500);
+        assert!(renderer.particle_scratch.capacity() >= 1500);
+        assert!(renderer.entity_scratch.capacity() > 0);
+    }
 }

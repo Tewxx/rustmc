@@ -23,6 +23,8 @@ public final class Main {
         Bootstrap.register();
 
         boolean all = args.length == 1;
+        if (all || contains(args,"stars")) {write(new File(outDir,"stars.json"),DumpStars.dump(), false);}
+        if (all || contains(args,"visgraph")) {write(new File(outDir,"visgraph.json"),DumpVisGraph.dump(), false);}
         if (all || contains(args,"sky")) {write(new File(outDir,"sky.json"),DumpSky.dump());}
         if (all || contains(args,"item_transforms")) {write(new File(outDir,"item_transforms.json"),DumpItemTransforms.dump());}
         if (all || contains(args, "item_models")) {
@@ -57,6 +59,24 @@ public final class Main {
         }
         if (all || contains(args, "colors")) {
             write(new File(outDir, "colors.json"), DumpColors.dump(), false);
+        }
+        if (all || contains(args, "enchant_choices")) {
+            write(new File(outDir, "enchant_choices.json"), DumpContainers.enchantChoices(), false);
+        }
+        if (all || contains(args, "furnace_rules")) {
+            write(new File(outDir, "furnace_rules.json"), DumpContainers.furnaceRules(), false);
+        }
+        if (all || contains(args, "crafting_recipes")) {
+            write(new File(outDir, "crafting_recipes.json"), DumpContainers.craftingRecipes(), false);
+        }
+        if (all || contains(args, "containers")) {
+            write(new File(outDir, "containers.json"), DumpContainers.dump(), false);
+        }
+        if (all || contains(args, "movement")) {
+            write(new File(outDir, "movement.json"), DumpMovement.dump(), false);
+        }
+        if (all || contains(args, "packets")) {
+            write(new File(outDir, "packets.json"), DumpPackets.dump(), false);
         }
         if (all || contains(args, "geometry")) {
             write(new File(outDir, "geometry.json"), DumpGeometry.dump(), false);

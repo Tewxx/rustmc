@@ -55,6 +55,7 @@ impl Player {
     pub fn new(pos: Vec3) -> Self {
         let mut e = PlayerEntity::new(pos);
         e.creative = true;
+        e.disable_damage = true;
         e.allow_flying = true;
         Self {
             e,
@@ -71,6 +72,7 @@ impl Player {
     pub fn set_game_type(&mut self, g: crate::level::GameType) {
         use crate::level::GameType;
         self.game_type = g;
+        self.e.disable_damage = matches!(g, GameType::Creative | GameType::Spectator);
         match g {
             GameType::Creative => {
                 self.e.allow_flying = true;
@@ -87,7 +89,6 @@ impl Player {
                 self.e.flying = false;
             }
         }
-        self.e.abilities_dirty = true;
     }
     /// `PlayerCapabilities.allowEdit`
     pub fn allow_edit(&self) -> bool {

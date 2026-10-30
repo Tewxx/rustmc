@@ -7,14 +7,9 @@ use mc_data::{ids, Block, BlockAccess};
 use mc_world::World;
 use std::path::Path;
 
-const JAR: &str = "../../../MCP-919/jars/versions/1.8.9/1.8.9.jar";
 
 fn assets() -> Option<AssetSource> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(JAR);
-    if !p.is_file() {
-        eprintln!("skipping: {} not found", p.display());
-        return None;
-    }
+    let p = mc_testutil::jar()?;
     let mut a = AssetSource::new();
     a.push(&p).unwrap();
     Some(a)
@@ -198,4 +193,19 @@ fn unresolved_weighted_alternatives_are_skipped_like_vanilla() {
     assert!(!models.missing_locations().iter().any(|loc| loc.name == "minecraft:stone" && loc.variant == "normal"));
     let diamond = models.get(ids::DIAMOND_BLOCK, 0).unwrap();
     assert_eq!(stone.models[0].1.quads[0].uv, diamond.models[0].1.quads[0].uv);
+}
+
+#[test]
+fn section_mesh_reports_opaque_and_open_visibility() {
+    let Some(a) = assets() else { return };
+    let models = BlockModels::load(&a);
+    let mut world = World::default();
+    let mut chunk = mc_world::chunk::Chunk::new(0, 0);
+    for y in 32..48 { for z in 0..16 { for x in 0..16 { chunk.set(x, y, z, 1, 0); } } }
+    world.insert(chunk);
+    let mut geometry = mc_data::geometry::BlockGeometry::new();
+    let opaque = mesh::build_section(&world, &models, 0, 2, 0, true, true, &mut geometry);
+    assert_eq!(opaque.visibility, Some(0));
+    let open = mesh::build_section(&world, &models, 0, 1, 0, true, true, &mut geometry);
+    assert_eq!(open.visibility, Some(mc_render::visibility::ALL_VISIBLE));
 }

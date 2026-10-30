@@ -18,6 +18,7 @@ pub struct SkyRenderer {
     bg: wgpu::BindGroup,
     vertices: wgpu::Buffer,
     fog: wgpu::Buffer,
+    scratch: Vec<Vertex>,
 }
 impl SkyRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, assets: &AssetSource) -> Self {
@@ -195,11 +196,12 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
             bg,
             vertices,
             fog,
+            scratch: Vec::new(),
         }
     }
     #[allow(clippy::too_many_arguments)]
     pub fn encode(
-        &self,
+        &mut self,
         queue: &wgpu::Queue,
         enc: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
@@ -210,12 +212,13 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         sky: &Sky,
     ) {
         let vp = cam.view_proj(aspect, distance);
-        let mut v = Vec::new();
+        let v = &mut self.scratch;
+        v.clear();
         let color = |rgb: [f32; 3], a: f32| [rgb[0], rgb[1], rgb[2], a];
         for x in (-384..=384).step_by(64) {
             for z in (-384..=384).step_by(64) {
                 push(
-                    &mut v,
+                    v,
                     vp,
                     [
                         [x as f32, 16., z as f32],
@@ -233,7 +236,7 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         let bottom = [sky.sky[0] * 0.2 + 0.04, sky.sky[1] * 0.2 + 0.04, sky.sky[2] * 0.6 + 0.1];
         let y = 63. - cam.pos.y;
         push(
-            &mut v,
+            v,
             vp,
             [[-384., y, -384.], [448., y, -384.], [448., y, 448.], [-384., y, 448.]],
             [[0.; 2]; 4],
@@ -272,29 +275,34 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
         let flat_end = v.len() as u32;
         let celestial = vp * Mat4::from_rotation_y(-90f32.to_radians()) * Mat4::from_rotation_x(sky.angle * std::f32::consts::TAU);
         push(
-            &mut v,
+            v,
             celestial,
             [[-30., 100., -30.], [30., 100., -30.], [30., 100., 30.], [-30., 100., 30.]],
             [[0., 0.], [1., 0.], [1., 1.], [0., 1.]],
-            [1.; 4],
+            [1., 1., 1., sky.celestial_visibility],
             1.,
             None,
         );
         let (u, w) = ((sky.moon % 4) as f32 / 4., (sky.moon / 4 % 2) as f32 / 2.);
         push(
-            &mut v,
+            v,
             celestial,
             [[-20., -100., 20.], [20., -100., 20.], [20., -100., -20.], [-20., -100., -20.]],
             [[u + 0.25, w + 0.5], [u, w + 0.5], [u, w], [u + 0.25, w]],
-            [1.; 4],
+            [1., 1., 1., sky.celestial_visibility],
             2.,
             None,
         );
+        if sky.stars > 0. {
+            for &quad in star_quads() {
+                push(v, celestial, quad, [[0.; 2]; 4], [sky.stars; 4], 0., None);
+            }
+        }
         let celestial_end = v.len() as u32;
         if sky.clouds {
-            clouds(&mut v, vp, cam.pos, sky, distance);
+            clouds(v, vp, cam.pos, sky, distance);
         }
-        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&v));
+        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(v));
         queue.write_buffer(&self.fog, 0, bytemuck::cast_slice(&[sky.fog[0], sky.fog[1], sky.fog[2], 1.]));
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("sky and clouds"),
@@ -329,6 +337,41 @@ struct V {{@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>,@location(
             pass.draw(range, 0..1);
         }
     }
+}
+/// Static star field generated from RenderGlobal's seeded random sequence.
+fn star_quads() -> &'static Vec<[[f32; 3]; 4]> {
+    static STARS: std::sync::OnceLock<Vec<[[f32; 3]; 4]>> = std::sync::OnceLock::new();
+    STARS.get_or_init(|| {
+        let mut random = mc_core::random::JavaRandom::new(10842);
+        let mut stars = Vec::new();
+        for _ in 0..1500 {
+            let mut direction = [0.; 3];
+            for d in &mut direction { *d = (random.next_float() * 2. - 1.) as f64; }
+            let size = (0.15_f32 + random.next_float() * 0.1) as f64;
+            let length = direction.iter().map(|d| d * d).sum::<f64>();
+            if !(0.01..1.).contains(&length) { continue; }
+            let scale = length.sqrt().recip();
+            direction.iter_mut().for_each(|d| *d *= scale);
+            let [x, y, z] = direction;
+            let azimuth = x.atan2(z);
+            let inclination = (x * x + z * z).sqrt().atan2(y);
+            let roll = random.next_double() * std::f64::consts::TAU;
+            let (sa, ca) = azimuth.sin_cos();
+            let (si, ci) = inclination.sin_cos();
+            let (sr, cr) = roll.sin_cos();
+            let mut quad = [[0.; 3]; 4];
+            for (j, point) in quad.iter_mut().enumerate() {
+                let a = ((j & 2) as i32 - 1) as f64 * size;
+                let b = (((j + 1) & 2) as i32 - 1) as f64 * size;
+                let u = a * cr - b * sr;
+                let v = b * cr + a * sr;
+                let w = -u * ci;
+                *point = [(x * 100. + w * sa - v * ca) as f32, (y * 100. + u * si) as f32, (z * 100. + v * sa + w * ca) as f32];
+            }
+            stars.push(quad);
+        }
+        stars
+    })
 }
 fn tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
@@ -507,6 +550,52 @@ fn clouds(v: &mut Vec<Vertex>, vp: Mat4, pos: Vec3, sky: &Sky, distance: f32) {
                         0.8,
                     );
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod star_tests {
+    use super::*;
+
+    #[test]
+    fn night_sky_encodes_on_headless_gpu() {
+        let Some(jar) = crate::gpu_test_jar() else { return };
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let Some(adapter) = crate::headless_adapter(&instance) else { return };
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
+        let mut renderer = SkyRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets);
+        let texture = |format, usage| device.create_texture(&wgpu::TextureDescriptor {
+            label: None, size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
+            mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+            format, usage, view_formats: &[],
+        });
+        let color = texture(wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::RENDER_ATTACHMENT);
+        let depth = texture(wgpu::TextureFormat::Depth32Float, wgpu::TextureUsages::RENDER_ATTACHMENT);
+        let camera = Camera { pos: Vec3::new(0., 80., 0.), yaw: 0., pitch: -45., fov_deg: 70., bob: Mat4::IDENTITY };
+        let sky = Sky::overworld(18000, 0., 0.8, 8);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        renderer.encode(&queue, &mut encoder, &color.create_view(&Default::default()), &depth.create_view(&Default::default()), &camera, 1., 128., &sky);
+        queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
+        let capacity = renderer.scratch.capacity();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        renderer.encode(&queue, &mut encoder, &color.create_view(&Default::default()), &depth.create_view(&Default::default()), &camera, 1., 128., &sky);
+        queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
+        assert_eq!(renderer.scratch.capacity(), capacity);
+    }
+
+    #[test]
+    fn star_vertices_match_java() {
+        let expected: Vec<[i32; 3]> = serde_json::from_str(include_str!("../tests/data/stars.json")).unwrap();
+        let actual: Vec<_> = star_quads().iter().flatten().collect();
+        assert_eq!(actual.len(), expected.len());
+        for (index, (a, e)) in actual.iter().zip(expected).enumerate() {
+            for axis in 0..3 {
+                assert_eq!(a[axis].to_bits(), e[axis] as u32, "vertex {index} axis {axis}");
             }
         }
     }

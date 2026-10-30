@@ -75,6 +75,12 @@ pub struct Atlas {
 }
 
 impl Atlas {
+    /// Immutable sprite coordinates needed by chunk meshing; animated pixels stay on the render thread.
+    pub fn mesh_snapshot(&self) -> Self {
+        Self { width: self.width, height: self.height, rgba: Vec::new(), levels: Vec::new(), cell: self.cell,
+            sprites: self.sprites.clone(), natives: HashMap::new(), animations: Vec::new() }
+    }
+
     /// Builds an atlas from texture names like `blocks/stone` with vanilla's default 4 mip levels.
     pub fn build(assets: &AssetSource, names: impl IntoIterator<Item = String>) -> Atlas {
         Self::build_with_mipmaps(assets, names, 4)

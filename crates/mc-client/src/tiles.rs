@@ -36,6 +36,10 @@ impl Kind {
     }
 }
 
+fn is_rendered_tile(state: mc_data::StateId) -> bool {
+    Kind::of(state).is_some() || matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign" | "minecraft:skull" | "minecraft:standing_banner" | "minecraft:wall_banner")
+}
+
 /// `EnumFacing.getIndex()` for the chest's `facing` property (`BlockChest.getMetaFromState`).
 fn meta_of(state: mc_data::StateId) -> u8 {
     match state.value("facing") {
@@ -109,7 +113,7 @@ impl Tiles {
     pub fn seed_from_world(&mut self, world: &World) {
         for c in world.chunks.values() {
             for (pos, nbt) in &c.tile_entities {
-                if Kind::of(world.state_at(pos.x, pos.y, pos.z)).is_some() {
+                if is_rendered_tile(world.state_at(pos.x, pos.y, pos.z)) {
                     self.on_nbt(*pos, Some(nbt.clone()));
                 }
             }
@@ -118,7 +122,7 @@ impl Tiles {
 
     /// `World.setBlockState` + `BlockContainer`: a locally placed container block gets a tile.
     pub fn placed(&mut self, pos: BlockPos, state: mc_data::StateId) {
-        if Kind::of(state).is_some() {
+        if is_rendered_tile(state) {
             self.insert(pos);
         }
     }
@@ -237,6 +241,37 @@ impl Tiles {
                 continue;
             }
             let state = world.state_at(pos.x, pos.y, pos.z);
+            if matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign") {
+                let (sky, block) = world.light(pos.x, pos.y, pos.z);
+                out.push(TileFrame::Sign { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    standing: state.block().name == "minecraft:standing_sign", meta: state.meta(), light: color(sky, block), glyphs: Vec::new() });
+                continue;
+            }
+            if matches!(state.block().name, "minecraft:standing_banner" | "minecraft:wall_banner") {
+                let Some(nbt) = self.map.get(&pos).and_then(|te| te.nbt.as_ref()).or_else(|| world.tile_entity(pos)) else { continue };
+                let base = nbt.get("Base").and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                let mut patterns = vec![("b".to_string(), base)];
+                if let Some(list) = nbt.get("Patterns").and_then(mc_core::nbt::Tag::as_list) {
+                    for entry in list.iter().filter_map(mc_core::nbt::Tag::as_compound) {
+                        if let Some(id) = entry.get("Pattern").and_then(mc_core::nbt::Tag::as_str) {
+                            let color = entry.get("Color").and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                            patterns.push((id.to_owned(), color));
+                        }
+                    }
+                }
+                let (sky, block) = world.light(pos.x, pos.y, pos.z);
+                out.push(TileFrame::Banner { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    standing: state.block().name == "minecraft:standing_banner", meta: state.meta(), age: 0., patterns, light: color(sky, block) });
+                continue;
+            }
+            if state.block().name == "minecraft:skull" {
+                let nbt = self.map.get(&pos).and_then(|te| te.nbt.as_ref()).or_else(|| world.tile_entity(pos));
+                let byte = |key| nbt.and_then(|nbt| nbt.get(key)).and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                let (sky, block) = world.light(pos.x, pos.y, pos.z);
+                out.push(TileFrame::Skull { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    facing: state.meta() & 7, rotation: byte("Rot"), kind: byte("SkullType"), light: color(sky, block) });
+                continue;
+            }
             let Some(kind) = Kind::of(state) else { continue };
             let Some(te) = self.map.get(&pos) else { continue };
             let x_neg = is_chest_at(world, pos.west(), kind);
@@ -280,6 +315,24 @@ impl Tiles {
         }
         out
     }
+}
+
+pub fn sign_glyphs(raw: &str, line: usize, font: &mut mc_gui::font::FontRenderer, lang: &mc_gui::lang::Lang, chat_colors: bool) -> Vec<mc_render::tile::SignGlyph> {
+    let component = crate::chat::parse(raw, lang);
+    let first = mc_gui::component::split_text(&component, 90, font, false, true, chat_colors)
+        .into_iter().next().map_or(String::new(), |line| line.formatted());
+    let mut batch = mc_gui::batch::GuiBatch::new();
+    let x = -(font.width(&first) / 2) as f32;
+    font.draw(&mut batch, &first, x, (line as i32 * 10 - 20) as f32, 0);
+    let mut glyphs = Vec::new();
+    for item in batch.items {
+        let mc_gui::batch::Item::Draw(draw) = item else { continue };
+        for quad in draw.vertices.chunks_exact(4) {
+            glyphs.push(mc_render::tile::SignGlyph { pos: std::array::from_fn(|i| quad[i].pos),
+                uv: std::array::from_fn(|i| quad[i].uv), color: quad[0].color, texture: draw.texture.clone() });
+        }
+    }
+    glyphs
 }
 
 /// `TileEntityChestRenderer`'s calendar check: December 24th-26th.
@@ -403,9 +456,9 @@ mod tests {
         let frames = tiles.frames(&world, 0., [4.5, 64.5, 1.5], false, &|_, _| [1.; 3]);
         let got: Vec<(i32, bool, mc_render::tile::ChestSkin, u8)> = frames
             .iter()
-            .map(|f| match f {
-                mc_render::tile::TileFrame::Chest { pos, large, skin, meta, .. } => (pos.x as i32, *large, *skin, *meta),
-                _ => unreachable!(),
+            .filter_map(|f| match f {
+                mc_render::tile::TileFrame::Chest { pos, large, skin, meta, .. } => Some((pos.x as i32, *large, *skin, *meta)),
+                _ => None,
             })
             .collect();
         use mc_render::tile::ChestSkin::*;
@@ -414,6 +467,62 @@ mod tests {
         assert_eq!(got, vec![(1, false, Normal, 3), (3, true, Normal, 2), (6, false, Trapped, 5), (8, false, Ender, 4)]);
         // `i == 2 && adjacentChestXPos != null` shifts the wide model by one block.
         assert!(frames.iter().any(|f| matches!(f, mc_render::tile::TileFrame::Chest { pos, x_shift: true, .. } if pos.x == 3.)));
+    }
+
+    #[test]
+    fn sign_text_formats_centers_and_limits_the_first_line() {
+        let Some(jar) = mc_testutil::jar() else { return };
+        let mut assets = mc_assets::AssetSource::new(); assets.push(&jar).unwrap();
+        let mut font = mc_gui::font::FontRenderer::load(&assets);
+        let lang = mc_gui::lang::Lang::default();
+        let glyphs = sign_glyphs(r#"{"text":"A","color":"red"}"#, 1, &mut font, &lang, true);
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!(glyphs[0].color, [255, 85, 85, 255]);
+        assert!(glyphs[0].pos[0][0] < 0. && glyphs[0].pos[0][1] == -10.);
+        let long = sign_glyphs(&format!("\"{}\"", "A".repeat(100)), 0, &mut font, &lang, true);
+        assert!(long.len() < 100 && !long.is_empty());
+        let unicode = sign_glyphs(r#"{"text":"中"}"#, 0, &mut font, &lang, true);
+        assert_eq!(unicode[0].texture.as_deref(), Some("textures/font/unicode_page_4e.png"));
+    }
+
+    #[test]
+    fn banner_frame_keeps_server_patterns() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:standing_banner").unwrap().state_from_meta(7).unwrap();
+        world.set_block_state(p, state);
+        let pattern = mc_core::nbt::Tag::Compound([(String::from("Pattern"), mc_core::nbt::Tag::String("cr".into())),
+            (String::from("Color"), mc_core::nbt::Tag::Int(4))].into_iter().collect());
+        let mut tiles = Tiles::default(); tiles.on_nbt(p, Some([(String::from("Base"), mc_core::nbt::Tag::Int(2)),
+            (String::from("Patterns"), mc_core::nbt::Tag::List(10, vec![pattern]))].into_iter().collect()));
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]);
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Banner { meta: 7, patterns, .. }] if patterns == &vec![("b".to_string(), 2), ("cr".to_string(), 4)]));
+    }
+
+    #[test]
+    fn skull_frame_uses_server_nbt_and_block_facing() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:skull").unwrap().state_from_meta(1).unwrap();
+        world.set_block_state(p, state);
+        let mut tiles = Tiles::default();
+        tiles.on_nbt(p, Some([(String::from("SkullType"), mc_core::nbt::Tag::Byte(2)),
+            (String::from("Rot"), mc_core::nbt::Tag::Byte(7))].into_iter().collect()));
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]);
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Skull { facing: 1, rotation: 7, kind: 2, .. }]));
+    }
+
+    #[test]
+    fn sign_frames_follow_block_state_and_tile_removal() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:standing_sign").unwrap().state_from_meta(7).unwrap();
+        world.set_block_state(p, state);
+        let mut tiles = Tiles::default(); tiles.placed(p, state);
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]);
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Sign { standing: true, meta: 7, .. }]));
+        tiles.remove(p);
+        assert!(tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3]).is_empty());
     }
 
     /// `TileEntityRendererDispatcher`: `getDistanceSq(...) < getMaxRenderDistanceSquared()`,

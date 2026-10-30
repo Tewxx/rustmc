@@ -1,0 +1,20 @@
+{
+  "binpatches": 825,
+  "binpatchChecksumMismatches": 0,
+  "patchedVanillaClasses": 811,
+  "forgeNewVanillaPackageClasses": 27,
+  "patchAddedMethods": 612,
+  "patchAddedFields": 445,
+  "patchAccessChanges": 381,
+  "atRules": 165,
+  "launchwrapperClasses": 15,
+  "mixinClasses": 630,
+  "vanillaPublicClasses": 1926,
+  "vanillaPublicMethods": 16581,
+  "forgeFmlPublicClasses": 903,
+  "forgeFmlPublicMethods": 4530,
+  "eventClasses": 245,
+  "eventsWithConstructSite": 186,
+  "eventsCancelable": 70,
+  "eventsHasResult": 21
+}
