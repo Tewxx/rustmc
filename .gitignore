@@ -38,3 +38,4 @@ desktop.ini
 .claude/
 CLAUDE.local.md
 /.mc-tools
+__pycache__/
