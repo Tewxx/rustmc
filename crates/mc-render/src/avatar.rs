@@ -739,10 +739,14 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for o in &frame.objects {
-                self.object(&mut verts, o, world_vp, cam);
+                let vertex_start = verts.len(); let instance_start = entities.len();
+                self.object(&mut verts, &mut entities, self.use_entity_instancing, o, world_vp, cam);
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for t in &frame.tiles {
-                self.tile(&mut verts, t, world_vp, cam.pos);
+                let vertex_start = verts.len(); let instance_start = entities.len();
+                self.tile(&mut verts, &mut entities, self.use_entity_instancing, t, world_vp, cam.pos);
+                record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for b in &frame.billboards {
                 // RenderSnowball: translate, scale 0.5, rotate(-playerViewY, Y),
@@ -1219,7 +1223,7 @@ impl AvatarRenderer {
     }
 
     /// Non-living entities: `RenderArrow`, `RenderXPOrb`, `RenderPainting`, `ArmorStandRenderer`.
-    fn object(&mut self, out: &mut Vec<Vertex>, f: &crate::objects::ObjectFrame, vp: Mat4, cam: &Camera) {
+    fn object(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &crate::objects::ObjectFrame, vp: Mat4, cam: &Camera) {
         let lights = lights_in(Mat3::IDENTITY);
         let light = f.light();
         let (atlas, glint, additive) = (&self.mob_atlas, &mut self.glint, &mut self.additive);
@@ -1236,6 +1240,12 @@ impl AvatarRenderer {
             let shade = standard_lighting(n, lights);
             let alpha = crate::objects::layer_alpha(l);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], alpha];
+            if use_instances && !l.additive {
+                instances.push(EntityInstance { pos: q.pos.map(|p| ((pm * p.extend(1.)).truncate() - cam.pos).to_array()),
+                    uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]), mvp: vp.to_cols_array_2d(),
+                    color, kind, overlay: [0.; 4] });
+                return;
+            }
             let target = if l.additive { &mut *additive } else { &mut *out };
             let clip = q.pos.map(|p| vp * ((pm * p.extend(1.)).truncate() - cam.pos).extend(1.));
             for i in [0, 1, 2, 0, 2, 3] {
@@ -1245,7 +1255,7 @@ impl AvatarRenderer {
         });
     }
     /// Tile entities: `TileEntityRendererDispatcher` with the standard item lighting active.
-    fn tile(&mut self, out: &mut Vec<Vertex>, f: &crate::tile::TileFrame, vp: Mat4, cam: Vec3) {
+    fn tile(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &crate::tile::TileFrame, vp: Mat4, cam: Vec3) {
         let lights = lights_in(Mat3::IDENTITY);
         let light = f.light();
         let atlas = &self.mob_atlas;
@@ -1257,6 +1267,12 @@ impl AvatarRenderer {
             let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
             let shade = standard_lighting(n, lights);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
+            if use_instances {
+                instances.push(EntityInstance { pos: q.pos.map(|p| ((pm * p.extend(1.)).truncate() - cam).to_array()),
+                    uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]), mvp: vp.to_cols_array_2d(),
+                    color, kind: MOB, overlay: [0.; 4] });
+                return;
+            }
             let clip = q.pos.map(|p| vp * ((pm * p.extend(1.)).truncate() - cam).extend(1.));
             for i in [0, 1, 2, 0, 2, 3] {
                 let [u, v] = q.uv[i];
@@ -1707,6 +1723,15 @@ mod particle_instance_tests {
         let new = render(&mut renderer, &frame, true);
         assert_eq!(old, new);
         frame.others.clear();
+        frame.objects.push(crate::objects::ObjectFrame::XpOrb { pos: Vec3::new(-0.2, 0., 2.), icon: 2, color: [0.8, 0.9, 0.2], light: [1.;3] });
+        frame.objects.push(crate::objects::ObjectFrame::ArmorStand { pos: Vec3::new(0.3, -1., 3.), yaw: 30., head_yaw: 10., pitch: 5., flags: 0, light: [1.;3], body_rot: (5., 10., 15.) });
+        frame.tiles.push(crate::tile::TileFrame::Chest { pos: Vec3::new(-0.5, -1., 3.), meta: 2, large: false,
+            skin: crate::tile::ChestSkin::Normal, x_shift: false, z_shift: false, lid: 0.5, light: [1.;3] });
+        let old = render(&mut renderer, &frame, false);
+        let new = render(&mut renderer, &frame, true);
+        assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "objects and chest must be visible");
+        assert_eq!(old, new);
+        frame.objects.clear(); frame.tiles.clear();
         frame.particles = (0..1500).map(|i| quad(2. + (i % 100) as f32 * 0.01, [0.2, 0.7, 0.4, 0.6], ParticleTex::Block)).collect();
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
