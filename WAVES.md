@@ -61,6 +61,8 @@ seam Forge mod UIs will later draw through.
 ## Wave 5 — Forge
 FG0 (running) static analysis of a test corpus (RavenB4, LunarForge, Meowtils, AccountManager — never executed) → `docs/FORGE_COMPAT.md` ranked API surface; general compatibility, not per-mod hacks. **Loader policy: never load OptiFine.** ·
 WM0 (running) `docs/WASM_MODS.md`: spec for JVM-free native WASM mods ·
+FS1 (running) full Forge 1.8.9 contract from the real artifacts (universal jar, Forge src + patches, LaunchWrapper, Mixin, MCP mappings) → `docs/forge-spec/` (API dump, event catalogue with fire sites, loading/runtime SPEC.md, coverage IDs) ·
+FT1 (running) differential test suite `tests/forge/`: our own per-area test mods emitting traces, golden traces from real Forge, rustmc runner (0/N until the bridge exists), corpus smoke tier ·
 FG1 join Forge 1.8.9 servers: FML handshake (`FML|HS` channel, mod list, registry sync), `REGISTER`/plugin channels ·
 FG2 embedded HotSpot (JNI invocation, Prism's Java 8 from `INST_JAVA`) spike: load one simple content mod with stand-in
 `net.minecraft` classes backed by Rust · FG3 mod GUIs/HUD through U1's GL-path draw layer · then the full class surface.
