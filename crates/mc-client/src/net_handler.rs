@@ -2,10 +2,12 @@
 
 use crate::*;
 
+/// 30,000,000 / 16
+const MAX_CHUNK: i32 = 1_875_000;
+
 impl App {
     /// `NetHandlerPlayClient`: applies everything the server sent since the last frame.
     pub(crate) fn process_net(&mut self) {
-        use mc_protocol::packets::{PlayClientbound as C, PlayServerbound as S, *};
         let Some(n) = &mut self.net else { return };
         let incoming = n.poll();
         let mut edits = Vec::new();
@@ -23,8 +25,35 @@ impl App {
                     continue;
                 }
             };
-            let Some(n) = &mut self.net else { return };
-            match p {
+            // `NetworkManager.exceptionCaught`: a handler that throws ends the connection with
+            // "Internal Exception" (GuiDisconnected) rather than taking the whole client down.
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.handle_packet(p, &mut edits)));
+            if r.is_err() {
+                if let Some(n) = &mut self.net {
+                    if n.closed.is_none() {
+                        n.closed = Some("Internal Exception: packet handler failed".into());
+                    }
+                    n.disconnect();
+                }
+            }
+        }
+        // `EntityLightningBolt.onUpdate`: remove after 4 client ticks (the client does not draw
+        // the bolt for long).
+        for l in &mut self.lightning {
+            l.ticks += 1;
+        }
+        self.lightning.retain(|l| l.ticks < 4);
+        self.poll_resource_pack();
+        self.refresh_edits(&edits);
+        // Sections of newly arrived or unloaded chunks.
+        self.refresh_edits(&[]);
+    }
+
+    /// One `NetHandlerPlayClient.handleXxx`.
+    fn handle_packet(&mut self, p: mc_protocol::packets::PlayClientbound, edits: &mut Vec<BlockPos>) {
+        use mc_protocol::packets::{PlayClientbound as C, PlayServerbound as S, *};
+        let Some(n) = &mut self.net else { return };
+        match p {
                 C::KeepAliveS(k) => n.send(S::KeepAliveC(KeepAliveC { key: k.key })),
                 C::JoinGame(j) => {
                     n.entity_id = j.entity_id;
@@ -56,6 +85,9 @@ impl App {
                     self.entity.prev_yaw = yaw;
                     self.entity.prev_pitch = pitch;
                 }
+                // Chunk coordinates beyond the world border (30M blocks) are never valid; the
+                // mesher and light code do plain i32 arithmetic on neighbouring chunk coordinates.
+                C::ChunkData(c) if c.x.abs() > MAX_CHUNK || c.z.abs() > MAX_CHUNK => {}
                 C::ChunkData(c) => {
                     if c.full && c.bitmask == 0 {
                         self.unload_chunk(c.x, c.z);
@@ -66,6 +98,9 @@ impl App {
                 }
                 C::MapChunkBulk(b) => {
                     for (x, z, mask, data) in b.chunks {
+                        if x.abs() > MAX_CHUNK || z.abs() > MAX_CHUNK {
+                            continue;
+                        }
                         if let Ok(w) = mc_protocol::chunk::decode(mask, &data, b.sky_light, true) {
                             self.world.insert(net::fill_chunk(None, x, z, w, true));
                         }
@@ -79,7 +114,7 @@ impl App {
                 }
                 C::MultiBlockChange(m) => {
                     for (p, state) in m.records {
-                        let pos = BlockPos::new(m.chunk_x * 16 + (p >> 12) as i32, (p & 255) as i32, m.chunk_z * 16 + ((p >> 8) & 15) as i32);
+                        let pos = BlockPos::new(m.chunk_x.wrapping_mul(16).wrapping_add((p >> 12) as i32), (p & 255) as i32, m.chunk_z.wrapping_mul(16).wrapping_add(((p >> 8) & 15) as i32));
                         let st = u16::try_from(state).ok().and_then(mc_data::StateId::try_from_raw).unwrap_or(mc_data::StateId::AIR);
                         self.world.set_block_state(pos, st);
                         edits.push(pos);
@@ -87,9 +122,11 @@ impl App {
                 }
                 C::TimeUpdate(t) => {
                     // WorldClient.setWorldTime: a negative time freezes the daylight cycle.
-                    self.info.total_time = t.world_age;
+                    // Clamped: the tick adds 1 to both every tick and Java's wrap-around is never wanted.
+                    const LIM: i64 = 1 << 62;
+                    self.info.total_time = t.world_age.clamp(-LIM, LIM);
                     let neg = t.time_of_day < 0;
-                    self.info.time = if neg { -t.time_of_day } else { t.time_of_day };
+                    self.info.time = t.time_of_day.saturating_abs().min(LIM);
                     self.info.rules.set("doDaylightCycle", if neg { "false" } else { "true" });
                 }
                 C::ChatS(c) => {
@@ -221,7 +258,11 @@ impl App {
                                 self.block_break_sound(st, p);
                                 // `RenderGlobal.playAuxSFX`: destroy particles for the state the
                                 // server broke, not whatever the client already applied.
-                                self.particles.block_destroy(st, p, &self.world, &self.models, &mut self.rand);
+                                // `getActualState` of the server's state against whatever block the
+                                // client holds there throws for stairs/fences (property missing) when
+                                // they differ; vanilla would crash, we just skip the particles.
+                                let (particles, world, models, rand) = (&mut self.particles, &self.world, &self.models, &mut self.rand);
+                                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| particles.block_destroy(st, p, world, models, rand)));
                             }
                         }
                         2002 => self.play_sound("game.potion.smash", Some(c), 1.0, rand_f64() as f32 * 0.1 + 0.9),
@@ -316,12 +357,14 @@ impl App {
                 }
                 C::Explosion(x) => {
                     let (a, b, c) = x.player_motion;
-                    self.entity.motion.x += a as f64;
-                    self.entity.motion.y += b as f64;
-                    self.entity.motion.z += c as f64;
+                    // Non-finite or huge motion would poison the player's position for good.
+                    let sane = |v: f32| if v.is_finite() { v.clamp(-100., 100.) as f64 } else { 0. };
+                    self.entity.motion.x += sane(a);
+                    self.entity.motion.y += sane(b);
+                    self.entity.motion.z += sane(c);
                     let base = BlockPos::new(x.x as i32, x.y as i32, x.z as i32);
                     for (dx, dy, dz) in x.records {
-                        let p = BlockPos::new(base.x + dx as i32, base.y + dy as i32, base.z + dz as i32);
+                        let p = BlockPos::new(base.x.wrapping_add(dx as i32), base.y.wrapping_add(dy as i32), base.z.wrapping_add(dz as i32));
                         self.world.set_block_state(p, mc_data::StateId::AIR);
                         edits.push(p);
                     }
@@ -645,18 +688,7 @@ impl App {
                     n.disconnect();
                 }
                 _ => {}
-            }
         }
-        // `EntityLightningBolt.onUpdate`: remove after 4 client ticks (the client does not draw
-        // the bolt for long).
-        for l in &mut self.lightning {
-            l.ticks += 1;
-        }
-        self.lightning.retain(|l| l.ticks < 4);
-        self.poll_resource_pack();
-        self.refresh_edits(&edits);
-        // Sections of newly arrived or unloaded chunks.
-        self.refresh_edits(&[]);
     }
 
     /// `S24PacketBlockAction` → `World.addBlockEvent` → `Block.onBlockEventReceived`.
@@ -703,7 +735,8 @@ impl App {
             self.particles.spawn(p.particle_id, x, y, z, d0, d2, d4, &p.args, &mut self.rand, &self.models);
             return;
         }
-        for _ in 0..p.count {
+        // Vanilla loops `count` times; a hostile count of 2^31 would freeze the client.
+        for _ in 0..p.count.min(4096) {
             let d1 = self.av_rand.next_gaussian() * ox;
             let d3 = self.av_rand.next_gaussian() * oy;
             let d5 = self.av_rand.next_gaussian() * oz;
@@ -761,12 +794,12 @@ impl App {
         if let Some(it) = self.items.iter_mut().find(|i| i.id == id as u32) {
             // Entity.setPositionAndRotation2 for items: snap to the server position.
             let base = self.remote.map.get(&id).map(|r| r.server).unwrap_or((0, 0, 0));
-            let s = if relative { (base.0 + d.0, base.1 + d.1, base.2 + d.2) } else { d };
+            let s = if relative { (base.0.wrapping_add(d.0), base.1.wrapping_add(d.1), base.2.wrapping_add(d.2)) } else { d };
             it.pos = mc_core::Vec3::new(s.0 as f64 / 32., s.1 as f64 / 32., s.2 as f64 / 32.);
             it.bb = mc_core::Aabb::new(it.pos.x - 0.125, it.pos.y, it.pos.z - 0.125, it.pos.x + 0.125, it.pos.y + 0.25, it.pos.z + 0.125);
         }
         let Some(r) = self.remote.map.get_mut(&id) else { return };
-        r.server = if relative { (r.server.0 + d.0, r.server.1 + d.1, r.server.2 + d.2) } else { d };
+        r.server = if relative { (r.server.0.wrapping_add(d.0), r.server.1.wrapping_add(d.1), r.server.2.wrapping_add(d.2)) } else { d };
         let (yaw, pitch) = look.map_or((r.yaw, r.pitch), |(y, p)| (entities::angle(y), entities::angle(p)));
         r.move_to(yaw, pitch);
         if let Some(g) = on_ground {
@@ -842,10 +875,207 @@ impl App {
             }
             for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
                 for sy in 0..16 {
-                    self.world.dirty.insert((x + dx, sy, z + dz));
+                    self.world.dirty.insert((x.wrapping_add(dx), sy, z.wrapping_add(dz)));
                 }
             }
         }
     }
 
+}
+
+#[cfg(test)]
+#[path = "../../mc-protocol/tests/seeds/mod.rs"]
+mod seeds;
+
+#[cfg(test)]
+mod hostile_tests {
+    //! Hostile-but-valid packets through a real socket into `App::update`: whatever the
+    //! server sends, the client must keep running (or show the disconnect screen).
+    use super::*;
+    use mc_protocol::packets::*;
+    use std::io::{Read, Write};
+
+    use super::seeds;
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+        fn byte(&mut self) -> u8 {
+            match self.below(6) {
+                0 => 0,
+                1 => 0xff,
+                2 => 0x7f,
+                3 => 0x80,
+                _ => self.next() as u8,
+            }
+        }
+    }
+
+    /// Serves a login, then streams `bodies` and hangs up without a Disconnect packet.
+    fn serve(bodies: Vec<Vec<u8>>) -> u16 {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let mut d = mc_protocol::frame::Decoder::new();
+            let (mut buf, mut seen) = ([0u8; 4096], 0);
+            while seen < 2 {
+                while let Ok(Some(_)) = d.next_packet() {
+                    seen += 1;
+                }
+                if seen < 2 {
+                    let n = s.read(&mut buf).unwrap_or(0);
+                    if n == 0 {
+                        return;
+                    }
+                    d.feed(&buf[..n]);
+                }
+            }
+            let mut out = Vec::new();
+            let ok = LoginClientbound::LoginSuccess(LoginSuccess { uuid: "0-0".into(), name: "a".into() });
+            mc_protocol::frame::encode(&ok.to_bytes(), -1, &mut out);
+            for b in bodies {
+                mc_protocol::frame::encode(&b, -1, &mut out);
+            }
+            let _ = s.write_all(&out);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        });
+        port
+    }
+
+    /// Runs the packets through `App::update`; `None` when the jar is not available.
+    fn run(bodies: Vec<Vec<u8>>) -> Option<String> {
+        let n = bodies.len();
+        let jar = find_jar()?;
+        let mut assets = AssetSource::new();
+        assets.push(&jar).unwrap();
+        let models = BlockModels::load(&assets);
+        let mut world = World::default();
+        world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let mut app = App::new(assets, models, world, (8, 8), Settings::default());
+        app.in_game = true;
+        let port = serve(bodies);
+        app.net = Some(net::Net::connect("127.0.0.1", port, "a", None).unwrap());
+        let t = Instant::now();
+        while app.net.as_ref().unwrap().closed.is_none() && t.elapsed().as_secs() < 60 {
+            app.update(0.05);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        for _ in 0..40 {
+            app.update(0.05);
+        }
+        let closed = app.net.as_ref().unwrap().closed.clone();
+        eprintln!("hostile: {n} packets processed, connection ended with {closed:?}");
+        closed
+    }
+
+    fn skipped(p: &PlayClientbound) -> bool {
+        // These need the network or change framing, not game state.
+        matches!(p, PlayClientbound::Disconnect(_) | PlayClientbound::SetCompression(_) | PlayClientbound::ResourcePackSend(_))
+    }
+
+    #[test]
+    fn hand_picked_hostile_packets() {
+        let pos = BlockPos::new(1 << 24, 255, 0);
+        let mut sections: [Option<mc_protocol::chunk::WireSection>; 16] = Default::default();
+        sections[15] = Some(mc_protocol::chunk::WireSection::empty(true));
+        let (mask, data) = mc_protocol::chunk::encode(&sections, Some(&[0; 256]), true);
+        let p: Vec<PlayClientbound> = vec![
+            ChunkData { x: i32::MAX, z: i32::MIN, full: true, bitmask: mask, data: data.clone() }.into(),
+            ChunkData { x: 0, z: 0, full: false, bitmask: mask, data: vec![1, 2, 3] }.into(),
+            ChunkData { x: 0, z: 0, full: true, bitmask: 0, data: vec![] }.into(),
+            MultiBlockChange { chunk_x: i32::MAX, chunk_z: i32::MIN, records: vec![(0xFFFF, i32::MAX), (0, -1)] }.into(),
+            BlockChange { pos, state: -1 }.into(),
+            BlockChange { pos: BlockPos::new(0, 4000, 0), state: 1 << 4 }.into(),
+            Explosion { x: 1e30, y: f32::NAN, z: -1e30, strength: f32::INFINITY, records: vec![(127, -128, 127)], player_motion: (f32::NAN, 0., 0.) }.into(),
+            Particles { particle_id: 41, long_distance: true, pos: (f32::NAN, 0., 0.), offset: (1., 1., 1.), speed: 1., count: i32::MAX, args: vec![9999999, 1] }.into(),
+            EntityTeleport { entity_id: 5, x: i32::MAX, y: i32::MIN, z: 0, yaw: 0, pitch: 0, on_ground: false }.into(),
+            SpawnMob { entity_id: 5, kind: 255, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, head_pitch: 0, vx: 0, vy: 0, vz: 0, metadata: vec![] }.into(),
+            EntityTeleport { entity_id: 5, x: i32::MAX, y: i32::MAX, z: i32::MAX, yaw: 0, pitch: 0, on_ground: false }.into(),
+            EntityRelMove { entity_id: 5, dx: 127, dy: 127, dz: 127, on_ground: true }.into(),
+            EntityMetadata { entity_id: 99999, metadata: vec![(6, mc_protocol::MetaValue::Byte(1)), (16, mc_protocol::MetaValue::String("x".into()))] }.into(),
+            DestroyEntities { ids: vec![-1, i32::MIN, 12345] }.into(),
+            EntityEquipment { entity_id: -7, slot: -3, item: None }.into(),
+            OpenWindow { window_id: 3, kind: "minecraft:furnace".into(), title: "\"\"".into(), slots: 0, entity_id: 0 }.into(),
+            SetSlot { window_id: 3, slot: -5, item: seeds::item() }.into(),
+            SetSlot { window_id: 3, slot: i16::MAX, item: seeds::item() }.into(),
+            SetSlot { window_id: -1, slot: 5, item: seeds::item() }.into(),
+            SetSlot { window_id: 0, slot: -1, item: seeds::item() }.into(),
+            SetSlot { window_id: -2, slot: i16::MIN, item: seeds::item() }.into(),
+            WindowProperty { window_id: 3, property: -1, value: 0 }.into(),
+            WindowItems { window_id: 9, items: vec![seeds::item(); 500] }.into(),
+            WindowItems { window_id: 3, items: vec![seeds::item(); 500] }.into(),
+            OpenWindow { window_id: 4, kind: "minecraft:chest".into(), title: "\"\"".into(), slots: 255, entity_id: 0 }.into(),
+            WindowItems { window_id: 4, items: vec![seeds::item(); 400] }.into(),
+            CloseWindowS { window_id: 77 }.into(),
+            Respawn { dimension: i32::MIN, difficulty: 200, game_mode: 99, level_type: "x".into() }.into(),
+            Respawn { dimension: -1, difficulty: 0, game_mode: 0, level_type: "x".into() }.into(),
+            PlayerPosLookS { x: 0., y: 70., z: 0., yaw: 1e30, pitch: 1e30, flags: 0 }.into(),
+            PlayerPosLookS { x: 1e300, y: -1e300, z: 0., yaw: f32::INFINITY, pitch: f32::NEG_INFINITY, flags: 0 }.into(),
+            PlayerPosLookS { x: f64::NAN, y: f64::INFINITY, z: 1e300, yaw: f32::NAN, pitch: 1e30, flags: 0xFF }.into(),
+            HeldItemChangeS { slot: -1 }.into(),
+            Maps { map_id: -1, scale: -1, icons: vec![], columns: 255, rows: 255, x: 255, z: 255, data: vec![1; 10] }.into(),
+            BlockAction { pos, byte1: 255, byte2: 255, block_id: 54 }.into(),
+            BlockBreakAnim { breaker_id: 1, pos, stage: -1 }.into(),
+            SpawnPainting { entity_id: 8, title: "".into(), pos, direction: 255 }.into(),
+            ChangeGameState { reason: 255, value: f32::NAN }.into(),
+            EntityProperties { entity_id: 0, attributes: vec![AttributeSnapshot { key: "".into(), base: f64::NAN, modifiers: vec![] }] }.into(),
+            UpdateHealth { health: f32::NAN, food: -5, saturation: f32::NAN }.into(),
+            WorldBorder::LerpSize { old_diameter: f64::NAN, new_diameter: -1., speed: i64::MIN }.into(),
+            TimeUpdate { world_age: i64::MIN, time_of_day: i64::MIN }.into(),
+            TimeUpdate { world_age: i64::MAX, time_of_day: i64::MAX }.into(),
+            SoundEffect { name: "no.such.sound".into(), x: i32::MAX, y: i32::MIN, z: 0, volume: f32::NAN, pitch: 255 }.into(),
+            Effect { effect_id: 2001, pos, data: -1, global: true }.into(),
+            Effect { effect_id: 2001, pos, data: i32::MAX, global: true }.into(),
+            JoinGame { entity_id: 0, game_mode: 255, hardcore: false, dimension: 9, difficulty: 9, max_players: 0, level_type: "".into(), reduced_debug_info: false }.into(),
+        ];
+        let bodies = p.iter().map(|p| p.to_bytes()).collect();
+        // The server hangs up afterwards: that is the "closed abruptly" case.
+        if let Some(c) = run(bodies) {
+            assert!(!c.contains("Internal Exception"), "{c}");
+        }
+    }
+
+    #[test]
+    fn mutated_packets_never_crash_the_client() {
+        let rounds: u64 = std::env::var("RUSTMC_FUZZ_ROUNDS").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+        for round in 0..rounds {
+        let mut rng = Rng(0xA5A5_1234_5678_9ABC ^ round.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let seeds: Vec<Vec<u8>> = seeds::clientbound().iter().filter(|p| !skipped(p)).map(|p| p.to_bytes()).collect();
+        let mut bodies = Vec::new();
+        for _ in 0..4000 {
+            let mut b = seeds[rng.below(seeds.len())].clone();
+            for _ in 0..1 + rng.below(3) {
+                if b.is_empty() {
+                    break;
+                }
+                let k = rng.below(b.len());
+                match rng.below(3) {
+                    0 => b[k] = rng.byte(),
+                    1 => b.insert(k, rng.byte()),
+                    _ => {
+                        b.remove(k);
+                    }
+                }
+            }
+            if let Ok(p) = PlayClientbound::read(&b) {
+                if !skipped(&p) {
+                    bodies.push(b);
+                }
+            }
+        }
+        assert!(bodies.len() > 500, "{}", bodies.len());
+        if let Some(c) = run(bodies) {
+            assert!(!c.contains("Internal Exception"), "{c}");
+        }
+        }
+    }
 }

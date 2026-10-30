@@ -369,11 +369,11 @@ impl<'a> Reader<'a> {
         let mut n = 0;
         loop {
             let b = self.u8()?;
-            v |= ((b & 0x7f) as u32) << (n * 7);
-            n += 1;
-            if n > 5 {
+            if n >= 5 {
                 return Err(Error::VarTooBig);
             }
+            v |= ((b & 0x7f) as u32) << (n * 7);
+            n += 1;
             if b & 0x80 == 0 {
                 return Ok(v as i32);
             }
@@ -385,11 +385,11 @@ impl<'a> Reader<'a> {
         let mut n = 0;
         loop {
             let b = self.u8()?;
-            v |= ((b & 0x7f) as u64) << (n * 7);
-            n += 1;
-            if n > 10 {
+            if n >= 10 {
                 return Err(Error::VarTooBig);
             }
+            v |= ((b & 0x7f) as u64) << (n * 7);
+            n += 1;
             if b & 0x80 == 0 {
                 return Ok(v as i64);
             }
