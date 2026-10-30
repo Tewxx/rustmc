@@ -245,6 +245,29 @@ impl Net {
         }
     }
 
+    /// `EntityPlayerSP.onUpdate` uses this path while riding instead of onUpdateWalkingPlayer.
+    pub fn update_riding(
+        &mut self,
+        yaw: f32,
+        pitch: f32,
+        on_ground: bool,
+        strafe: f32,
+        forward: f32,
+        jump: bool,
+        sneak: bool,
+    ) {
+        self.send(PlayServerbound::PlayerLook(PlayerLook {
+            yaw,
+            pitch,
+            on_ground,
+        }));
+        self.send(PlayServerbound::SteerVehicle(SteerVehicle {
+            strafe,
+            forward,
+            flags: (jump as u8) | ((sneak as u8) << 1),
+        }));
+    }
+
     /// `PlayerControllerMP.syncCurrentPlayItem`
     pub fn sync_current_item(&mut self, slot: i32) {
         if slot != self.current_item {
@@ -371,10 +394,302 @@ mod tests {
                     }
                 }
                 let n = s.read(&mut buf).unwrap();
+                if n == 0 { return got; }
                 d.feed(&buf[..n]);
             }
         });
         (Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default()).unwrap(), srv)
+    }
+
+    /// Replays Java's actual EntityPlayerSP packet stream through the client movement path.
+    #[test]
+    fn walking_stream_matches_java() {
+        use mc_core::{Aabb, BlockPos};
+        use mc_data::geometry::{BlockGeometry, CollisionEntity};
+        use mc_data::{BlockAccess, StateId};
+        use mc_entity::{EntityWorld, Keys, PlayerEntity};
+        use std::collections::HashMap;
+        struct Scene {
+            states: HashMap<BlockPos, StateId>,
+            geometry: BlockGeometry,
+        }
+        struct Blocks<'a>(&'a HashMap<BlockPos, StateId>);
+        impl BlockAccess for Blocks<'_> {
+            fn state(&self, p: BlockPos) -> StateId {
+                self.0.get(&p).copied().unwrap_or(StateId::AIR)
+            }
+        }
+        impl EntityWorld for Scene {
+            fn state(&self, p: BlockPos) -> StateId {
+                self.states.get(&p).copied().unwrap_or(StateId::AIR)
+            }
+            fn is_chunk_loaded(&self, _: i32, _: i32) -> bool {
+                true
+            }
+            fn add_collision_boxes(
+                &mut self,
+                s: StateId,
+                p: BlockPos,
+                mask: &Aabb,
+                out: &mut Vec<Aabb>,
+            ) {
+                self.geometry.add_collision_boxes(
+                    s,
+                    &Blocks(&self.states),
+                    p,
+                    mask,
+                    out,
+                    CollisionEntity::Other,
+                );
+            }
+        }
+        fn num(v: &serde_json::Value) -> i64 {
+            v.as_i64().unwrap_or_else(|| v.as_f64().unwrap() as i64)
+        }
+        let Some(path) = mc_testutil::golden("packets.json") else {
+            return;
+        };
+        let scenes: Vec<serde_json::Value> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        for sc in scenes.iter().filter(|s| {
+            [
+                "walk_turn_stop",
+                "sprint_toggles",
+                "jump_sprint_jump",
+                "sneak_walk",
+            ]
+            .contains(&s["name"].as_str().unwrap())
+        }) {
+            let name = sc["name"].as_str().unwrap();
+            let mut world = Scene {
+                states: HashMap::new(),
+                geometry: BlockGeometry::new(),
+            };
+            for b in sc["blocks"].as_array().unwrap() {
+                let n: Vec<i64> = b.as_array().unwrap().iter().map(num).collect();
+                for x in n[0]..=n[3] {
+                    for y in n[1]..=n[4] {
+                        for z in n[2]..=n[5] {
+                            world.states.insert(
+                                BlockPos::new(x as i32, y as i32, z as i32),
+                                StateId(n[6] as u16),
+                            );
+                        }
+                    }
+                }
+            }
+            let start = &sc["start"];
+            let bits = |v: &serde_json::Value| f64::from_bits(num(v) as u64);
+            let mut e =
+                PlayerEntity::new(Vec3::new(bits(&start[0]), bits(&start[1]), bits(&start[2])));
+            e.yaw = f32::from_bits(num(&sc["yaw"]) as u32);
+            e.pitch = f32::from_bits(num(&sc["pitch"]) as u32);
+            let rows = sc["out"].as_array().unwrap();
+            let count: usize = rows.iter().map(|r| r.as_array().unwrap().len()).sum();
+            let (mut net, srv) = loopback(usize::MAX);
+            net.entity_id = 1;
+            for tick in sc["script"].as_array().unwrap() {
+                let k = num(&tick["k"]);
+                let has = |b| k & b != 0;
+                if !tick["y"].is_null() {
+                    e.yaw = f32::from_bits(num(&tick["y"]) as u32);
+                }
+                if !tick["p"].is_null() {
+                    e.pitch = f32::from_bits(num(&tick["p"]) as u32);
+                }
+                e.tick(
+                    &mut world,
+                    Keys {
+                        forward: has(1),
+                        back: has(2),
+                        left: has(4),
+                        right: has(8),
+                        jump: has(16),
+                        sneak: has(32),
+                        sprint: has(64),
+                        using_item: false,
+                    },
+                );
+                net.update_walking(
+                    e.sprinting,
+                    e.is_sneaking(),
+                    true,
+                    None,
+                    e.pos.x,
+                    e.bb.min_y,
+                    e.pos.z,
+                    e.yaw,
+                    e.pitch,
+                    e.on_ground,
+                );
+            }
+            net.disconnect();
+            let packets = srv.join().unwrap();
+            assert_eq!(packets.len(), count, "{name}: packet count");
+            let mut index = 0;
+            for (tick, row) in rows.iter().enumerate() {
+                for want in row.as_array().unwrap() {
+                    let got: String = packets[index]
+                        .to_bytes()
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect();
+                    assert_eq!(
+                        got,
+                        want.as_str().unwrap(),
+                        "{name} tick {tick} packet {index}"
+                    );
+                    index += 1;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mining_stream_matches_java() {
+        use crate::*;
+        let Some(path) = mc_testutil::golden("packets.json") else {
+            return;
+        };
+        let Some(jar) = mc_testutil::jar() else {
+            return;
+        };
+        let scenes: Vec<serde_json::Value> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        for name in [
+            "mine_to_completion",
+            "mine_cancel_and_retarget",
+            "mine_instant_stone_creative",
+            "swing_air_left_click_counter",
+            "place_blocks_faces",
+            "place_side_face_vectors",
+            "sword_block",
+            "eat_apple",
+            "bow_draw_release",
+            "hotbar_swap",
+        ] {
+            let sc = scenes.iter().find(|s| s["name"] == name).unwrap();
+            let mut assets = AssetSource::new();
+            assets.push(&jar).unwrap();
+            let models = BlockModels::load(&assets);
+            let mut world = World::default();
+            for x in -2..=1 {
+                for z in -2..=1 {
+                    world.insert(mc_world::chunk::Chunk::new(x, z));
+                }
+            }
+            let num =
+                |v: &serde_json::Value| v.as_i64().unwrap_or_else(|| v.as_f64().unwrap() as i64);
+            for b in sc["blocks"].as_array().unwrap() {
+                let n: Vec<i64> = b.as_array().unwrap().iter().map(num).collect();
+                for x in n[0]..=n[3] {
+                    for y in n[1]..=n[4] {
+                        for z in n[2]..=n[5] {
+                            world.set_block_state(
+                                BlockPos::new(x as i32, y as i32, z as i32),
+                                mc_data::StateId(n[6] as u16),
+                            );
+                        }
+                    }
+                }
+            }
+            let mut app = App::new(assets, models, world, (0, 0), Settings::default());
+            app.entity.set_game_type(if sc["mode"] == "creative" {
+                crate::level::GameType::Creative
+            } else {
+                crate::level::GameType::Survival
+            });
+            app.entity.food_level = num(&sc["food"]) as i32;
+            app.player.food = num(&sc["food"]) as i32;
+            for item in sc["inventory"].as_array().unwrap() {
+                let slot = num(&item[0]) as usize;
+                let index = app
+                    .catalogue
+                    .find(item[1].as_str().unwrap(), num(&item[3]) as u16)
+                    .unwrap();
+                app.ui.inventory[slot] = Some(app.catalogue.stack(index, num(&item[2]) as u8));
+            }
+            app.entity.set_position(mc_core::Vec3::new(0.5, 64., 0.5));
+            app.entity.yaw = 0.;
+            app.entity.prev_yaw = 0.;
+            app.entity.pitch = 0.;
+            app.entity.prev_pitch = 0.;
+            app.entity.on_ground = false;
+            app.entity.abilities_dirty = false;
+            app.grabbed = true;
+            app.in_game = true;
+            let rows = sc["out"].as_array().unwrap();
+            let count: usize = rows.iter().map(|r| r.as_array().unwrap().len()).sum();
+            let (mut net, srv) = loopback(usize::MAX);
+            net.entity_id = 1;
+            app.net = Some(net);
+            for tk in sc["script"].as_array().unwrap() {
+                if !tk["y"].is_null() {
+                    app.entity.yaw = f32::from_bits(num(&tk["y"]) as u32);
+                }
+                if !tk["p"].is_null() {
+                    app.entity.pitch = f32::from_bits(num(&tk["p"]) as u32);
+                }
+                if !tk["s"].is_null() {
+                    app.pending_selected_slot = Some(num(&tk["s"]) as usize);
+                }
+                app.keys.clear();
+                let k = num(&tk["k"]);
+                for (bit, key) in [
+                    (1, KeyCode::KeyW),
+                    (2, KeyCode::KeyS),
+                    (4, KeyCode::KeyA),
+                    (8, KeyCode::KeyD),
+                    (16, KeyCode::Space),
+                    (32, KeyCode::ShiftLeft),
+                    (64, KeyCode::ControlLeft),
+                ] {
+                    if k & bit != 0 {
+                        app.keys.insert(key);
+                    }
+                }
+                app.buttons.clear();
+                if tk["ad"].as_bool().unwrap() {
+                    app.buttons.insert(MouseButton::Left);
+                }
+                if tk["ud"].as_bool().unwrap() {
+                    app.buttons.insert(MouseButton::Right);
+                }
+                for _ in 0..num(&tk["ap"]) {
+                    app.clicks.push(MouseButton::Left);
+                }
+                for _ in 0..num(&tk["up"]) {
+                    app.clicks.push(MouseButton::Right);
+                }
+                app.run_tick();
+            }
+            app.net.as_mut().unwrap().disconnect();
+            let packets = srv.join().unwrap();
+            assert_eq!(packets.len(), count, "{name}: packet count");
+            let mut index = 0;
+            for (tick, row) in rows.iter().enumerate() {
+                for want in row.as_array().unwrap() {
+                    let got: String = packets
+                        .get(index)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "missing packet {index} at tick {tick}; got {} of {count}",
+                                packets.len()
+                            )
+                        })
+                        .to_bytes()
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect();
+                    assert_eq!(
+                        got,
+                        want.as_str().unwrap(),
+                        "{name} tick {tick} packet {index}"
+                    );
+                    index += 1;
+                }
+            }
+        }
     }
 
     #[test]
@@ -388,6 +703,29 @@ mod tests {
         assert!(matches!(got[1], PlayServerbound::PlayerPosition(PlayerPosition { y, .. }) if y == 64.0));
         assert!(matches!(got[2], PlayServerbound::PlayerGround(PlayerGround { on_ground: true })));
         assert!(matches!(got[3], PlayServerbound::PlayerLook(PlayerLook { yaw, on_ground: false, .. }) if yaw == 5.0));
+    }
+
+    #[test]
+    fn riding_tick_sends_look_then_input() {
+        let (mut n, srv) = loopback(2);
+        n.update_riding(30.0, 10.0, true, -0.5, 0.75, true, true);
+        let got = srv.join().unwrap();
+        assert!(matches!(
+            got[0],
+            PlayServerbound::PlayerLook(PlayerLook {
+                yaw: 30.0,
+                pitch: 10.0,
+                on_ground: true
+            })
+        ));
+        assert!(matches!(
+            got[1],
+            PlayServerbound::SteerVehicle(SteerVehicle {
+                strafe: -0.5,
+                forward: 0.75,
+                flags: 3
+            })
+        ));
     }
 
     /// `ridingEntity != null`: `C06PacketPlayerPosLook(motionX, -999, motionZ, yaw, pitch,

@@ -219,8 +219,39 @@ impl App {
             // ItemBlock.canPlaceBlockOnSide failing sends nothing.
             let blocked = stack.is_some_and(|s| {
                 let b = self.catalogue.items[s.item].block;
-                let replaceable = |p: BlockPos| self.world.state_at(p.x, p.y, p.z).block().material.props().replaceable;
-                b != 0 && !replaceable(t.pos) && !replaceable(t.pos.offset_facing(t.face))
+                if b == 0 {
+                    return false;
+                }
+                let replaceable = |p: BlockPos| {
+                    self.world
+                        .state_at(p.x, p.y, p.z)
+                        .block()
+                        .material
+                        .props()
+                        .replaceable
+                };
+                let pos = if replaceable(t.pos) {
+                    t.pos
+                } else {
+                    t.pos.offset_facing(t.face)
+                };
+                if !replaceable(pos) {
+                    return true;
+                }
+                let Some(block) = mc_data::Block::by_id(b) else {
+                    return true;
+                };
+                let state = block.default_state;
+                let mut boxes = Vec::new();
+                self.geometry.add_collision_boxes(
+                    state,
+                    &self.world,
+                    pos,
+                    &self.entity.bounds(),
+                    &mut boxes,
+                    mc_data::geometry::CollisionEntity::Other,
+                );
+                !boxes.is_empty()
             });
             if blocked {
                 return false;

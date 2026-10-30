@@ -163,7 +163,7 @@ impl ApplicationHandler for App {
                     s.scroll(d);
                 } else if self.in_game && d != 0 {
                     // Scrolling down moves right, like vanilla.
-                    self.player.selected_slot = (self.player.selected_slot as i32 - d).rem_euclid(9) as usize;
+                    self.pending_selected_slot = Some((self.pending_selected_slot.unwrap_or(self.player.selected_slot) as i32 - d).rem_euclid(9) as usize);
                 }
             }
             WindowEvent::Focused(false) => {
@@ -245,7 +245,7 @@ impl ApplicationHandler for App {
                     self.ui.settings.save();
                     self.apply_settings();
                 } else if let Some(n) = (1..=9).find(|i| is(&format!("key.hotbar.{i}"))) {
-                    self.player.selected_slot = n - 1;
+                    self.pending_selected_slot = Some(n - 1);
                 }
             }
             WindowEvent::RedrawRequested => {

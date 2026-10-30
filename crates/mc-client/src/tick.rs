@@ -75,6 +75,9 @@ impl App {
         if let Some(n) = &mut self.net {
             n.sync_current_item(sel);
         }
+        if let Some(slot) = self.pending_selected_slot.take() {
+            self.player.selected_slot = slot;
+        }
         self.right_click_delay = self.right_click_delay.saturating_sub(1);
         self.left_click_counter = self.left_click_counter.saturating_sub(1);
         self.update_target(1.0);
@@ -160,9 +163,11 @@ impl App {
             }
             if let Some(n) = &mut self.net {
                 let e = &self.entity;
-                // `ridingEntity != null`: the vehicle relays `C06(motionX, -999, motionZ)`.
-                let riding = self.attached.contains_key(&n.entity_id).then(|| (e.motion.x, e.motion.z));
-                n.update_walking(e.sprinting, e.is_sneaking(), self.camera_entity.is_none(), riding, e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
+                if self.attached.contains_key(&n.entity_id) {
+                    n.update_riding(e.yaw, e.pitch, e.on_ground, e.move_strafe_e, e.move_forward_e, e.jump_key, e.sneak_key);
+                } else {
+                    n.update_walking(e.sprinting, e.is_sneaking(), self.camera_entity.is_none(), None, e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
+                }
             }
         }
         // `World.updateEntities`: tile entities tick after the world's entities.

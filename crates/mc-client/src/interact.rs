@@ -422,7 +422,10 @@ impl App {
 
     /// `Minecraft.sendClickBlockToController` / `PlayerControllerMP.onPlayerDamageBlock`
     pub(crate) fn send_click_block(&mut self, held: bool) {
-        if self.left_click_counter > 0 && !self.entity.creative {
+        if !held {
+            self.left_click_counter = 0;
+        }
+        if self.left_click_counter > 0 || self.item_in_use.is_some() {
             return;
         }
         let target = self.target.filter(|t| self.world.state_at(t.pos.x, t.pos.y, t.pos.z).block().id != 0);

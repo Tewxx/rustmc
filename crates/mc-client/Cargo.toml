@@ -39,3 +39,6 @@ profile = ["dep:puffin", "dep:puffin_http"]
 
 [build-dependencies]
 winresource = "0.1"
+
+[dev-dependencies]
+mc-testutil = { path = "../mc-testutil" }

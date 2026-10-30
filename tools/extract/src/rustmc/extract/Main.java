@@ -67,6 +67,9 @@ public final class Main {
         if (all || contains(args, "movement")) {
             write(new File(outDir, "movement.json"), DumpMovement.dump(), false);
         }
+        if (all || contains(args, "packets")) {
+            write(new File(outDir, "packets.json"), DumpPackets.dump(), false);
+        }
         if (all || contains(args, "geometry")) {
             write(new File(outDir, "geometry.json"), DumpGeometry.dump(), false);
         }

@@ -1331,6 +1331,7 @@ dependencies = [
  "mc-protocol",
  "mc-render",
  "mc-sound",
+ "mc-testutil",
  "mc-world",
  "pollster",
  "puffin",
