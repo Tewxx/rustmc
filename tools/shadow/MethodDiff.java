@@ -23,7 +23,11 @@ public class MethodDiff {
     }
     public static void main(String[] args) throws IOException {
         if (args.length != 2) throw new IllegalArgumentException("before.class after.class");
-        Map<String, String> before = methods(Paths.get(args[0])), after = methods(Paths.get(args[1]));
+        Path beforePath = Paths.get(args[0]), afterPath = Paths.get(args[1]);
+        String beforeClass = new ClassReader(Files.readAllBytes(beforePath)).getClassName();
+        String afterClass = new ClassReader(Files.readAllBytes(afterPath)).getClassName();
+        if (!beforeClass.equals(afterClass)) throw new IllegalArgumentException("different classes: " + beforeClass + " and " + afterClass);
+        Map<String, String> before = methods(beforePath), after = methods(afterPath);
         Set<String> names = new TreeSet<>(before.keySet()); names.addAll(after.keySet());
         for (String name : names) if (!Objects.equals(before.get(name), after.get(name))) System.out.println(name);
     }

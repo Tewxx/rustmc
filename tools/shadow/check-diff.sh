@@ -14,4 +14,7 @@ AFTER="$FT_BUILD/shadow-tools/Target-transformed.class"
 [ -z "$("$FT_JAVA" -cp "$FT_BUILD/shadow-tools:$ASM" MethodDiff "$BEFORE" "$BEFORE")" ]
 DIFF=$("$FT_JAVA" -cp "$FT_BUILD/shadow-tools:$ASM" MethodDiff "$BEFORE" "$AFTER")
 [ "$DIFF" = 'value()I' ] || { echo "unexpected diff: $DIFF" >&2; exit 1; }
-echo 'method diff detects value()I'
+if "$FT_JAVA" -cp "$FT_BUILD/shadow-tools:$ASM" MethodDiff "$BEFORE" "$FT_BUILD/classes/ftcommon/ft/FTCommon.class" >/dev/null 2>&1; then
+  echo 'method diff accepted different classes' >&2; exit 1
+fi
+echo 'method diff detects value()I and rejects different classes'
