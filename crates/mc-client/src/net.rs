@@ -655,6 +655,8 @@ mod tests {
         let scenes: Vec<serde_json::Value> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for name in [
+            "server_replies",
+            "respawn",
             "inventory_clicks",
             "creative_fly_toggle",
             "attack_entities",
@@ -739,6 +741,19 @@ mod tests {
             let mut inventory_screen = None;
             for tk in script {
                 match tk["op"].as_str() {
+                    Some("keepalive") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.handle_packet(PlayClientbound::KeepAliveS(KeepAliveS { key: num(&a[0]) as i32 }), &mut Vec::new());
+                    }
+                    Some("confirm") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.handle_packet(PlayClientbound::ConfirmTransactionS(ConfirmTransactionS { window_id: num(&a[0]) as u8, action: num(&a[1]) as i16, accepted: num(&a[2]) != 0 }), &mut Vec::new());
+                    }
+                    Some("openwindow") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.open_window = Some(std::sync::Arc::new(std::sync::Mutex::new(crate::container::Window::new(num(&a[0]) as u8, "minecraft:chest", String::new(), 27))));
+                    }
+                    Some("respawn") => app.request_respawn(),
                     Some("inventory") => {
                         app.pending_open_inventory = true;
                         let w = std::sync::Arc::new(std::sync::Mutex::new(crate::container::Window::new(0, "player", String::new(), 5)));

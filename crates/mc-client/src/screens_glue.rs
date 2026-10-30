@@ -22,6 +22,11 @@ impl App {
         self.buttons.clear();
     }
 
+    /// `EntityPlayerSP.respawnPlayer`: request respawn from the server.
+    pub(crate) fn request_respawn(&mut self) {
+        self.send(mc_protocol::packets::PlayServerbound::ClientStatus(mc_protocol::packets::ClientStatus { status: mc_protocol::packets::ClientStatusKind::PerformRespawn }));
+    }
+
     pub(crate) fn close_screen(&mut self) {
         self.screen = self.parents.pop();
         if let Some(s) = &mut self.screen {
@@ -184,7 +189,7 @@ impl App {
                 self.send_chat(&msg);
             }
             Action::Respawn if self.net.is_some() => {
-                self.send(mc_protocol::packets::PlayServerbound::ClientStatus(mc_protocol::packets::ClientStatus { status: mc_protocol::packets::ClientStatusKind::PerformRespawn }));
+                self.request_respawn();
                 self.close_screen();
             }
             Action::Respawn => {

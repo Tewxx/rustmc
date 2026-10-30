@@ -49,7 +49,7 @@ impl App {
     }
 
     /// One `NetHandlerPlayClient.handleXxx`.
-    fn handle_packet(&mut self, p: mc_protocol::packets::PlayClientbound, edits: &mut Vec<BlockPos>) {
+    pub(crate) fn handle_packet(&mut self, p: mc_protocol::packets::PlayClientbound, edits: &mut Vec<BlockPos>) {
         use mc_protocol::packets::{PlayClientbound as C, PlayServerbound as S, *};
         let Some(n) = &mut self.net else { return };
         match p {

@@ -173,6 +173,7 @@ final class DumpPackets {
     static JsonObject run(Sc sc) throws Exception {
         Minecraft mc = (Minecraft) alloc(Minecraft.class);
         put(mc, Minecraft.class, "theMinecraft", mc);
+        put(mc, Minecraft.class, "mcThread", Thread.currentThread());
         Capture cap = new Capture();
         NetHandlerPlayClient nh = (NetHandlerPlayClient) alloc(NetHandlerPlayClient.class);
         Quiet world = new Quiet(nh);
@@ -277,6 +278,13 @@ final class DumpPackets {
                 p.dropOneItem(t.arg[0] != 0);
             } else if ("respawn".equals(t.op)) {
                 p.respawnPlayer();
+            } else if ("openwindow".equals(t.op)) {
+                p.openContainer = new net.minecraft.inventory.ContainerChest(p.inventory, new net.minecraft.inventory.InventoryBasic("test", false, 27), p);
+                p.openContainer.windowId = t.arg[0];
+            } else if ("keepalive".equals(t.op)) {
+                nh.handleKeepAlive(new net.minecraft.network.play.server.S00PacketKeepAlive(t.arg[0]));
+            } else if ("confirm".equals(t.op)) {
+                nh.handleConfirmTransaction(new net.minecraft.network.play.server.S32PacketConfirmTransaction(t.arg[0], (short)t.arg[1], t.arg[2] != 0));
             }
             if (p.isUsingItem()) {
                 if (!t.useDown) pc.onStoppedUsingItem(p);
@@ -385,6 +393,13 @@ final class DumpPackets {
 
         s = new Sc("inventory_clicks").floor().item(0, "stone", 64).item(9, "dirt", 8).item(10, "apple", 2);
         s.idle(2).op("inventory").idle(2).op("click", 0, 36, 0, 0).op("click", 0, 20, 0, 0).op("click", 0, 9, 1, 0).op("click", 0, 10, 0, 1).op("click", 0, 36, 1, 2).op("click", 0, 11, 0, 0).op("click", 0, -999, 0, 0).op("click", 0, 36, 0, 4).op("close").idle(3).op("drop", 0).op("drop", 1).idle(2);
+        l.add(s);
+
+        s = new Sc("server_replies").floor();
+        s.op("keepalive", 0).op("keepalive", 123456).op("keepalive", -1)
+         .op("confirm", 0, 17, 0).op("confirm", 0, -32768, 1)
+         .op("confirm", 7, 22, 0).op("openwindow", 7).op("confirm", 7, -2, 0)
+         .op("confirm", 8, 33, 0).op("confirm", 7, 34, 1).idle(2);
         l.add(s);
 
         s = new Sc("respawn").floor();
