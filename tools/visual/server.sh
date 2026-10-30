@@ -53,7 +53,9 @@ PY
     kill -0 "$pid" 2>/dev/null || { echo "server exited; see $D/server.log" >&2; kill "$holder" 2>/dev/null || true; rm "$state"; exit 1; }
     sleep 1
   done
-  echo "server timed out; stop with $0 stop; see $D/server.log" >&2; exit 1;;
+  echo "server timed out; see $D/server.log" >&2
+  "$ROOT/tools/visual/server.sh" stop || true
+  exit 1;;
 stop)
   [ -f "$state" ] || { echo 'no managed server'; exit 0; }
   { read -r D; read -r pid; read -r holder; } < "$state"
