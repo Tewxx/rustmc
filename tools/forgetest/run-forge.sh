@@ -57,8 +57,7 @@ EOF
   echo "[oracle] server up"
   # ---- client ----
   C="$O/client"
-  cp "$FT_BUILD"/mods/*.jar "$C/mods/"
-  rm -f "$C"/mods/ftoptifine.jar   # policy test: never loaded by the loader; the oracle records real-Forge behaviour separately
+  for m in $(grep -v '^#' "$FT_REPO/tests/forge/mods/ORDER" | grep -v '^$'); do cp "$FT_BUILD/mods/$m.jar" "$C/mods/"; done
   [ -f "$FT_REPO/tests/forge/oracle-extra-mods.txt" ] && true
   mkdir -p "$C/natives"; (cd "$C/natives" && unzip -qo "$NATIVES_JAR" && rm -rf META-INF)
   cat > "$C/options.txt" <<EOF
