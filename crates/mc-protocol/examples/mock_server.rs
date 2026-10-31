@@ -524,11 +524,13 @@ fn handle(stream: TcpStream) {
                         });
                     }
                     let w2 = w.clone();
+                    let static_scene = std::env::var_os("MOCK_STATIC").is_some();
                     std::thread::spawn(move || {
                         let mut k = 0;
                         loop {
                             for t in 0..20 {
                                 std::thread::sleep(Duration::from_millis(50));
+                                if static_scene { continue; }
                                 let dx = if (k / 2) % 2 == 0 { 2 } else { -2 };
                                 let _ = t;
                                 send(&w2, threshold, &PlayClientbound::EntityRelMove(EntityRelMove { entity_id: 7, dx, dy: 0, dz: 0, on_ground: true }).to_bytes());

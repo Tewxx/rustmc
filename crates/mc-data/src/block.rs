@@ -46,6 +46,17 @@ pub enum RenderLayer {
     Translucent,
 }
 
+/// `Block.EnumOffsetType`: whether a baked model is jittered within its block cell, so that a
+/// field of grass or flowers doesn't look grid-aligned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OffsetType {
+    None,
+    /// `XZ`: horizontal jitter only.
+    Xz,
+    /// `XYZ`: horizontal jitter plus a downward shift.
+    Xyz,
+}
+
 /// `Block.SoundType`
 #[derive(Debug, PartialEq)]
 pub struct SoundType {
@@ -179,6 +190,19 @@ impl Block {
     /// `getExplosionResistance(Entity)`
     pub fn explosion_resistance(&self) -> f32 {
         self.resistance / 5.0
+    }
+
+    /// `getOffsetType`: only `BlockTallGrass` (XYZ), `BlockFlower` (XZ) and `BlockDoublePlant`
+    /// (XZ) override it in 1.8.9. Everything else keeps NONE, including `BlockDeadBush` and
+    /// `BlockReed` as well as saplings, crops, stems, mushrooms and `BlockLilyPad`.
+    pub fn offset_type(&self) -> OffsetType {
+        if self.is_a("BlockTallGrass") {
+            OffsetType::Xyz
+        } else if self.is_a("BlockFlower") || self.is_a("BlockDoublePlant") {
+            OffsetType::Xz
+        } else {
+            OffsetType::None
+        }
     }
 
     /// `this instanceof <class>` for a vanilla class name such as `BlockSlab`.
@@ -397,5 +421,37 @@ mod tests {
             s = s.cycle("delay").unwrap();
         }
         assert_eq!(s, rep);
+    }
+
+    /// `Block.getOffsetType` overrides in 1.8.9: `BlockTallGrass` returns XYZ, `BlockFlower` (both
+    /// concrete subclasses) and `BlockDoublePlant` return XZ, and every other block inherits NONE.
+    #[test]
+    fn offset_type_matches_vanilla_overrides() {
+        assert_eq!(Block::by_name("tallgrass").unwrap().offset_type(), OffsetType::Xyz);
+        for name in ["red_flower", "yellow_flower", "double_plant"] {
+            assert_eq!(Block::by_name(name).unwrap().offset_type(), OffsetType::Xz, "{name}");
+        }
+        // `BlockDeadBush` and `BlockReed` extend `BlockBush`/`Block` without overriding it, so
+        // they are NONE, as are saplings, crops, stems, mushrooms and lily pads in 1.8.9.
+        for name in [
+            "deadbush", "reeds", "sapling", "wheat", "carrots", "potatoes", "pumpkin_stem",
+            "melon_stem", "brown_mushroom", "red_mushroom", "nether_wart", "waterlily", "stone", "air",
+        ] {
+            assert_eq!(Block::by_name(name).unwrap().offset_type(), OffsetType::None, "{name}");
+        }
+    }
+
+    /// The offset type is per block class, not per state: the tall-grass `dead_bush` variant and
+    /// both halves of a double plant keep their class's offset (unlike the separate dead-bush block).
+    #[test]
+    fn offset_type_does_not_depend_on_state() {
+        let tall = Block::by_name("tallgrass").unwrap();
+        assert_eq!(tall.state_from_meta(0).unwrap(), tall.default_state);
+        assert_eq!(tall.default_state.block().offset_type(), OffsetType::Xyz);
+        assert_eq!(tall.state_from_meta(2).unwrap().block().offset_type(), OffsetType::Xyz);
+        let plant = Block::by_name("double_plant").unwrap();
+        for s in plant.states() {
+            assert_eq!(s.block().offset_type(), OffsetType::Xz);
+        }
     }
 }

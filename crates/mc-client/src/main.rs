@@ -15,6 +15,7 @@ mod chat;
 mod entities;
 mod forge;
 mod forge_ui;
+mod forge_live;
 mod music;
 mod net;
 mod pack;
@@ -49,6 +50,7 @@ mod render_entities;
 mod render_frame;
 mod resource_pack;
 mod screens_glue;
+mod special_screens;
 mod session;
 mod screenshot;
 mod sound_glue;
@@ -213,6 +215,7 @@ fn main() {
             app.wait_connect();
         }
     }
-    app.forge_on = forge::start_runtime(&app.ui.font, &app.name, app.session.as_ref().map(|s| s.uuid.as_str()));
+    app.forge_on = forge::start_runtime(&app.ui.font, &app.ui.lang, &app.name, app.session.as_ref().map(|s| s.uuid.as_str()));
+    if app.forge_on { app.forge_resources(None); }
     event_loop.run_app(&mut app).expect("run app");
 }

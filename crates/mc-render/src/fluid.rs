@@ -185,9 +185,11 @@ fn should_render_sides(world: &World, pos: BlockPos, mat: Material) -> bool {
     false
 }
 
+/// `BlockLiquid.getMixedBrightnessForBlock`: per channel, the max of `pos` and `pos.up()`.
 fn light(world: &World, pos: BlockPos) -> [u8; 2] {
-    let b = world.mixed_brightness(pos.x, pos.y, pos.z);
-    [(b & 0xFF) as u8, ((b >> 16) & 0xFF) as u8]
+    let i = world.combined_light(pos.x, pos.y, pos.z, 0);
+    let j = world.combined_light(pos.x, pos.y + 1, pos.z, 0);
+    [(i & 0xFF).max(j & 0xFF) as u8, ((i >> 16) & 0xFF).max((j >> 16) & 0xFF) as u8]
 }
 
 #[allow(clippy::too_many_arguments)]

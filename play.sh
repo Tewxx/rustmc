@@ -5,7 +5,11 @@ JAR=""
 for j in ../MCP-919/jars/versions/1.8.9/1.8.9.jar MCP-919/jars/versions/1.8.9/1.8.9.jar; do
   if [ -f "$j" ]; then JAR="$j"; break; fi
 done
-if [ -x target/release/rustmc-updated ]; then
+if [ -x target/release/rustmc ]; then
+  BIN=target/release/rustmc
+elif [ -x ./rustmc ]; then
+  BIN=./rustmc
+elif [ -x target/release/rustmc-updated ]; then
   BIN=target/release/rustmc-updated
 else
   [ -x target/release/rustmc ] || cargo build --release --offline --bin rustmc || exit 1

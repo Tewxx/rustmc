@@ -18,6 +18,7 @@ pub struct Call<'a, 'l> {
 }
 
 impl<'l> Call<'_, 'l> {
+    pub fn arguments(&self) -> &JObjectArray<'l> { &self.args }
     pub fn obj(&mut self, i: usize) -> Result<JObject<'l>> { self.env.get_object_array_element(&self.args, i as i32) }
     pub fn i32(&mut self, i: usize) -> Result<i32> { let o = self.obj(i)?; self.env.call_method(&o, "intValue", "()I", &[])?.i() }
     pub fn i64(&mut self, i: usize) -> Result<i64> { let o = self.obj(i)?; self.env.call_method(&o, "longValue", "()J", &[])?.j() }
@@ -65,6 +66,9 @@ where F: for<'a, 'l> Fn(&mut Call<'a, 'l>) -> Result<Ret> + Send + Sync + 'stati
     registry(|r| r.handlers.insert(key.to_owned(), Arc::new(handler)));
 }
 
+/// Every registered handler key (`class.method`, `class.*`, `*.method`), sorted: what Rust implements.
+pub fn registered() -> Vec<String> { let mut k: Vec<String> = registry(|r| r.handlers.keys().cloned().collect()); k.sort(); k }
+
 /// Every unimplemented method hit so far, sorted: the to-do list for what real mods need.
 pub fn stubbed() -> Vec<String> { registry(|r| r.stubbed.iter().cloned().collect()) }
 
@@ -73,7 +77,10 @@ fn resolve(key: &str) -> Option<Arc<Handler>> {
     registry(|r| {
         let short = key.split('(').next().unwrap_or(key);
         let class_wide = short.split('.').next().map(|class| format!("{class}.*"));
-        let found = r.handlers.get(key).or_else(|| r.handlers.get(short)).or_else(|| class_wide.as_ref().and_then(|k| r.handlers.get(k))).cloned();
+        let inherited = short.rsplit_once('.').map(|(_, method)| format!("*.{method}"));
+        let found = r.handlers.get(key).or_else(|| r.handlers.get(short))
+            .or_else(|| class_wide.as_ref().and_then(|k| r.handlers.get(k)))
+            .or_else(|| inherited.as_ref().filter(|_| short.starts_with("net/minecraft/")).and_then(|k| r.handlers.get(k))).cloned();
         // Static initializers of every stubbed class run once; they are expected, not a to-do.
         if found.is_none() && !short.ends_with(".<clinit>") && r.stubbed.insert(key.to_owned()) {
             eprintln!("[forge] stubbed: {key}");

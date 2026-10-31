@@ -69,9 +69,84 @@ pub struct Remote {
     pub uuid: Option<mc_protocol::Uuid>,
     /// The data watcher as last synced (`DataWatcher.updateWatchedObjectsFromList`).
     pub meta: HashMap<u8, mc_protocol::MetaValue>,
+    /// `EntityLivingBase.activePotionsMap` (`S1D`/`S1E`) for living remotes.
+    pub effects: mc_entity::effects::Effects,
+    /// `EntityLiving.getLeashedToEntity()`: the leash holder's entity id (`S1BPacketEntityAttach`
+    /// with leash=1); `None` when not leashed.
+    pub leash_holder: Option<i32>,
     /// Set by the client before each tick (`EntitySquid.isInWater`).
     pub in_water: bool,
     pub anim: MobAnim,
+    /// `motionX/Y/Z`, from the spawn packet and `S12PacketEntityVelocity`; non-living entities
+    /// move themselves with it between the server's (sparse) position updates.
+    pub motion: Vec3,
+    /// `EntityArrow.inGround` / `arrowShake`.
+    pub in_ground: bool,
+    pub shake: i32,
+}
+
+/// What the non-living entities' client-side `onUpdate` asks of the world.
+pub trait ObjectWorld {
+    /// `World.rayTraceBlocks(from, to, false, true, false)`: the first block with a collision box.
+    fn ray(&mut self, from: Vec3, to: Vec3) -> Option<Vec3>;
+    /// `Entity.moveEntity` against block collision boxes: the moved box and `onGround`;
+    /// `motion` is clipped to what was actually moved.
+    fn collide(&mut self, bb: &Aabb, motion: &mut Vec3) -> (Aabb, bool);
+    /// `Entity.isInWater`.
+    fn in_water(&self, bb: &Aabb) -> bool;
+    /// `slipperiness` of the block under the box.
+    fn slipperiness(&self, bb: &Aabb) -> f32;
+    /// `World.getClosestPlayerToEntity(entity, range)`: the closest player's feet and eye height.
+    fn closest_player(&self, pos: Vec3, range: f64) -> Option<(Vec3, f64)>;
+}
+
+/// A world with nothing in it (unit tests).
+#[cfg(test)]
+pub struct NoWorld;
+
+#[cfg(test)]
+impl ObjectWorld for NoWorld {
+    fn ray(&mut self, _: Vec3, _: Vec3) -> Option<Vec3> {
+        None
+    }
+    fn collide(&mut self, bb: &Aabb, motion: &mut Vec3) -> (Aabb, bool) {
+        (bb.offset(motion.x, motion.y, motion.z), false)
+    }
+    fn in_water(&self, _: &Aabb) -> bool {
+        false
+    }
+    fn slipperiness(&self, _: &Aabb) -> f32 {
+        0.6
+    }
+    fn closest_player(&self, _: Vec3, _: f64) -> Option<(Vec3, f64)> {
+        None
+    }
+}
+
+/// The projectiles' rotation update: face along the motion, eased by 0.2 from the previous
+/// rotation (`EntityThrowable`, `EntityArrow`, `EntityEnderEye`, `EntityFireworkRocket`).
+fn face_motion(m: Vec3, yaw: &mut f32, pitch: &mut f32, prev_yaw: &mut f32, prev_pitch: &mut f32) {
+    let f = (m.x * m.x + m.z * m.z).sqrt() as f32;
+    let ry = (m.x.atan2(m.z) * 180.0 / std::f64::consts::PI) as f32;
+    let rp = (m.y.atan2(f as f64) * 180.0 / std::f64::consts::PI) as f32;
+    while rp - *prev_pitch < -180.0 {
+        *prev_pitch -= 360.0;
+    }
+    while rp - *prev_pitch >= 180.0 {
+        *prev_pitch += 360.0;
+    }
+    while ry - *prev_yaw < -180.0 {
+        *prev_yaw -= 360.0;
+    }
+    while ry - *prev_yaw >= 180.0 {
+        *prev_yaw += 360.0;
+    }
+    *pitch = *prev_pitch + (rp - *prev_pitch) * 0.2;
+    *yaw = *prev_yaw + (ry - *prev_yaw) * 0.2;
+}
+
+fn centre(bb: &Aabb) -> Vec3 {
+    Vec3::new((bb.min_x + bb.max_x) / 2.0, bb.min_y, (bb.min_z + bb.max_z) / 2.0)
 }
 
 /// Client-side state the mob renderers read, advanced the way the vanilla entity classes
@@ -280,9 +355,46 @@ impl Remote {
             name: String::new(),
             uuid: None,
             meta: HashMap::new(),
+            effects: mc_entity::effects::Effects::default(),
+            leash_holder: None,
             in_water: false,
             anim: MobAnim::default(),
+            motion: Vec3::new(0., 0., 0.),
+            in_ground: false,
+            shake: 0,
         }
+    }
+
+    /// How many ticks `setPositionAndRotation2` spreads a move over; `None` for the entities
+    /// that keep `Entity.setPositionAndRotation2` and snap to the new position.
+    fn interpolation_steps(&self) -> Option<i32> {
+        match self.kind {
+            // EntityLivingBase / EntityOtherPlayerMP (armor stands are living), EntityFishHook.
+            Kind::Player | Kind::Mob(_) | Kind::Object(78) | Kind::Object(90) => Some(3),
+            // EntityMinecart: turnProgress = increments + 2.
+            Kind::Object(10) => Some(5),
+            // EntityBoat: boatPosRotationIncrements = increments + 5.
+            Kind::Object(1) => Some(8),
+            _ => None,
+        }
+    }
+
+    /// `Entity.setVelocity` (`EntityArrow` also faces the new motion while it has no rotation).
+    pub fn set_velocity(&mut self, m: Vec3) {
+        self.motion = m;
+        if matches!(self.kind, Kind::Object(60)) && self.prev_pitch == 0. && self.prev_yaw == 0. {
+            let f = (m.x * m.x + m.z * m.z).sqrt();
+            self.yaw = (m.x.atan2(m.z) * 180.0 / std::f64::consts::PI) as f32;
+            self.pitch = (m.y.atan2(f) * 180.0 / std::f64::consts::PI) as f32;
+            self.prev_yaw = self.yaw;
+            self.prev_pitch = self.pitch;
+        }
+    }
+
+    /// `entity instanceof EntityLivingBase`: players, mobs and armor stands. Objects and XP
+    /// orbs never take potion effects.
+    pub fn is_living(&self) -> bool {
+        matches!(self.kind, Kind::Player | Kind::Mob(_) | Kind::Object(78))
     }
 
     pub fn meta_byte(&self, i: u8) -> i8 {
@@ -376,17 +488,165 @@ impl Remote {
         Aabb::new(self.pos.x - r, self.pos.y, self.pos.z - r, self.pos.x + r, self.pos.y + self.height, self.pos.z + r)
     }
 
-    /// `setPositionAndRotation2(x, y, z, yaw, pitch, 3, false)`
-    pub fn move_to(&mut self, yaw: f32, pitch: f32) {
-        self.target = Vec3::new(self.server.0 as f64 / 32.0, self.server.1 as f64 / 32.0, self.server.2 as f64 / 32.0);
-        self.target_yaw = yaw;
-        self.target_pitch = pitch;
-        self.increments = 3;
+    /// `setPositionAndRotation2(x, y, z, yaw, pitch, 3, _)`. A teleport within 1/32 block
+    /// (1/64 vertically) keeps the current position (`handleEntityTeleport`).
+    pub fn move_to(&mut self, yaw: f32, pitch: f32, teleport: bool) {
+        let mut t = Vec3::new(self.server.0 as f64 / 32.0, self.server.1 as f64 / 32.0, self.server.2 as f64 / 32.0);
+        if teleport && (self.pos.x - t.x).abs() < 0.03125 && (self.pos.y - t.y).abs() < 0.015625 && (self.pos.z - t.z).abs() < 0.03125 {
+            t = self.pos;
+        }
+        match self.interpolation_steps() {
+            Some(n) => {
+                self.target = t;
+                self.target_yaw = yaw;
+                self.target_pitch = pitch;
+                self.increments = n;
+            }
+            None => {
+                // Entity.setPosition + setRotation.
+                self.pos = t;
+                self.yaw = yaw % 360.0;
+                self.pitch = pitch % 360.0;
+            }
+        }
+    }
+
+    /// The non-living entities' own `onUpdate` movement, which the client runs too.
+    pub fn physics(&mut self, w: &mut impl ObjectWorld) {
+        let k = match self.kind {
+            Kind::Object(k) => k,
+            Kind::XpOrb => return self.xp_physics(w),
+            _ => return,
+        };
+        match k {
+            // EntityThrowable: snowball, egg, ender pearl, splash potion, bottle o' enchanting.
+            // The client's block ray only feeds onImpact; the throwable flies on until the
+            // server removes it.
+            61 | 62 | 65 | 73 | 75 => {
+                self.pos = Vec3::new(self.pos.x + self.motion.x, self.pos.y + self.motion.y, self.pos.z + self.motion.z);
+                face_motion(self.motion, &mut self.yaw, &mut self.pitch, &mut self.prev_yaw, &mut self.prev_pitch);
+                let drag = if w.in_water(&self.bb()) { 0.8f32 } else { 0.99 } as f64;
+                let gravity = match k {
+                    73 => 0.05f32,
+                    75 => 0.07,
+                    _ => 0.03,
+                } as f64;
+                let m = self.motion;
+                self.motion = Vec3::new(m.x * drag, m.y * drag - gravity, m.z * drag);
+            }
+            // EntityEnderEye: the steering toward the stronghold is server-side only.
+            72 => {
+                self.pos = Vec3::new(self.pos.x + self.motion.x, self.pos.y + self.motion.y, self.pos.z + self.motion.z);
+                face_motion(self.motion, &mut self.yaw, &mut self.pitch, &mut self.prev_yaw, &mut self.prev_pitch);
+            }
+            // EntityFireworkRocket
+            76 => {
+                self.motion = Vec3::new(self.motion.x * 1.15, self.motion.y + 0.04, self.motion.z * 1.15);
+                let mut m = self.motion;
+                let (bb, _) = w.collide(&self.bb(), &mut m);
+                self.pos = centre(&bb);
+                face_motion(self.motion, &mut self.yaw, &mut self.pitch, &mut self.prev_yaw, &mut self.prev_pitch);
+            }
+            // EntityFireball (large, small, wither skull): the client has no acceleration, so
+            // the spawn motion just decays by the motion factor.
+            63 | 64 | 66 => {
+                self.pos = Vec3::new(self.pos.x + self.motion.x, self.pos.y + self.motion.y, self.pos.z + self.motion.z);
+                let f = if w.in_water(&self.bb()) { 0.8f32 } else if k == 66 { 0.73 } else { 0.95 } as f64;
+                self.motion = Vec3::new(self.motion.x * f, self.motion.y * f, self.motion.z * f);
+            }
+            60 => self.arrow_physics(w),
+            // EntityTNTPrimed / EntityFallingBlock
+            50 | 70 => {
+                self.motion.y -= 0.03999999910593033;
+                let mut m = self.motion;
+                let (bb, ground) = w.collide(&self.bb(), &mut m);
+                self.pos = centre(&bb);
+                self.on_ground = ground;
+                self.clip_motion(m);
+                let d = 0.9800000190734863;
+                self.motion = Vec3::new(self.motion.x * d, self.motion.y * d, self.motion.z * d);
+                if ground {
+                    let up = if k == 50 { -0.5 } else { 1.0 };
+                    self.motion = Vec3::new(self.motion.x * 0.699999988079071, self.motion.y * up, self.motion.z * 0.699999988079071);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// `Entity.moveEntity` zeroes each motion component a collision cut short.
+    fn clip_motion(&mut self, moved: Vec3) {
+        if moved.x != self.motion.x {
+            self.motion.x = 0.;
+        }
+        if moved.y != self.motion.y {
+            self.motion.y = 0.;
+        }
+        if moved.z != self.motion.z {
+            self.motion.z = 0.;
+        }
+    }
+
+    /// `EntityArrow.onUpdate` on the client: it flies until its ray meets a block, then sticks.
+    fn arrow_physics(&mut self, w: &mut impl ObjectWorld) {
+        if self.prev_pitch == 0. && self.prev_yaw == 0. {
+            self.set_velocity(self.motion);
+        }
+        if self.shake > 0 {
+            self.shake -= 1;
+        }
+        if self.in_ground {
+            return;
+        }
+        let end = Vec3::new(self.pos.x + self.motion.x, self.pos.y + self.motion.y, self.pos.z + self.motion.z);
+        if let Some(hit) = w.ray(self.pos, end) {
+            // The block branch of the impact: back off 0.05 along the motion and stick.
+            self.motion = Vec3::new(hit.x - self.pos.x, hit.y - self.pos.y, hit.z - self.pos.z);
+            let len = (self.motion.x.powi(2) + self.motion.y.powi(2) + self.motion.z.powi(2)).sqrt() as f32 as f64;
+            if len > 0. {
+                let k = 0.05000000074505806 / len;
+                self.pos = Vec3::new(self.pos.x - self.motion.x * k, self.pos.y - self.motion.y * k, self.pos.z - self.motion.z * k);
+            }
+            self.in_ground = true;
+            self.shake = 7;
+        }
+        self.pos = Vec3::new(self.pos.x + self.motion.x, self.pos.y + self.motion.y, self.pos.z + self.motion.z);
+        face_motion(self.motion, &mut self.yaw, &mut self.pitch, &mut self.prev_yaw, &mut self.prev_pitch);
+        let drag = if w.in_water(&self.bb()) { 0.6f32 } else { 0.99 } as f64;
+        let m = self.motion;
+        self.motion = Vec3::new(m.x * drag, m.y * drag - 0.05000000074505806, m.z * drag);
+    }
+
+    /// `EntityXPOrb.onUpdate` (the lava bounce and the pickup are the server's business).
+    fn xp_physics(&mut self, w: &mut impl ObjectWorld) {
+        self.motion.y -= 0.029999999329447746;
+        let d0 = 8.0;
+        if let Some((p, eye)) = w.closest_player(self.pos, d0) {
+            let d1 = (p.x - self.pos.x) / d0;
+            let d2 = (p.y + eye - self.pos.y) / d0;
+            let d3 = (p.z - self.pos.z) / d0;
+            let d4 = (d1 * d1 + d2 * d2 + d3 * d3).sqrt();
+            let mut d5 = 1.0 - d4;
+            if d5 > 0.0 {
+                d5 *= d5;
+                self.motion = Vec3::new(self.motion.x + d1 / d4 * d5 * 0.1, self.motion.y + d2 / d4 * d5 * 0.1, self.motion.z + d3 / d4 * d5 * 0.1);
+            }
+        }
+        let mut m = self.motion;
+        let (bb, ground) = w.collide(&self.bb(), &mut m);
+        self.pos = centre(&bb);
+        self.on_ground = ground;
+        self.clip_motion(m);
+        let f = if ground { w.slipperiness(&bb) * 0.98 } else { 0.98 } as f64;
+        self.motion = Vec3::new(self.motion.x * f, self.motion.y * 0.9800000190734863, self.motion.z * f);
+        if ground {
+            self.motion.y *= -0.8999999761581421;
+        }
     }
 
     pub fn swing_arm(&mut self) {
-        // EntityLivingBase.swingItem (getArmSwingAnimationEnd = 6 without potions)
-        if !self.swinging || self.swing_ticks >= 3 || self.swing_ticks < 0 {
+        // EntityLivingBase.swingItem (haste/mining fatigue change getArmSwingAnimationEnd)
+        if !self.swinging || self.swing_ticks >= self.effects.swing_end() / 2 || self.swing_ticks < 0 {
             self.swing_ticks = -1;
             self.swinging = true;
         }
@@ -430,6 +690,11 @@ impl Remote {
         if self.hurt_time > 0 {
             self.hurt_time -= 1;
         }
+        // EntityLivingBase.onUpdate -> updatePotionEffects: the client only counts the
+        // durations down; expired effects stay until `S1E` removes them.
+        if self.is_living() {
+            self.effects.tick_client();
+        }
         // EntityOtherPlayerMP.onLivingUpdate
         if self.increments > 0 {
             let n = self.increments as f64;
@@ -443,16 +708,17 @@ impl Remote {
             self.increments -= 1;
         }
         // updateArmSwingProgress
+        let swing_end = self.effects.swing_end();
         if self.swinging {
             self.swing_ticks += 1;
-            if self.swing_ticks >= 6 {
+            if self.swing_ticks >= swing_end {
                 self.swing_ticks = 0;
                 self.swinging = false;
             }
         } else {
             self.swing_ticks = 0;
         }
-        self.swing = self.swing_ticks as f32 / 6.0;
+        self.swing = self.swing_ticks as f32 / swing_end as f32;
         if matches!(self.kind, Kind::Object(_) | Kind::XpOrb) {
             self.body_yaw = self.yaw;
             return;
@@ -616,9 +882,10 @@ pub struct Entities {
 }
 
 impl Entities {
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, w: &mut impl ObjectWorld) {
         for e in self.map.values_mut() {
             e.tick();
+            e.physics(w);
         }
     }
 
@@ -690,16 +957,56 @@ mod tests {
     }
 
     #[test]
+    fn remote_potion_effects_tick_down_and_stay_until_removed() {
+        use mc_entity::effects::{PotionEffect, SPEED};
+        let mut e = Remote::new(7, Kind::Player, 0, 0, 0, 0, 0);
+        e.effects.add(PotionEffect { id: SPEED, duration: 2, amplifier: 1, ambient: false, show_particles: true, duration_max: false });
+        e.tick();
+        assert_eq!(e.effects.get(SPEED).unwrap().duration, 1);
+        e.tick();
+        assert_eq!(e.effects.get(SPEED).unwrap().duration, 0);
+        // The client keeps expired effects; only `S1E` removes them.
+        e.tick();
+        assert!(e.effects.has(SPEED));
+    }
+
+    #[test]
+    fn only_living_remotes_tick_effects() {
+        use mc_entity::effects::{PotionEffect, SPEED};
+        let mut orb = Remote::new(8, Kind::XpOrb, 0, 0, 0, 0, 0);
+        orb.effects.add(PotionEffect { id: SPEED, duration: 5, amplifier: 0, ambient: false, show_particles: true, duration_max: false });
+        orb.tick();
+        assert_eq!(orb.effects.get(SPEED).unwrap().duration, 5);
+        assert!(Remote::new(9, Kind::Mob(50), 0, 0, 0, 0, 0).is_living());
+        assert!(!Remote::new(10, Kind::Object(2), 0, 0, 0, 0, 0).is_living());
+    }
+
+    #[test]
     fn interpolates_over_three_ticks() {
         let mut e = Remote::new(1, Kind::Player, 0, 0, 0, 0, 0);
         e.server = (96, 0, 0);
-        e.move_to(0., 0.);
+        e.move_to(0., 0., false);
         e.tick();
         assert!((e.pos.x - 1.0).abs() < 1e-9);
         e.tick();
         e.tick();
         assert!((e.pos.x - 3.0).abs() < 1e-9);
         assert!(e.limb_amount > 0.);
+    }
+
+    #[test]
+    fn thrown_pearl_flies_between_updates() {
+        let mut e = Remote::new(1, Kind::Object(65), 0, 0, 0, 0, 0);
+        e.set_velocity(Vec3::new(1.0, 0.5, 0.0));
+        let mut w = NoWorld;
+        e.tick();
+        e.physics(&mut w);
+        assert!((e.pos.x - 1.0).abs() < 1e-9 && (e.pos.y - 0.5).abs() < 1e-9);
+        assert!((e.motion.y - (0.5 * 0.99f32 as f64 - 0.03f32 as f64)).abs() < 1e-9);
+        // A position update snaps instead of interpolating.
+        e.server = (320, 0, 0);
+        e.move_to(0., 0., false);
+        assert!((e.pos.x - 10.0).abs() < 1e-9);
     }
 
     #[test]

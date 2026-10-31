@@ -10,8 +10,42 @@ use std::sync::mpsc::{self, Receiver};
 /// What the reader thread hands the game loop.
 pub enum Incoming {
     Packet(Box<PlayClientbound>),
+    Chunks(Vec<ChunkUpdate>),
     /// The connection ended; the reason as chat JSON or plain text.
     Closed(String),
+}
+
+pub enum ChunkUpdate {
+    Full { chunk: Chunk, remove_old: bool },
+    Partial { x: i32, z: i32, wire: WireChunk },
+}
+
+fn prepare_incoming(packet: PlayClientbound, sky_light: &mut bool, forge: bool) -> Incoming {
+    // Forge may replace the JoinGame dimension through its handshake; that state belongs to the game thread.
+    if forge { return Incoming::Packet(Box::new(packet)); }
+    match packet {
+        PlayClientbound::JoinGame(j) => {
+            *sky_light = j.dimension == 0;
+            Incoming::Packet(Box::new(PlayClientbound::JoinGame(j)))
+        }
+        PlayClientbound::Respawn(r) => {
+            *sky_light = r.dimension == 0;
+            Incoming::Packet(Box::new(PlayClientbound::Respawn(r)))
+        }
+        PlayClientbound::ChunkData(c) if !(c.full && c.bitmask == 0) && (-1_875_000..=1_875_000).contains(&c.x) && (-1_875_000..=1_875_000).contains(&c.z) => {
+            let updates = mc_protocol::chunk::decode(c.bitmask, &c.data, *sky_light, c.full).ok().map(|wire| {
+                if c.full { ChunkUpdate::Full { chunk: fill_chunk(None, c.x, c.z, wire, true), remove_old: true } }
+                else { ChunkUpdate::Partial { x: c.x, z: c.z, wire } }
+            }).into_iter().collect();
+            Incoming::Chunks(updates)
+        }
+        PlayClientbound::MapChunkBulk(b) => Incoming::Chunks(b.chunks.into_iter().filter_map(|(x, z, mask, data)| {
+            if !(-1_875_000..=1_875_000).contains(&x) || !(-1_875_000..=1_875_000).contains(&z) { return None; }
+            mc_protocol::chunk::decode(mask, &data, b.sky_light, true).ok()
+                .map(|wire| ChunkUpdate::Full { chunk: fill_chunk(None, x, z, wire, true), remove_old: false })
+        }).collect()),
+        packet => Incoming::Packet(Box::new(packet)),
+    }
 }
 
 pub struct Net {
@@ -75,15 +109,16 @@ impl Net {
             mc_protocol::net::LoginError::Auth(s) | mc_protocol::net::LoginError::Protocol(s) => s,
         })?;
         let (tx, rx) = mpsc::channel();
+        let mut sky_light = true;
         std::thread::Builder::new()
             .name("Netty Client IO".into())
             .spawn(move || loop {
                 // A panic here would drop the channel and leave the game waiting forever.
-                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.recv_play()))
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.recv_play().map(|packet| prepare_incoming(packet, &mut sky_light, forge))))
                     .unwrap_or_else(|_| Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Internal Exception: packet handling panicked")));
                 match r {
                     Ok(p) => {
-                        if tx.send(Incoming::Packet(Box::new(p))).is_err() {
+                        if tx.send(p).is_err() {
                             return;
                         }
                     }
@@ -423,6 +458,26 @@ pub fn stack_slot(cat: &crate::inventory::Catalogue, s: Option<mc_gui::ItemStack
 mod tests {
     use super::*;
     use mc_protocol::chunk::{encode, WireSection};
+
+    #[test]
+    fn reader_prepares_chunks_in_dimension_order_and_keeps_forge_on_the_game_thread() {
+        let mut sky = true;
+        for dimension in [-1, 0, 1] {
+            let respawn = PlayClientbound::Respawn(Respawn { dimension, difficulty: 1, game_mode: 0, level_type: "default".into() });
+            assert!(matches!(prepare_incoming(respawn, &mut sky, false), Incoming::Packet(_)));
+            let mut sections = std::array::from_fn(|_| None);
+            let mut section = WireSection::empty(dimension == 0);
+            section.blocks[0] = 16;
+            sections[2] = Some(section);
+            let (bitmask, data) = encode(&sections, Some(&[1; 256]), dimension == 0);
+            let packet = || PlayClientbound::ChunkData(ChunkData { x: 3, z: -2, full: true, bitmask, data: data.clone() });
+            let Incoming::Chunks(mut chunks) = prepare_incoming(packet(), &mut sky, false) else { panic!("chunk stayed on game thread") };
+            let ChunkUpdate::Full { chunk, remove_old } = chunks.remove(0) else { panic!("full update became partial") };
+            assert!(remove_old);
+            assert_eq!(chunk.get(0, 32, 0), (1, 0));
+            assert!(matches!(prepare_incoming(packet(), &mut sky, true), Incoming::Packet(_)));
+        }
+    }
 
     #[test]
     fn fill_chunk_reads_blocks_and_light() {
@@ -1014,6 +1069,7 @@ mod tests {
                         _ => {}
                     },
                     Incoming::Closed(e) => panic!("connection closed: {e}"),
+                    Incoming::Chunks(_) => {},
                 }
                 assert!(n.closed.is_none(), "{:?}", n.closed);
             }

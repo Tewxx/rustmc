@@ -17,6 +17,21 @@ impl App {
         self.play_sound(st.break_sound, Some(c), (st.volume + 1.0) / 2.0, st.frequency * 0.8);
     }
 
+    /// `Minecraft.runGameLoop`'s `mcSoundHandler.setListener(thePlayer, timer.renderPartialTicks)`:
+    /// the local player's partial-tick interpolated eye position and yaw. The listener follows
+    /// the player even when a camera entity is set (`EntityRenderer` does not pass that entity).
+    pub(crate) fn update_sound_listener(&mut self) {
+        let pt = self.tick_accum.clamp(0.0, 1.0);
+        let e = &self.entity;
+        let pos = e.interpolated(pt);
+        let yaw = e.prev_yaw + (e.yaw - e.prev_yaw) * pt;
+        // `SoundManager.setListener` adds `getEyeHeight()` after interpolating the feet.
+        let eye = [pos.x as f64, pos.y as f64 + e.eye_height() as f64, pos.z as f64];
+        if let Some(s) = &mut self.sound {
+            s.set_listener(eye, yaw);
+        }
+    }
+
     /// Drains sounds queued by the player entity and GUI widgets; updates the listener.
     pub(crate) fn flush_sounds(&mut self) {
         let pos = self.entity.pos;
@@ -27,15 +42,12 @@ impl App {
             // PositionedSoundRecord.create(location, 1.0F)
             self.play_sound(ev, None, 0.25, 1.0);
         }
-        let eye = self.entity.pos;
-        let yaw = self.entity.yaw;
-        let h = self.entity.eye_height() as f64;
         if let Some(s) = &mut self.sound {
-            s.set_listener([eye.x, eye.y + h, eye.z], yaw);
             for c in mc_sound::Category::ALL {
                 s.volumes.insert(c, self.ui.settings.sound_volume(c.key()));
             }
         }
+        self.update_sound_listener();
     }
 
 }

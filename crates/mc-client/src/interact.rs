@@ -211,6 +211,9 @@ impl App {
     /// `PlayerControllerMP.attackEntity` and the client half of
     /// `EntityPlayer.attackTargetEntityWithCurrentItem`.
     pub(crate) fn attack_entity(&mut self, id: i32) {
+        if !self.forge_allow_attack(id) {
+            return;
+        }
         let sel = self.player.selected_slot as i32;
         if let Some(n) = &mut self.net {
             n.sync_current_item(sel);
@@ -516,6 +519,9 @@ impl App {
 
     /// `GuiScreen.sendChatMessage`; without a connection only the singleplayer build handles it.
     pub(crate) fn send_chat(&mut self, msg: &str) {
+        // Forge GuiChat: ClientCommandHandler.executeCommand runs mod client commands first; a handled one never
+        // reaches the server.
+        if self.forge_on && msg.starts_with('/') && self.forge_client_command(&msg[1..]) { return; }
         if let Some(n) = &mut self.net {
             // GuiScreen.sendChatMessage: C01 carries at most 100 characters.
             let m: String = msg.chars().take(100).collect();
@@ -587,10 +593,15 @@ impl App {
         }
         let t0 = Instant::now();
         // Light is updated incrementally by set_block_state; settle sky-light gaps nearby.
+        // Each chunk once: an explosion's hundreds of edits share a handful of columns.
+        let mut ticked = HashSet::new();
         for p in edits {
             for dx in -1..=1 {
                 for dz in -1..=1 {
-                    self.world.tick_chunk_light((p.x >> 4) + dx, (p.z >> 4) + dz, false, false);
+                    let c = ((p.x >> 4) + dx, (p.z >> 4) + dz);
+                    if ticked.insert(c) {
+                        self.world.tick_chunk_light(c.0, c.1, false, false);
+                    }
                 }
             }
         }

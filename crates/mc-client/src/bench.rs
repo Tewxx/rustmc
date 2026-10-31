@@ -18,10 +18,18 @@ pub enum Phase {
     World,
     Entities,
     Gui,
+    Acquire,
+    Submit,
     Present,
+    Update,
+    Animation,
 }
-const PHASES: [&str; 6] = ["net", "mesh", "world", "entities", "gui", "present"];
-static ACC_NS: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+const PHASES: [&str; 10] = ["net", "mesh", "world", "entities", "gui", "acquire", "submit", "present", "update", "animation"];
+static ACC_NS: [AtomicU64; 10] = [const { AtomicU64::new(0) }; 10];
+
+pub fn record(phase: Phase, elapsed: std::time::Duration) {
+    ACC_NS[phase as usize].fetch_add(elapsed.as_nanos() as u64, Relaxed);
+}
 
 /// Times a scope into `phase` (and, with `--features profile`, opens a puffin scope).
 #[allow(dead_code)]
@@ -39,7 +47,7 @@ pub fn zone(phase: Phase) -> Zone {
         t: Instant::now(),
         #[cfg(feature = "profile")]
         _scope: {
-            static IDS: [std::sync::OnceLock<puffin::ScopeId>; 6] = [const { std::sync::OnceLock::new() }; 6];
+            static IDS: [std::sync::OnceLock<puffin::ScopeId>; 10] = [const { std::sync::OnceLock::new() }; 10];
             let id = *IDS[phase as usize].get_or_init(|| puffin::ThreadProfiler::call(|tp| tp.register_named_scope(PHASES[phase as usize], "frame", file!(), line!())));
             puffin::ProfilerScope::new(id, "")
         },
@@ -48,7 +56,7 @@ pub fn zone(phase: Phase) -> Zone {
 
 impl Drop for Zone {
     fn drop(&mut self) {
-        ACC_NS[self.phase as usize].fetch_add(self.t.elapsed().as_nanos() as u64, Relaxed);
+        record(self.phase, self.t.elapsed());
     }
 }
 
@@ -83,11 +91,11 @@ pub struct Bench {
     duration_s: f64,
     origin: Vec3,
     start: Option<Instant>,
-    last: Option<Instant>,
-    /// Per measured frame: (interval since the previous frame, CPU time in update + draw), in ms.
+    last: Option<(Instant, f64, [f64; 10])>,
+    /// Callback-start interval paired with the work that began at that interval's start.
     samples: Vec<(f64, f64)>,
     /// Per measured frame: ms per [`Phase`] (all zero until main.rs wires the zones).
-    phases: Vec<[f64; 6]>,
+    phases: Vec<[f64; 10]>,
 }
 
 pub struct Pose {
@@ -116,17 +124,17 @@ impl Bench {
     /// Records a finished frame. Returns true once the run is over.
     pub fn frame(&mut self, frame_start: Instant, cpu_ms: f64) -> bool {
         let start = *self.start.get_or_insert(frame_start);
-        let mut ph = [0.0; 6];
+        let mut ph = [0.0; 10];
         for (p, a) in ph.iter_mut().zip(&ACC_NS) {
             *p = a.swap(0, Relaxed) as f64 / 1e6;
         }
-        if let Some(last) = self.last {
-            if (frame_start - start).as_secs_f64() >= WARMUP_S {
-                self.samples.push(((frame_start - last).as_secs_f64() * 1e3, cpu_ms));
-                self.phases.push(ph);
+        if let Some((last, last_cpu, last_ph)) = self.last {
+            if (last - start).as_secs_f64() >= WARMUP_S {
+                self.samples.push(((frame_start - last).as_secs_f64() * 1e3, last_cpu));
+                self.phases.push(last_ph);
             }
         }
-        self.last = Some(frame_start);
+        self.last = Some((frame_start, cpu_ms, ph));
         (frame_start - start).as_secs_f64() >= self.duration_s + WARMUP_S
     }
 
@@ -161,9 +169,9 @@ impl Bench {
         }
         let write = || -> std::io::Result<()> {
             let mut f = std::io::BufWriter::new(std::fs::File::create(csv)?);
-            writeln!(f, "frame_ms,cpu_ms,{}", PHASES.map(|n| format!("{n}_ms")).join(","))?;
+            writeln!(f, "frame_ms,cpu_ms,{},outside_ms", PHASES.map(|n| format!("{n}_ms")).join(","))?;
             for ((frame, cpu), ph) in self.samples.iter().zip(&self.phases) {
-                writeln!(f, "{frame:.4},{cpu:.4},{}", ph.map(|v| format!("{v:.4}")).join(","))?;
+                writeln!(f, "{frame:.4},{cpu:.4},{},{:.4}", ph.map(|v| format!("{v:.4}")).join(","), (frame - cpu).max(0.0))?;
             }
             f.flush()
         };
@@ -245,5 +253,16 @@ mod tests {
         assert_eq!(p0.pos, Vec3::ZERO);
         let p = b.pose(t0 + std::time::Duration::from_secs(5));
         assert!((p.yaw - 315.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn frame_intervals_are_paired_with_the_work_that_preceded_them() {
+        let t = Instant::now();
+        let mut b = Bench::new(10.0, Vec3::ZERO);
+        b.start = Some(t - std::time::Duration::from_secs(2));
+        b.frame(t, 4.0);
+        b.frame(t + std::time::Duration::from_millis(5), 0.2);
+        b.frame(t + std::time::Duration::from_millis(6), 0.3);
+        assert_eq!(b.samples, [(5.0, 4.0), (1.0, 0.2)]);
     }
 }

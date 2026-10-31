@@ -67,11 +67,17 @@ extern "system" fn on_loader(mut env: JNIEnv<'_>, _class: JClass<'_>) {
 /// `mod_jars` are on `classpath` too; their manifest `TweakClass` entries (Mixin) are launched under LaunchWrapper.
 pub fn start(libjvm: &Path, classpath: &[PathBuf], mod_jars: &[PathBuf]) -> Result<(), String> {
     if VM.get().is_some() { return Ok(()); }
-    let cp = std::env::join_paths(classpath).map_err(|e| e.to_string())?;
+    let classpath: Vec<PathBuf> = classpath.iter().map(|p| plain(p)).collect();
+    let mod_jars: Vec<PathBuf> = mod_jars.iter().map(|p| plain(p)).collect();
+    let cp = std::env::join_paths(&classpath).map_err(|e| e.to_string())?;
     let option = format!("-Djava.class.path={}", cp.to_string_lossy());
     // Headless: on macOS AWT replaces the NSApplication delegate winit owns, which panics the window loop (mods touch the
     // clipboard, Desktop or file choosers). Mods still run; AWT windows just cannot open.
-    let mut builder = InitArgsBuilder::new().version(JNIVersion::V8).option(&option).option("-Djava.awt.headless=true");
+    // Elsewhere AWT coexists with the window, and mods' Swing frames (Meowtils' log window, file pickers) need it.
+    let mut builder = InitArgsBuilder::new().version(JNIVersion::V8).option(&option);
+    if cfg!(target_os = "macos") { builder = builder.option("-Djava.awt.headless=true"); }
+    // log4j beta9 otherwise extracts jansi's DLL to %TEMP%; a denied load kills LaunchWrapper before any mod loads.
+    builder = builder.option("-Dlog4j.skipJansi=true");
     // e.g. RUSTMC_JVM_OPTS="-Xcheck:jni -Xmx2g"
     let extra_opts = std::env::var("RUSTMC_JVM_OPTS").unwrap_or_default();
     for extra in extra_opts.split_whitespace() { builder = builder.option(extra); }
@@ -97,13 +103,21 @@ pub fn start(libjvm: &Path, classpath: &[PathBuf], mod_jars: &[PathBuf]) -> Resu
     Ok(())
 }
 
+/// Windows verbatim paths (what `fs::canonicalize` returns) become `file://%3f/C:` jar URLs, which Mixin's platform
+/// agents reject ("URI has an authority component"): Java gets the plain form.
+fn plain(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") { return PathBuf::from(format!(r"\\{rest}")); }
+    s.strip_prefix(r"\\?\").map_or_else(|| p.to_path_buf(), PathBuf::from)
+}
+
 /// Runs the `@Mod` lifecycle (pre-init, init, post-init) for every mod in `jars`; they must already be on the
 /// class path. Returns the ids of the mods that were constructed.
 pub fn load_mods(jars: &[PathBuf]) -> Result<Vec<String>, String> {
     with_env(|env| -> jni::errors::Result<Vec<String>> {
         let array = env.new_object_array(jars.len() as i32, "java/lang/String", JObject::null())?;
         for (i, jar) in jars.iter().enumerate() {
-            let s = env.new_string(jar.to_string_lossy())?;
+            let s = env.new_string(plain(jar).to_string_lossy())?;
             env.set_object_array_element(&array, i as i32, s)?;
         }
         let ids = call_static(env, "rustmc/forge/ModLoader", "load", "([Ljava/lang/String;)[Ljava/lang/String;", &[JValue::Object(&array)])?.l()?;
@@ -117,8 +131,10 @@ pub fn load_mods(jars: &[PathBuf]) -> Result<Vec<String>, String> {
 
 /// Runs `f` on the calling thread attached to the embedded JVM; `None` if `start` has not succeeded.
 pub fn with_env<R>(f: impl FnOnce(&mut jni::JNIEnv<'_>) -> R) -> Option<R> {
-    let mut env = VM.get()?.attach_current_thread().ok()?;
-    Some(f(&mut env))
+    // Permanent: a scoped attach detaches on return, so every call would be a new java.lang.Thread (mods' ThreadLocals
+    // reset, and attach is slow). Reclaim JNI local references after every callback instead of accumulating them.
+    let mut env = VM.get()?.attach_current_thread_permanently().ok()?;
+    env.with_local_frame(512, |env| Ok::<R, jni::errors::Error>(f(env))).ok()
 }
 
 /// libjvm inside `$RUSTMC_JVM` (a libjvm file) or under `$JAVA_HOME` (a JDK 8 home).

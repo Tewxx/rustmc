@@ -141,7 +141,9 @@ impl<'a> ModelLoader<'a> {
             out.elements = e;
         }
         out.ambient_occlusion = out.ambient_occlusion && raw.ambient_occlusion;
-        out.generated |= raw.parent.as_deref() == Some("builtin/generated");
+        // ModelBakery bakes builtin/compass and builtin/clock like builtin/generated (their
+        // sprites pick the frame).
+        out.generated |= matches!(raw.parent.as_deref(), Some("builtin/generated" | "builtin/compass" | "builtin/clock"));
         out.built_in |= raw.parent.as_deref() == Some("builtin/entity");
         for (kind, transform) in raw.display {
             if transform != ItemTransform::default() {

@@ -166,6 +166,7 @@ impl App {
 
     /// Replaces every piece of per-world state with its fresh value.
     pub(crate) fn reset_world_state(&mut self) {
+        self.forge_generation = self.forge_generation.wrapping_add(1);
         #[cfg(feature = "wasm-mods")]
         if let Some(mods) = &self.mods { mods.clear(); }
         let mut world = World::default();
@@ -469,6 +470,7 @@ mod tests {
                         _ => {}
                     },
                     net::Incoming::Closed(e) => panic!("connection closed: {e}"),
+                    net::Incoming::Chunks(_) => {},
                 }
                 assert!(n.closed.is_none(), "{:?}", n.closed);
             }

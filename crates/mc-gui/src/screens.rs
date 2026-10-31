@@ -5,6 +5,7 @@ use crate::settings::Opt;
 use crate::text_field::TextField;
 use crate::widgets::{Button, Kind};
 use crate::Ui;
+use crate::ItemStack;
 
 pub const OPTIONS_BACKGROUND: &str = "textures/gui/options_background.png";
 const TITLE: &str = "textures/gui/title/minecraft.png";
@@ -43,6 +44,30 @@ pub enum Action {
     ScrollChatPage(i32),
     /// `GuiConfirmOpenLink` accepted: open the link, then return to the chat.
     OpenLink(String),
+    /// `Util.getOSType().openURI` without leaving the screen (`GuiScreenDemo`'s store button).
+    OpenUrl(String),
+    /// `GuiEditSign.onGuiClosed`: `C12PacketUpdateSign` for the four edited lines.
+    UpdateSign { pos: mc_core::BlockPos, lines: [String; 4] },
+    /// `GuiMerchant.actionPerformed`: `MC|TrSel` with the selected recipe index.
+    MerchantSelect(i32),
+}
+
+/// One `MerchantRecipe` as the merchant screen displays it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Trade {
+    pub buy: Option<ItemStack>,
+    pub buy2: Option<ItemStack>,
+    pub sell: Option<ItemStack>,
+    /// `MerchantRecipe.toolUses` / `maxTradeUses`; `uses >= max_uses` is a disabled recipe.
+    pub uses: i32,
+    pub max_uses: i32,
+}
+
+impl Trade {
+    /// `MerchantRecipe.isRecipeDisabled`
+    pub fn disabled(&self) -> bool {
+        self.uses >= self.max_uses
+    }
 }
 
 /// `GuiGameOver`
@@ -214,9 +239,20 @@ pub trait Screen {
     fn autocomplete(&mut self, _ui: &mut Ui, _list: Vec<String>) -> Option<String> {
         None
     }
+    /// `GuiEditSign.onGuiClosed` / other screens that queue a packet when they go away.
+    fn close_action(&mut self) -> Action {
+        Action::None
+    }
+    /// `NetHandlerPlayClient.handleCustomPayload`'s `MC|TrList`: the merchant screen takes the
+    /// recipe list for the window it belongs to.
+    fn merchant_recipes(&mut self, _window_id: i32, _recipes: Vec<Trade>) {}
     fn scroll(&mut self, _delta: i32) {}
     /// `updateScreen`, once per client tick.
     fn tick(&mut self) {}
+    /// An action `updateScreen` asks for (e.g. `GuiWinGame.sendRespawnPacket` when the credits end).
+    fn tick_action(&mut self) -> Action {
+        Action::None
+    }
     /// `GuiInventory.drawEntityOnScreen(posX, posY, scale, ...)` for the local player.
     fn entity_preview(&self) -> Option<(i32, i32, i32)> {
         None
@@ -1330,6 +1366,240 @@ impl Screen for ConfirmOpenLink {
     fn key(&mut self, _: &mut Ui, key: Key) -> Action {
         if key == Key::Escape {
             Action::CloseAll
+        } else {
+            Action::None
+        }
+    }
+}
+
+// ---------------------------------------------------------------- demo / credits
+
+const DEMO_BACKGROUND: &str = "textures/gui/demo_background.png";
+
+/// `GuiScreenDemo`: the demo-mode purchase screen (`S2BPacketChangeGameState` state 5, arg 0).
+#[derive(Default)]
+pub struct DemoScreen {
+    buttons: Vec<Button>,
+}
+
+impl Screen for DemoScreen {
+    fn init(&mut self, ui: &Ui, w: i32, h: i32) {
+        // initGui: the -16 offset puts the buttons over the tapestry's lower edge.
+        let j = h / 2 + 62 - 16;
+        self.buttons = vec![
+            Button::sized(1, w / 2 - 116, j, 114, 20, ui.lang.get("demo.help.buy")),
+            Button::sized(2, w / 2 + 2, j, 114, 20, ui.lang.get("demo.help.later")),
+        ];
+    }
+
+    /// `drawDefaultBackground` override, then `drawScreen`.
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
+        default_background(ui, b, w, h);
+        let (x, y) = ((w - 248) / 2, (h - 166) / 2);
+        b.color = [1.0; 4];
+        b.textured_rect(DEMO_BACKGROUND, x, y, 0, 0, 248, 166);
+
+        let i = x + 10;
+        let mut j = y + 8;
+        // `GameSettings.getKeyDisplayString` for every binding the help lines name.
+        let key = |name: &str| crate::keys::key_name(ui.settings.key(name));
+        let title = ui.lang.get("demo.help.title");
+        let movement = ui.lang.format("demo.help.movementShort", &[&key("key.forward"), &key("key.left"), &key("key.back"), &key("key.right")]);
+        let mouse = ui.lang.get("demo.help.movementMouse");
+        let jump = ui.lang.format("demo.help.jump", &[&key("key.jump")]);
+        let inventory = ui.lang.format("demo.help.inventory", &[&key("key.inventory")]);
+        // drawSplitString(demo.help.fullWrapped, i, j + 68, 218, ...)
+        let full = ui.font.list_to_width(&ui.lang.get("demo.help.fullWrapped"), 218);
+
+        ui.font.draw(b, &title, i as f32, j as f32, 0xFF1F_1F1F);
+        j += 12;
+        ui.font.draw(b, &movement, i as f32, j as f32, 0xFF4F_4F4F);
+        ui.font.draw(b, &mouse, i as f32, (j + 12) as f32, 0xFF4F_4F4F);
+        ui.font.draw(b, &jump, i as f32, (j + 24) as f32, 0xFF4F_4F4F);
+        ui.font.draw(b, &inventory, i as f32, (j + 36) as f32, 0xFF4F_4F4F);
+        for (k, line) in full.iter().enumerate() {
+            ui.font.draw(b, line, i as f32, (j + 68 + 9 * k as i32) as f32, 0xFF1F_1F1F);
+        }
+        draw_buttons(&mut self.buttons, ui, b, mx, my);
+    }
+
+    fn click(&mut self, ui: &mut Ui, mx: i32, my: i32) -> Action {
+        match click_buttons(&mut self.buttons, ui, mx, my) {
+            Some(1) => {
+                // actionPerformed disables the store button before opening the browser.
+                if let Some(b) = self.buttons.iter_mut().find(|b| b.id == 1) {
+                    b.enabled = false;
+                }
+                Action::OpenUrl("http://www.minecraft.net/store?source=demo".into())
+            }
+            // displayGuiScreen(null) + setIngameFocus.
+            Some(2) => Action::CloseAll,
+            _ => Action::None,
+        }
+    }
+}
+
+/// `GuiWinGame`: the End credits (`S2BPacketChangeGameState` state 4). The poem/credits lines
+/// are built once in `initGui`, then scrolled up; finishing or Escape sends `C16` perform-respawn
+/// and closes the screen.
+pub struct WinGame {
+    /// `texts/end.txt` and `texts/credits.txt`; `None` when the pack lacks them.
+    end: Option<String>,
+    credits: Option<String>,
+    player: String,
+    /// `field_146581_h`
+    ticks: i32,
+    /// `field_146582_i` / `field_146579_r`
+    lines: Option<Vec<String>>,
+    total: i32,
+    /// `field_146578_s`
+    speed: f32,
+    /// `this.height`, used by `updateScreen`'s end test.
+    height: i32,
+    /// `ui.ticks` when the screen opened, for the partial-tick scroll offset.
+    started: Option<f32>,
+}
+
+impl WinGame {
+    pub fn new(end: Option<Vec<u8>>, credits: Option<Vec<u8>>, player: impl Into<String>) -> Self {
+        Self {
+            end: end.map(|b| String::from_utf8_lossy(&b).into_owned()),
+            credits: credits.map(|b| String::from_utf8_lossy(&b).into_owned()),
+            player: player.into(),
+            ticks: 0,
+            lines: None,
+            total: 0,
+            speed: 0.5,
+            height: 0,
+            started: None,
+        }
+    }
+
+    /// `initGui`'s line building: `PLAYERNAME`, the obfuscated-glyph run, then the credits.
+    fn build_lines(&mut self, ui: &Ui) {
+        const MARKER: &str = "\u{a7}f\u{a7}k\u{a7}a\u{a7}b";
+        let mut lines = Vec::new();
+        // `new Random(8124371L)`
+        let mut random = mc_core::random::JavaRandom::new(8_124_371);
+        if let Some(end) = &self.end {
+            for raw in end.lines() {
+                let mut s = raw.replace("PLAYERNAME", &self.player);
+                while let Some(j) = s.find(MARKER) {
+                    let (prefix, suffix) = (s[..j].to_string(), s[j + MARKER.len()..].to_string());
+                    let n = random.next_int_bounded(4) as usize + 3;
+                    s = format!("{prefix}\u{a7}f\u{a7}k{}{suffix}", &"XXXXXXXX"[..n]);
+                }
+                lines.extend(ui.font.list_to_width(&s, 274));
+                lines.push(String::new());
+            }
+            // The eight-line gap between the poem and the credits.
+            for _ in 0..8 {
+                lines.push(String::new());
+            }
+            // Vanilla's single try block also drops the credits when `end.txt` is missing.
+            if let Some(credits) = &self.credits {
+                for raw in credits.lines() {
+                    let s = raw.replace("PLAYERNAME", &self.player).replace('\t', "    ");
+                    lines.extend(ui.font.list_to_width(&s, 274));
+                    lines.push(String::new());
+                }
+            }
+        }
+        self.total = lines.len() as i32 * 12;
+        self.lines = Some(lines);
+    }
+
+    fn end_tick(&self) -> f32 {
+        (self.total + self.height + self.height + 24) as f32 / self.speed
+    }
+}
+
+impl Screen for WinGame {
+    fn init(&mut self, ui: &Ui, _w: i32, h: i32) {
+        self.height = h;
+        if self.started.is_none() {
+            self.started = Some(ui.ticks);
+        }
+        if self.lines.is_none() {
+            self.build_lines(ui);
+        }
+    }
+
+    fn tick(&mut self) {
+        self.ticks += 1;
+    }
+
+    /// `updateScreen`'s end test → `sendRespawnPacket`.
+    fn tick_action(&mut self) -> Action {
+        if self.ticks as f32 > self.end_tick() {
+            Action::Respawn
+        } else {
+            Action::None
+        }
+    }
+
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, _mx: i32, _my: i32) {
+        let (wf, hf) = (w as f32, h as f32);
+        // `field_146581_h + partialTicks`: the global tick clock carries the partial tick.
+        let t = self.started.map_or(self.ticks as f32, |s| ui.ticks - s);
+        // drawWinGameScreen: the options background scrolled and squared into a fade.
+        let f = -t * 0.5 * self.speed;
+        let f1 = hf - t * 0.5 * self.speed;
+        let f2 = 0.015625;
+        let f4 = (self.total + h + h + 24) as f32 / self.speed;
+        let mut f3 = (t * 0.02).min((f4 - 20.0 - t) * 0.005).min(1.0);
+        f3 = f3 * f3 * 96.0 / 255.0;
+        let c = [(f3 * 255.0) as u8; 4];
+        b.quad(
+            Some(OPTIONS_BACKGROUND),
+            true,
+            [[0.0, hf], [wf, hf], [wf, 0.0], [0.0, 0.0]],
+            [[0.0, f * f2], [wf * f2, f * f2], [wf * f2, f1 * f2], [0.0, f1 * f2]],
+            [c; 4],
+        );
+
+        // `GlStateManager.translate(0, f, 0)` then the logo and poem at absolute positions.
+        let scroll = -t * self.speed;
+        let j = w / 2 - 274 / 2;
+        let k = hf + 50.0;
+        b.color = [1.0; 4];
+        b.textured_rect_uv(TITLE, j as f32, k + scroll, 155.0, 44.0, [0.0, 0.0, 155.0 / 256.0, 44.0 / 256.0]);
+        b.textured_rect_uv(TITLE, (j + 155) as f32, k + scroll, 155.0, 44.0, [0.0, 45.0 / 256.0, 155.0 / 256.0, 89.0 / 256.0]);
+
+        let mut l = k + 200.0;
+        let empty = Vec::new();
+        let lines = self.lines.as_ref().unwrap_or(&empty);
+        for (i1, s) in lines.iter().enumerate() {
+            let mut y = l + scroll;
+            // The final line stops at the centre of the screen instead of scrolling out.
+            if i1 + 1 == lines.len() {
+                let adjust = y - (hf / 2.0 - 6.0);
+                if adjust < 0.0 {
+                    y -= adjust;
+                }
+            }
+            if y + 12.0 + 8.0 > 0.0 && y < hf {
+                if let Some(rest) = s.strip_prefix("[C]") {
+                    let x = j as f32 + (274.0 - ui.font.width(rest) as f32) / 2.0;
+                    ui.font.draw_shadow(b, rest, x, y, 0xFFFF_FFFF);
+                } else {
+                    ui.font.draw_shadow(b, s, j as f32, y, 0xFFFF_FFFF);
+                }
+            }
+            l += 12.0;
+        }
+        // The vignette pass uses (GL_ZERO, GL_ONE_MINUS_SRC_COLOR), which the 2D batch does not
+        // model; drawing it with alpha blending would lighten the edges instead of darkening them.
+    }
+
+    fn click(&mut self, _: &mut Ui, _mx: i32, _my: i32) -> Action {
+        Action::None
+    }
+
+    /// `GuiWinGame.keyTyped`: Escape (and only Escape) sends the respawn packet.
+    fn key(&mut self, _: &mut Ui, key: Key) -> Action {
+        if key == Key::Escape {
+            Action::Respawn
         } else {
             Action::None
         }

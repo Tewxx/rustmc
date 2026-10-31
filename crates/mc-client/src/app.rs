@@ -5,6 +5,25 @@ use crate::*;
 pub(crate) struct App {
     /// The embedded JVM is running Forge mods (see `forge_ui.rs`).
     pub(crate) forge_on: bool,
+    pub(crate) forge_generation: u64,
+    /// A mod called `Minecraft.shutdown`; the event loop exits on its next pass.
+    pub(crate) forge_quit: bool,
+    /// What the Java world mirror last received: shared section buffers (a write detaches them) and biome columns.
+    pub(crate) forge_mirror: (u64, mc_core::FxHashMap<(i32, i32, i32), mc_world::chunk::SectionData<u16>>, mc_core::FxHashMap<(i32, i32), [u8; 256]>),
+    /// Forge light mirror: each section's (sky, block) arrays as last sent, and the skylightSubtracted sent.
+    pub(crate) forge_light: mc_core::FxHashMap<(i32, i32, i32), (mc_world::chunk::SectionData<u8>, mc_world::chunk::SectionData<u8>)>,
+    pub(crate) forge_skylight: i32,
+    /// A mod-opened vanilla screen shown natively over a mod screen: its Java parent and the stack depth it opened at.
+    pub(crate) forge_return: Option<(mc_forge::jni::objects::GlobalRef, usize)>,
+    /// Every mod texture upload by path (latest wins), replayed into a renderer rebuilt by a pack reload.
+    pub(crate) forge_textures: mc_core::FxHashMap<String, mc_forge::impls::Upload>,
+    /// Mod-requested pings in flight: (id, entry being filled, finished).
+    pub(crate) forge_pings: Vec<(u64, mc_gui::server_data::Handle, std::sync::Arc<std::sync::atomic::AtomicBool>)>,
+    pub(crate) forge_dimension: i32,
+    /// `(generation, active)` the Java `Minecraft.loadWorld(WorldClient)` hook last ran for.
+    pub(crate) forge_world_hook: Option<(u64, bool)>,
+    /// Vanilla bindings Java reports held (real keys, or a mod's `KeyBinding.setKeyBindState`).
+    pub(crate) forge_held: std::collections::HashSet<String>,
     /// A Java-opened screen is the client's current screen.
     pub(crate) forge_mod_screen: bool,
     /// The Java `Minecraft.session` last applied to the client: (name, uuid, token).
@@ -86,6 +105,8 @@ pub(crate) struct App {
     pub(crate) session: Option<auth::Session>,
     pub(crate) name: String,
     pub(crate) remote: entities::Entities,
+    /// Per-frame entity vectors, reused between frames (see [`render_entities::FrameEntities`]).
+    pub(crate) frame_entities: render_entities::FrameEntities,
     pub(crate) music: music::MusicTicker,
     pub(crate) skins: skins::Skins,
     /// Inventory as last synced, to send creative edits (C10) for what changed.
@@ -172,6 +193,18 @@ impl App {
         entity.prev_pitch = 20.;
         Self {
             forge_on: false,
+            forge_generation: 0,
+            forge_quit: false,
+            forge_mirror: Default::default(),
+            forge_light: Default::default(),
+            forge_skylight: -1,
+            forge_return: None,
+            forge_textures: Default::default(),
+            forge_pings: Vec::new(),
+            forge_dimension: 0,
+            // The startup state is already "no world"; only later transitions fire the Java hook.
+            forge_world_hook: Some((0, false)),
+            forge_held: Default::default(),
             forge_mod_screen: false,
             forge_session: None,
             #[cfg(feature = "wasm-mods")]
@@ -199,7 +232,7 @@ impl App {
             weather: level::Weather::default(),
             torch_flicker_x: 0.,
             torch_flicker_dx: 0.,
-            lightmap: lightmap::build(1.0, 0.0, settings.gamma),
+            lightmap: lightmap::build(1.0, 0.0, settings.gamma, 0, None, false),
             assets,
             models,
             mesh_workers: None,
@@ -240,8 +273,9 @@ impl App {
             net: None,
             connecting: None,
             session: None,
-            name: "Player".into(),
+            name: DEFAULT_NAME.into(),
             remote: entities::Entities::default(),
+            frame_entities: Default::default(),
             music: music::MusicTicker::default(),
             skins: skins::Skins::default(),
             creative_sync: None,
@@ -287,6 +321,7 @@ impl App {
 
     /// `KeyBinding.isKeyDown`: keyboard codes against held keys, negative codes against mouse buttons.
     pub(crate) fn bound_down(&self, name: &str) -> bool {
+        if self.forge_on && self.forge_held.contains(name) { return true; }
         let code = self.ui.settings.key(name);
         match code {
             0 => false,

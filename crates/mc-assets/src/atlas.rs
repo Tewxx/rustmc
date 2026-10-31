@@ -6,6 +6,7 @@
 //! GPU's level selection samples exactly the texels vanilla uploads for each level.
 
 use crate::AssetSource;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 pub const MISSING: &str = "missingno";
@@ -226,14 +227,14 @@ impl Atlas {
                     f.time
                 }
             };
-            let mut data: Option<Vec<Vec<u32>>> = None;
+            let mut data: Option<Cow<'_, [Vec<u32>]>> = None;
             if a.tick_counter >= time(a, a.frame_counter) {
                 let i = a.order[a.frame_counter].index;
                 a.frame_counter = (a.frame_counter + 1) % a.order.len();
                 a.tick_counter = 0;
                 let k = a.order[a.frame_counter].index;
                 if i != k && k < a.frames.len() {
-                    data = Some(a.frames[k].clone());
+                    data = Some(Cow::Borrowed(&a.frames[k]));
                 }
             } else if a.interpolate {
                 let d0 = 1.0 - a.tick_counter as f64 / time(a, a.frame_counter) as f64;
@@ -241,7 +242,7 @@ impl Atlas {
                 let k = a.order[(a.frame_counter + 1) % a.order.len()].index;
                 if i != k && k < a.frames.len() {
                     let (fa, fb) = (&a.frames[i], &a.frames[k]);
-                    data = Some(
+                    data = Some(Cow::Owned(
                         fa.iter()
                             .zip(fb)
                             .map(|(la, lb)| {
@@ -256,7 +257,7 @@ impl Atlas {
                                     .collect()
                             })
                             .collect(),
-                    );
+                    ));
                 }
             }
             if let Some(chain) = data {
@@ -281,9 +282,9 @@ impl Atlas {
                 let s = (row * u.size * 4) as usize;
                 let d = (((u.y + row) * w + u.x) * 4) as usize;
                 dst[d..d + (u.size * 4) as usize].copy_from_slice(&u.rgba[s..s + (u.size * 4) as usize]);
-            }
-            if u.level == 0 {
-                self.rgba = self.levels[0].clone();
+                if u.level == 0 {
+                    self.rgba[d..d + (u.size * 4) as usize].copy_from_slice(&u.rgba[s..s + (u.size * 4) as usize]);
+                }
             }
         }
         out
@@ -427,5 +428,22 @@ mod tests {
     fn chain_reaches_one_texel() {
         let chain = mip_chain(&vec![0xFFFF_FFFF; 256], 16, 4);
         assert_eq!(chain.iter().map(Vec::len).collect::<Vec<_>>(), vec![256, 64, 16, 4, 1]);
+    }
+
+    #[test]
+    fn animation_updates_only_its_region_and_keeps_both_cpu_copies_in_sync() {
+        let mut atlas = Atlas { width: 8, height: 8, cell: 2, rgba: vec![37; 8 * 8 * 4],
+            levels: vec![vec![37; 8 * 8 * 4], vec![37; 4 * 4 * 4]], sprites: HashMap::new(), natives: HashMap::new(),
+            animations: vec![Animation { x: 2, y: 4, size: 2, frames: vec![vec![vec![0xFF000000; 4], vec![0xFF000000]], vec![vec![0xFF804020; 4], vec![0xFF804020]]],
+                order: vec![Frame { index: 0, time: -1 }, Frame { index: 1, time: -1 }], frame_time: 2, interpolate: true, frame_counter: 0, tick_counter: 0 }] };
+        for expected in [[64, 32, 16, 255], [128, 64, 32, 255], [64, 32, 16, 255], [0, 0, 0, 255]] {
+            let uploads = atlas.tick();
+            assert_eq!(uploads.len(), 2);
+            assert_eq!(atlas.rgba, atlas.levels[0]);
+            for y in 0..8 { for x in 0..8 {
+                let at = (y * 8 + x) * 4;
+                assert_eq!(&atlas.rgba[at..at + 4], if (2..4).contains(&x) && (4..6).contains(&y) { &expected } else { &[37; 4] });
+            }}
+        }
     }
 }

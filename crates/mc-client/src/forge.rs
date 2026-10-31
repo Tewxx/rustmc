@@ -66,7 +66,7 @@ pub fn validate_runtime(data: &[u8]) -> Result<(), String> {
 /// every `@Mod` in `mods-forge/*.jar`. `RUSTMC_FORGE_CP` adds Minecraft's libraries (guava, log4j, ...) to the class
 /// path. Returns whether mods are running; any failure leaves the client running without Java mods.
 /// Mods see the player's name and UUID, never the access token.
-pub fn start_runtime(font: &mc_gui::font::FontRenderer, name: &str, uuid: Option<&str>) -> bool {
+pub fn start_runtime(font: &mc_gui::font::FontRenderer, lang: &mc_gui::lang::Lang, name: &str, uuid: Option<&str>) -> bool {
     let Some(stubs) = std::env::var_os("RUSTMC_FORGE_STUBS") else { return false };
     let Some(libjvm) = mc_forge::runtime::find_libjvm() else {
         eprintln!("forge runtime disabled: set JAVA_HOME to a JDK 8 or RUSTMC_JVM to its libjvm");
@@ -85,9 +85,15 @@ pub fn start_runtime(font: &mc_gui::font::FontRenderer, name: &str, uuid: Option
     mc_forge::impls::set_text_width(move |s| font.width(s));
     mc_forge::impls::set_clipboard(mc_gui::clipboard::get, mc_gui::clipboard::set);
     mc_forge::impls::set_session(name, uuid.unwrap_or(""));
+    mc_forge::impls::set_translations(lang.table().clone());
     match mc_forge::runtime::load_mods(&jars) {
         Ok(ids) => eprintln!("forge runtime started; mods: {ids:?}"),
         Err(e) => eprintln!("forge mods failed to load: {e}"),
+    }
+    // Mixin-based mods (Meowtils) initialise from Minecraft.startGame's TAIL.
+    if let Some(Err(e)) = mc_forge::hooks::start_game() {
+        mc_forge::runtime::with_env(|env| { let _ = env.exception_describe(); let _ = env.exception_clear(); });
+        eprintln!("forge startGame hook failed: {e}");
     }
     true
 }

@@ -3,6 +3,7 @@
 //! Everything draws into a [`batch::GuiBatch`] in scaled GUI units; `mc-render`
 //! turns that into GPU draws.
 
+pub mod achievement;
 pub mod batch;
 pub mod clipboard;
 pub mod component;

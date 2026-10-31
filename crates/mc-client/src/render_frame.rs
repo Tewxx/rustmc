@@ -2,20 +2,87 @@
 
 use crate::*;
 
+/// One projected name tag: its clip-space `w`, screen position, the text's byte range in
+/// [`TAGS`]' text buffer and whether it is the faint sneaking label.
+struct NameTag {
+    w: f32,
+    x: f32,
+    y: f32,
+    text: std::ops::Range<usize>,
+    faint: bool,
+}
+
+/// The text of one name tag, before it is written into the shared buffer
+/// (`EntityLivingBase.getDisplayName().getFormattedText()`).
+enum TagText<'a> {
+    /// `ScorePlayerTeam.formatPlayerName`: prefix + name + suffix.
+    Team(&'a str),
+    /// A custom name, or the entity's localized default name.
+    Plain(&'a str),
+}
+
+thread_local! {
+    /// `App::name_tags`' scratch, kept across frames so the steady state allocates nothing:
+    /// the projected tags and the text they share. Name text is only ever borrowed from the
+    /// entity/scoreboard or copied here, exactly as one `String` per label before.
+    static TAGS: std::cell::RefCell<(Vec<NameTag>, String)> = const { std::cell::RefCell::new((Vec::new(), String::new())) };
+}
+
+/// `I18n.format(key)` without the `String` clone: the key itself when missing, like vanilla.
+fn lang_name<'a>(lang: &'a mc_gui::lang::Lang, key: &'a str) -> &'a str {
+    lang.table().get(key).map_or(key, |s| s.as_str())
+}
+
+/// Whether a label whose box is `half_w`×`half_h` GUI pixels around `(x, y)` can still touch a
+/// `w`×`h` viewport. Used to drop a name tag before its text is built.
+fn label_in_view(x: f32, y: f32, half_w: f32, half_h: f32, w: f32, h: f32) -> bool {
+    x + half_w >= 0. && x - half_w <= w && y + half_h >= 0. && y - half_h <= h
+}
+
+/// Whether `Hud::render` draws its scoreboard/tab-list branch (`!hide_gui || chat_open`) with the
+/// HUD visible at all. Building the views outside this gate is per-frame list sorting and
+/// formatting that is then thrown away (F1 with no chat open).
+fn text_panels_visible(hud_visible: bool, hide_gui: bool, chat_open: bool) -> bool {
+    hud_visible && (!hide_gui || chat_open)
+}
+
 impl App {
     /// Lightmap color at the player's eyes (`getBrightnessForRender`).
     pub(crate) fn light_at_eyes(&self) -> [f32; 3] {
         let e = &self.entity;
         let (x, y, z) = (e.pos.x.floor() as i32, (e.pos.y + e.eye_height() as f64).floor() as i32, e.pos.z.floor() as i32);
-        let (sky, block) = self.world.light(x, y, z);
-        let block = block.max(self.world.state_at(x, y, z).block().light_value);
-        self.lightmap_color(sky, block)
+        let (sky, block) = self.world.brightness_for_render(BlockPos::new(x, y, z));
+        self.lightmap_color(sky as u8, block as u8)
     }
 
     pub(crate) fn lightmap_color(&self, sky: u8, block: u8) -> [f32; 3] {
-        let table = &self.lightmap;
-        let i = (sky as usize * 16 + block as usize) * 4;
-        [table[i] as f32 / 255., table[i + 1] as f32 / 255., table[i + 2] as f32 / 255.]
+        self.lightmap_units(sky as f32 * 16.0, block as f32 * 16.0)
+    }
+
+    /// A lightmap sample from packed-light units (`0..240` each, see
+    /// [`mc_render::lightmap::sample`]).
+    pub(crate) fn lightmap_units(&self, sky: f32, block: f32) -> [f32; 3] {
+        mc_render::lightmap::sample(&self.lightmap, sky, block)
+    }
+
+    /// `ActiveRenderInfo.getBlockAtEntityViewpoint`: the block at the camera viewpoint. A point
+    /// above a liquid's rendered surface (`BlockLiquid.getLiquidHeightPercent`) sees the block
+    /// above the liquid instead.
+    pub(crate) fn block_at_entity_viewpoint(&self, p: Vec3) -> &'static mc_data::Block {
+        let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+        let state = self.world.state_at(x, y, z);
+        let block = state.block();
+        if !block.material.props().liquid {
+            return block;
+        }
+        let meta = state.meta() as i32;
+        let meta = if meta >= 8 { 0 } else { meta };
+        let f = (meta + 1) as f32 / 9. - 0.11111111;
+        if p.y as f64 >= ((y + 1) as f32 - f) as f64 {
+            self.world.state_at(x, y + 1, z).block()
+        } else {
+            block
+        }
     }
 
     /// `RenderItem.renderItemModelForEntity`: a drawn bow shows its pulling model.
@@ -93,7 +160,18 @@ impl App {
     }
 
     pub(crate) fn sync_view(&mut self) {
-        self.ui.player_name = self.name.clone();
+        let _z = crate::bench::zone(crate::bench::Phase::Entities);
+        // The renderer drops last frame's `AvatarFrame` when this one replaces it; take its
+        // vectors back first so every entity collection below reuses the same allocations.
+        if let Some(old) = self.renderer.as_mut().and_then(|r| r.avatar_frame.take()) {
+            self.frame_entities.recycle(old);
+        }
+        let scripted_camera = self.bench.as_ref().map(|_| (self.camera.pos, self.camera.yaw, self.camera.pitch, self.camera.fov_deg, self.camera.bob));
+        // Only the multiplayer edit box reads this; copying the name every frame is a needless
+        // `String` allocation when it has not changed.
+        if self.ui.player_name != self.name {
+            self.ui.player_name = self.name.clone();
+        }
         let pt = self.tick_accum;
         let mut pos = self.entity.interpolated(pt);
         let mut eye = self.eye(pt);
@@ -126,15 +204,7 @@ impl App {
             pitch = cam_pitch;
             bob = glam::Mat4::IDENTITY;
         }
-        let in_water = {
-            let (x, y, z) = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
-            self.world.state_at(x, y, z).block().material == mc_data::Material::Water
-        };
         let mut fov = self.ui.settings.fov * (e.prev_fov_modifier_hand + (e.fov_modifier_hand - e.prev_fov_modifier_hand) * pt);
-        if in_water {
-            fov = fov * 60. / 70.;
-        }
-        self.camera.fov_deg = fov;
         self.camera.yaw = yaw;
         self.camera.pitch = pitch;
         self.camera.pos = eye;
@@ -158,6 +228,16 @@ impl App {
                 ((Vec3::new(h.hit.x as f32, h.hit.y as f32, h.hit.z as f32) - eye).length() - 0.15).max(0.)
             });
             self.camera.pos = eye + back * distance;
+        }
+        // `ActiveRenderInfo.getBlockAtEntityViewpoint` tests the camera, including the third-person
+        // offset, not the entity's eye. `EntityRenderer.getFOVModifier` narrows the view in water.
+        let view_block = self.block_at_entity_viewpoint(self.camera.pos);
+        if view_block.material == mc_data::Material::Water {
+            fov = fov * 60. / 70.;
+        }
+        self.camera.fov_deg = fov;
+        if let Some((pos, yaw, pitch, fov, bob)) = scripted_camera {
+            (self.camera.pos, self.camera.yaw, self.camera.pitch, self.camera.fov_deg, self.camera.bob) = (pos, yaw, pitch, fov, bob);
         }
         self.player.survival = !self.entity.creative;
         self.player.armor = self.total_armor_value();
@@ -194,11 +274,35 @@ impl App {
         let mut sky = mc_render::sky::Sky::overworld(self.info.time, pt, biome.temperature_at(block_pos), self.ui.settings.render_distance);
         let (rain, thunder) = (self.weather.rain_strength(pt), self.weather.thunder_strength(pt));
         sky.apply_weather(rain, thunder);
+        // `EntityRenderer.updateFogColor`: the water/lava branch replaces the weather-darkened
+        // colour after it, and `EntityRenderer.setupFog` switches the same cases to GL_EXP.
+        // `EnchantmentHelper.getRespiration`: the best level over `EntityPlayer.getInventory()`,
+        // which is the armor slots only.
+        let respiration = self
+            .ui
+            .armor
+            .iter()
+            .map(|s| tooltip::enchantment_level(s.as_ref(), 5))
+            .max()
+            .unwrap_or(0);
+        sky.apply_liquid(view_block.material, respiration, self.entity.effects.has(13));
         // EntityRenderer.updateLightmap (getSunBrightness(1.0)).
         let sun_sky = mc_render::sky::Sky::overworld(self.info.time, 1.0, 0.0, 2);
-        let sun = lightmap::sun_brightness_weather(sun_sky.angle, self.weather.rain_strength(1.0), self.weather.thunder_strength(1.0));
-        self.lightmap = lightmap::build(sun, self.torch_flicker_x, self.ui.settings.gamma);
-        if let Some(r) = &self.renderer {
+        // `WorldProviderHell.calculateCelestialAngle` is always 0.5 and the End's is 0.0, so
+        // both dimensions have a constant 1.0 sun brightness; only the overworld follows time.
+        let sun = if self.forge_dimension == 0 {
+            lightmap::sun_brightness_weather(sun_sky.angle, self.weather.rain_strength(1.0), self.weather.thunder_strength(1.0))
+        } else {
+            1.0
+        };
+        // `Potion.nightVision` at the player's remaining duration.
+        let night_vision = self
+            .entity
+            .effects
+            .get(mc_entity::effects::NIGHT_VISION)
+            .map(|e| lightmap::night_vision_brightness(e.duration, pt));
+        self.lightmap = lightmap::build(sun, self.torch_flicker_x, self.ui.settings.gamma, self.forge_dimension, night_vision, !self.lightning.is_empty());
+        if let Some(r) = &mut self.renderer {
             r.set_lightmap(&self.lightmap);
         }
         sky.ticks = self.ui.ticks;
@@ -207,28 +311,10 @@ impl App {
         sky.clouds = clouds != 0;
         sky.fancy_clouds = clouds == 2;
         let light = self.light_at_eyes();
-        let dropped = self
-            .items
-            .iter()
-            .filter_map(|it| {
-                let p = it.interpolated(pt);
-                let (sky, block) = self.world.light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-                Some(mc_render::avatar::DroppedItem {
-                    pos: Vec3::new(p.x as f32, p.y as f32, p.z as f32),
-                    age: it.age as f32 + pt,
-                    hover_start: it.hover_start,
-                    count: it.stack.1,
-                    item: self.held_item(&mc_gui::ItemStack { tag: it.tag, ..mc_gui::ItemStack::new(it.stack.0, it.stack.1, it.damage) })?,
-                    light: self.lightmap_color(sky, block),
-                })
-            })
-            .collect();
+        // One entity scan for every world-pass entity vector (players, mobs, objects,
+        // billboards, item frames, entity blocks, dropped items, break overlays).
+        let entity_frames = self.collect_frame_entities(pt);
         let e = &self.entity;
-        let (frame_quads, fixed_items) = self.item_frames(pt);
-        let mut world_quads = self.entity_blocks(pt);
-        world_quads.extend(frame_quads);
-        let mut damage = self.damage_quads();
-        damage.extend(self.break_anim_quads(pt));
         let frame = mc_render::avatar::AvatarFrame {
             pos,
             body_yaw: e.prev_render_yaw_offset + (e.render_yaw_offset - e.prev_render_yaw_offset) * pt,
@@ -248,40 +334,38 @@ impl App {
             yaw,
             arm_pitch: e.prev_render_arm_pitch + (e.render_arm_pitch - e.prev_render_arm_pitch) * pt,
             arm_yaw: e.prev_render_arm_yaw + (e.render_arm_yaw - e.prev_render_arm_yaw) * pt,
-            bob,
+            // `EntityRenderer.renderHand`: `hurtCameraEffect` then `setupViewBobbing`.
+            bob: self.hurt_camera(pt) * bob,
             hand_light: light,
             hand_item,
             slim: self.net.as_ref().is_some_and(|n| self.skins.loaded.get(&n.uuid).map_or(skins::default_slim(n.uuid), |s| s.1)),
             skin: self.net.as_ref().and_then(|n| self.skins.loaded.get(&n.uuid)).map(|s| s.0),
-            dropped,
-            damage,
-            others: self.other_players(pt),
-            mobs: self.mob_frames(pt),
+            dropped: entity_frames.dropped,
+            damage: entity_frames.damage,
+            others: entity_frames.others,
+            mobs: entity_frames.mobs,
             tiles: {
                 let table = &self.lightmap;
                 let color = |sky: u8, block: u8| {
                     let i = (sky as usize * 16 + block as usize) * 4;
                     [table[i] as f32 / 255., table[i + 1] as f32 / 255., table[i + 2] as f32 / 255.]
                 };
-                let mut frames = self.tiles.frames(&self.world, pt, self.camera.pos.to_array(), self.christmas, &color);
+                let mut frames = self.tiles.frames(&self.world, pt, self.camera.pos.to_array(), self.christmas, &color, &self.skins);
                 for tile in &mut frames {
                     if let mc_render::tile::TileFrame::Banner { age, .. } = tile { *age = self.info.total_time as f32 + pt; }
                     let mc_render::tile::TileFrame::Sign { pos, glyphs, .. } = tile else { continue };
                     let p = mc_core::BlockPos::new(pos.x as i32, pos.y as i32, pos.z as i32);
-                    for line in 0..4 {
-                        let raw = self.signs.get(&p).map(|lines| lines[line].as_str()).or_else(||
-                            self.world.tile_entity(p).and_then(|nbt| nbt.get(&format!("Text{}", line + 1))).and_then(mc_core::nbt::Tag::as_str)).unwrap_or("\"\"");
-                        glyphs.extend(crate::tiles::sign_glyphs(raw, line, &mut self.ui.font, &self.ui.lang, self.ui.settings.chat_colors));
-                    }
+                    self.tiles.append_sign_glyphs(p, glyphs, &self.world, &self.signs, &mut self.ui.font, &self.ui.lang, self.ui.settings.chat_colors);
                 }
                 frames
             },
-            objects: self.object_frames(pt),
-            billboards: self.billboards(pt),
-            fixed_items,
-            world_quads,
+            objects: entity_frames.objects,
+            billboards: entity_frames.billboards,
+            fixed_items: entity_frames.fixed_items,
+            world_quads: entity_frames.world_quads,
             particles: self.particle_quads(pt),
             armor: std::array::from_fn(|i| self.ui.armor[3 - i].and_then(|s| tooltip::armor_piece(&self.catalogue, &s))),
+            head_skull: self.ui.armor[0].and_then(|s| self.skull_head(&s)),
             use_anim: self.item_in_use.filter(|_| self.item_in_use_count > 0).map(|s| {
                 let (a, max) = item_use::action(self.catalogue.items[s.item].id);
                 mc_render::avatar::UseAnim { action: a.index(), left: self.item_in_use_count as f32 - pt + 1., max: max as f32 }
@@ -296,6 +380,8 @@ impl App {
             r.sky = sky;
             r.avatar_frame = Some(frame);
         }
+        // `Minecraft.runGameLoop`: `mcSoundHandler.setListener(thePlayer, renderPartialTicks)`.
+        self.update_sound_listener();
     }
     pub(crate) fn debug_info(&self) -> DebugInfo {
         let r = self.renderer.as_ref();
@@ -346,9 +432,10 @@ impl App {
         self.highlight_stack = cur;
     }
 
-    /// Our profile name as the scoreboard knows it.
-    pub(crate) fn my_name(&self) -> String {
-        self.net.as_ref().and_then(|n| self.scoreboard.players.get(&n.uuid)).map_or_else(|| "Player".to_string(), |p| p.name.clone())
+    /// Our profile name as the scoreboard knows it, without the clone the sidebar build used to
+    /// do every frame (`playerInfoMap.get(uuid).getName()`).
+    pub(crate) fn profile_name(&self) -> &str {
+        self.net.as_ref().and_then(|n| self.scoreboard.players.get(&n.uuid)).map_or("Player", |p| p.name.as_str())
     }
 
     /// Builds this frame's GUI batch.
@@ -362,16 +449,29 @@ impl App {
         if hud_visible && !self.ui.settings.hide_gui {
             self.name_tags(sr);
         }
+        // RenderWorldLastEvent: the end of renderWorldPass, still under every overlay.
+        if hud_visible {
+            self.forge_world_last(sr);
+        }
         if hud_visible {
             // GuiNewChat.getChatOpen: `currentScreen instanceof GuiChat`.
             let chat_open = self.screen.as_ref().is_some_and(|s| s.is_chat());
-            let debug = self.debug_info();
-            let me = self.my_name();
-            self.hud.sidebar = self.scoreboard.sidebar(&me);
-            // The list shows while the key is held, unless this is a lone integrated-server
-            // player with no list objective.
-            let lone = self.net.is_none() && self.scoreboard.players.len() <= 1 && self.scoreboard.display[0].is_none();
-            self.hud.tab_list = ((self.bound_down("key.playerlist") || self.force_tab) && !lone).then(|| self.scoreboard.tab_list());
+            // F3's text is only drawn by `hud.render` when `show_debug`, so skip building it
+            // (`DebugInfo::default()` has empty strings and no work).
+            let debug = if self.ui.settings.show_debug { self.debug_info() } else { DebugInfo::default() };
+            // `Hud::render` draws the sidebar and tab list under `!hide_gui || chat_open`; build
+            // them only when that holds (and the list only while its key is held).
+            if text_panels_visible(hud_visible, self.ui.settings.hide_gui, chat_open) {
+                self.hud.sidebar = self.scoreboard.sidebar(self.profile_name());
+                // The list shows while the key is held, unless this is a lone integrated-server
+                // player with no list objective.
+                let lone = self.net.is_none() && self.scoreboard.players.len() <= 1 && self.scoreboard.display[0].is_none();
+                self.hud.tab_list = ((self.bound_down("key.playerlist") || self.force_tab) && !lone).then(|| self.scoreboard.tab_list());
+            } else {
+                self.hud.sidebar = None;
+                self.hud.tab_list = None;
+            }
+            let hud_cancelled = self.forge_hud_pre();
             let (inventory, catalogue) = (self.ui.inventory, &self.catalogue);
             let mut items = |ui: &mut mc_gui::Ui, b: &mut mc_gui::batch::GuiBatch| {
                 for (slot, stack) in inventory.iter().enumerate().take(9) {
@@ -380,7 +480,10 @@ impl App {
                     }
                 }
             };
-            self.hud.render(&mut self.ui, &mut self.batch, sr, &self.player, &debug, chat_open, &mut items);
+            if !hud_cancelled {
+                self.hud.render(&mut self.ui, &mut self.batch, sr, &self.player, &debug, chat_open, &mut items);
+            }
+            self.forge_hud_post(sr);
         }
         #[cfg(feature = "wasm-mods")]
         if hud_visible && !self.ui.settings.hide_gui { self.mod_hud(sr, mx, my); }
@@ -393,6 +496,10 @@ impl App {
             if let Some(hover) = self.chat_piece_under_mouse().and_then(|p| p.hover) {
                 self.chat_hover(&hover, mx, my, sr);
             }
+        }
+        // `Minecraft.runGameLoop`: `guiAchievement.updateAchievementWindow()` after the screen.
+        if self.in_game {
+            self.hud.achievement.draw(&mut self.ui, &mut self.batch, sr);
         }
         sr
     }
@@ -422,89 +529,134 @@ impl App {
         let aspect = size.width as f32 / size.height.max(1) as f32;
         let vp = self.camera.view_proj(aspect, self.ui.settings.render_distance as f32 * 16.);
         let tan = (self.camera.fov_deg.to_radians() / 2.).tan();
-        let mut tags: Vec<(f32, f32, f32, String, bool)> = Vec::new();
-        let me = self.my_name();
-        for r in self.remote.map.values() {
-            // `canRenderName`: a ridden entity has no tag; the local player has none.
-            if self.attached.values().any(|v| *v == r.id) {
-                continue;
-            }
-            let (text, height, sneaking, faint) = match r.kind {
-                entities::Kind::Player => {
-                    if r.name.is_empty() || r.invisible() {
+        let (w_f, h_f) = (sr.width_f as f32, sr.height_f as f32);
+        let camera = self.camera.pos;
+        let pointed = self.pointed_entity;
+        // `entity.riddenByEntity == null`: one set instead of scanning `attached` per entity.
+        let ridden: HashSet<i32> = self.attached.values().copied().collect();
+        {
+            let scoreboard = &self.scoreboard;
+            let lang = &self.ui.lang;
+            let remote = &self.remote;
+            let me = self.profile_name();
+            TAGS.with(|scratch| {
+                let (tags, names) = &mut *scratch.borrow_mut();
+                tags.clear();
+                names.clear();
+                let mut project = |rel: Vec3, label: TagText<'_>, faint: bool| {
+                    let clip = vp * rel.extend(1.);
+                    if clip.w <= 0.05 {
+                        return;
+                    }
+                    let (nx, ny) = (clip.x / clip.w, clip.y / clip.w);
+                    let (x, y) = ((nx * 0.5 + 0.5) * w_f, (0.5 - ny * 0.5) * h_f);
+                    // `Render.renderLivingLabel`: drop a label whose box cannot touch the
+                    // viewport before any of its text is built. `bound` only has to be an upper
+                    // bound on the glyph count: one byte is at least one glyph, and one glyph
+                    // advances at most 10 font pixels even in bold.
+                    let scale = 0.026666668 * (h_f / 2.) / (tan * clip.w);
+                    let bound = match &label {
+                        TagText::Team(name) => name.len() + scoreboard.team_of(name).map_or(0, |t| t.prefix.len() + t.suffix.len()),
+                        TagText::Plain(name) => name.len(),
+                    };
+                    let (half_w, half_h) = ((8. * bound as f32 + 1.) * scale + 2., 11. * scale + 2.);
+                    if !label_in_view(x, y, half_w, half_h, w_f, h_f) {
+                        return;
+                    }
+                    let start = names.len();
+                    match label {
+                        TagText::Team(name) => match scoreboard.team_of(name) {
+                            // `ScorePlayerTeam.formatPlayerName`
+                            Some(t) => {
+                                names.push_str(&t.prefix);
+                                names.push_str(name);
+                                names.push_str(&t.suffix);
+                            }
+                            None => names.push_str(name),
+                        },
+                        TagText::Plain(name) => names.push_str(name),
+                    }
+                    tags.push(NameTag { w: clip.w, x, y, text: start..names.len(), faint });
+                };
+                for r in remote.map.values() {
+                    // `canRenderName`: a ridden entity has no tag; the local player has none.
+                    if !ridden.is_empty() && ridden.contains(&r.id) {
                         continue;
                     }
-                    // A team's name tag visibility decides first.
-                    if self.scoreboard.name_tag_visible(&r.name, &me) == Some(false) {
+                    // The renderer's text, decided before any text exists so an off-screen or
+                    // out-of-range entity costs no formatting at all.
+                    let (height, sneaking, faint, name) = match r.kind {
+                        entities::Kind::Player => {
+                            if r.name.is_empty() || r.invisible() {
+                                continue;
+                            }
+                            // A team's name tag visibility decides first.
+                            if scoreboard.name_tag_visible(&r.name, me) == Some(false) {
+                                continue;
+                            }
+                            (1.8, r.sneaking, r.sneaking, TagText::Team(r.name.as_str()))
+                        }
+                        // ArmorStandRenderer.canRenderName: `getAlwaysRenderNameTag()` (byte 3), even
+                        // when the stand itself is invisible. Hypixel's holograms rely on this.
+                        entities::Kind::Object(78) => {
+                            if !r.name_visible() {
+                                continue;
+                            }
+                            let name = r.custom_name().map_or_else(|| lang_name(lang, "entity.ArmorStand.name"), |n| n);
+                            (r.height as f32, false, false, TagText::Plain(name))
+                        }
+                        entities::Kind::Mob(kind) => {
+                            // RenderLiving.canRenderName: the always-render flag, or a custom name on
+                            // the entity the crosshair points at.
+                            if r.invisible() || !(r.name_visible() || (r.custom_name().is_some() && pointed == Some(r.id))) {
+                                continue;
+                            }
+                            let name = r.custom_name().map_or_else(|| lang_name(lang, mob_lang_key(kind)), |n| n);
+                            (r.height as f32, false, false, TagText::Plain(name))
+                        }
+                        _ => continue,
+                    };
+                    let p = r.interpolated(pt);
+                    // `RendererLivingEntity.renderName`: y + height + 0.5, lowered by height/2 for a
+                    // child; 64 blocks (32 when sneaking).
+                    let child = r.is_child();
+                    let y = p.y as f32 + height + 0.5 - if child { height / 2. } else { 0. };
+                    let base = Vec3::new(p.x as f32, y, p.z as f32) - camera;
+                    let d2 = base.length_squared();
+                    let max = if sneaking { 32. } else { 64. };
+                    if d2.sqrt() >= max {
                         continue;
                     }
-                    (self.scoreboard.format_name(&r.name), 1.8, r.sneaking, r.sneaking)
-                }
-                // ArmorStandRenderer.canRenderName: `getAlwaysRenderNameTag()` (byte 3), even
-                // when the stand itself is invisible. Hypixel's holograms rely on this.
-                entities::Kind::Object(78) => {
-                    if !r.name_visible() {
+                    if r.kind == entities::Kind::Player && !r.sneaking && d2 < 100. {
+                        // RenderPlayer.renderOffsetLivingLabel: the below-name objective within 10
+                        // blocks, the name raised by FONT_HEIGHT * 1.15 * 0.026666668 above it.
+                        let mut rel = base;
+                        if let Some(s) = scoreboard.below_name(&r.name) {
+                            project(rel, TagText::Plain(s.as_str()), false);
+                            rel.y += 9. * 1.15 * 0.026666668;
+                        }
+                        project(rel, name, faint);
                         continue;
                     }
-                    let name = r.custom_name().map(str::to_string).unwrap_or_else(|| self.ui.lang.get("entity.ArmorStand.name"));
-                    (name, r.height as f32, false, false)
+                    project(base, name, faint);
                 }
-                entities::Kind::Mob(kind) => {
-                    // RenderLiving.canRenderName: the always-render flag, or a custom name on
-                    // the entity the crosshair points at.
-                    let pointed = self.pointed_entity == Some(r.id);
-                    if r.invisible() || !(r.name_visible() || (r.custom_name().is_some() && pointed)) {
-                        continue;
-                    }
-                    let name = r.custom_name().map(str::to_string).unwrap_or_else(|| self.ui.lang.get(mob_lang_key(kind)));
-                    (name, r.height as f32, false, false)
-                }
-                _ => continue,
-            };
-            let p = r.interpolated(pt);
-            // `RendererLivingEntity.renderName`: y + height + 0.5, lowered by height/2 for a
-            // child; 64 blocks (32 when sneaking).
-            let child = r.is_child();
-            let y = p.y as f32 + height + 0.5 - if child { height / 2. } else { 0. };
-            let base = Vec3::new(p.x as f32, y, p.z as f32) - self.camera.pos;
-            let max = if sneaking { 32. } else { 64. };
-            if base.length() >= max {
-                continue;
-            }
-            let project = |rel: Vec3, text: String, faint: bool, tags: &mut Vec<(f32, f32, f32, String, bool)>| {
-                let clip = vp * rel.extend(1.);
-                if clip.w <= 0.05 {
-                    return;
-                }
-                let (nx, ny) = (clip.x / clip.w, clip.y / clip.w);
-                let x = (nx * 0.5 + 0.5) * sr.width_f as f32;
-                let y = (0.5 - ny * 0.5) * sr.height_f as f32;
-                tags.push((clip.w, x, y, text, faint));
-            };
-            if r.kind == entities::Kind::Player && !r.sneaking && base.length_squared() < 100. {
-                // RenderPlayer.renderOffsetLivingLabel: the below-name objective within 10
-                // blocks, the name raised by FONT_HEIGHT * 1.15 * 0.026666668 above it.
-                let mut rel = base;
-                if let Some(s) = self.scoreboard.below_name(&r.name) {
-                    project(rel, s, false, &mut tags);
-                    rel.y += 9. * 1.15 * 0.026666668;
-                }
-                project(rel, text, faint, &mut tags);
-                continue;
-            }
-            project(base, text, faint, &mut tags);
+                // Far tags first so near ones draw on top.
+                tags.sort_by(|a, b| b.w.total_cmp(&a.w));
+            });
         }
-        // Far tags first so near ones draw on top.
-        tags.sort_by(|a, b| b.0.total_cmp(&a.0));
-        for (w, x, y, name, sneaking) in tags {
-            let scale = 0.026666668 * (sr.height_f as f32 / 2.) / (tan * w);
-            self.batch.transform = Some((scale, [x, y]));
-            let half = self.ui.font.width(&name) / 2;
-            self.batch.rect(-half - 1, -1, half + 1, 8, 0x40000000);
-            let color = if sneaking { 0x20FFFFFF } else { 0xFFFFFFFF };
-            self.ui.font.draw(&mut self.batch, &name, -half as f32, 0., color);
-            self.batch.transform = None;
-        }
+        TAGS.with(|scratch| {
+            let (tags, names) = &mut *scratch.borrow_mut();
+            for tag in tags.iter() {
+                let name = &names[tag.text.clone()];
+                let scale = 0.026666668 * (h_f / 2.) / (tan * tag.w);
+                self.batch.transform = Some((scale, [tag.x, tag.y]));
+                let half = self.ui.font.width(name) / 2;
+                self.batch.rect(-half - 1, -1, half + 1, 8, 0x40000000);
+                let color = if tag.faint { 0x20FFFFFF } else { 0xFFFFFFFF };
+                self.ui.font.draw(&mut self.batch, name, -half as f32, 0., color);
+                self.batch.transform = None;
+            }
+        });
     }
 
     pub(crate) fn draw_frame(&mut self) {
@@ -523,6 +675,46 @@ impl App {
             }
             Err(e) => eprintln!("render error: {e}"),
         }
+        crate::bench::record(crate::bench::Phase::Acquire, r.frame_timing.acquire);
+        crate::bench::record(crate::bench::Phase::Submit, r.frame_timing.submit);
+        crate::bench::record(crate::bench::Phase::Present, r.frame_timing.present);
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `I18n.format(key)`: the key itself when the table has no entry.
+    #[test]
+    fn localized_name_matches_i18n_format() {
+        let lang = mc_gui::lang::Lang::default();
+        let key = "entity.ArmorStand.name";
+        assert_eq!(lang_name(&lang, key), key);
+        assert_eq!(lang_name(&lang, key), lang.get(key));
+    }
+
+    /// F1 hides the sidebar and tab list; an open chat screen draws them again (`Hud::render`'s
+    /// `!hide_gui || chat_open`).
+    #[test]
+    fn text_panels_only_build_while_drawn() {
+        assert!(text_panels_visible(true, false, false), "normal HUD");
+        assert!(text_panels_visible(true, true, true), "GuiChat keeps the panels");
+        assert!(!text_panels_visible(true, true, false), "F1 with no chat open");
+        assert!(!text_panels_visible(false, false, false), "no in-game HUD");
+    }
+
+    /// A name tag is only dropped when its whole box is outside the viewport (`renderLivingLabel`
+    /// draws nothing there), which is what lets `name_tags` skip building its text.
+    #[test]
+    fn labels_fully_outside_the_viewport_are_culled() {
+        assert!(label_in_view(640., 360., 10., 10., 1280., 720.));
+        assert!(label_in_view(-5., 360., 10., 10., 1280., 720.), "half over the left edge");
+        assert!(label_in_view(640., 725., 10., 10., 1280., 720.), "half below the bottom edge");
+        assert!(!label_in_view(-11., 360., 10., 10., 1280., 720.));
+        assert!(!label_in_view(1291., 360., 10., 10., 1280., 720.));
+        assert!(!label_in_view(640., 731., 10., 10., 1280., 720.));
+        assert!(!label_in_view(640., -11., 10., 10., 1280., 720.));
+    }
 }

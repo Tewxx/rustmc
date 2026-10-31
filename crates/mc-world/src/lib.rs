@@ -9,6 +9,7 @@ pub mod region;
 use chunk::Chunk;
 use mc_core::{BlockPos, FxHashMap, FxHashSet};
 use mc_data::{BlockAccess, StateId};
+use std::collections::HashMap;
 
 pub struct World {
     pub chunks: FxHashMap<(i32, i32), Chunk>,
@@ -54,18 +55,63 @@ pub fn is_valid(pos: BlockPos) -> bool {
     pos.x >= -30_000_000 && pos.z >= -30_000_000 && pos.x < 30_000_000 && pos.z < 30_000_000 && pos.y >= 0 && pos.y < 256
 }
 
+/// Column slice of a [`World::mesh_snapshot`]: the shared section buffers plus the column
+/// metadata the mesher can read. Same contents as [`Chunk::mesh_snapshot`], built in one pass so
+/// the arrays that do not change are not first initialised by `Chunk::new` and then overwritten.
+fn mesh_column(chunk: &Chunk, sy: i32) -> Chunk {
+    let mut sections: [Option<chunk::Section>; 16] = Default::default();
+    for y in (sy - 1).max(0)..=(sy + 1).min(15) {
+        sections[y as usize] = chunk.sections[y as usize].clone();
+    }
+    let min_y = (sy - 1).max(0) * 16;
+    let max_y = ((sy + 2).min(16) * 16) - 1;
+    let tile_entities = if chunk.tile_entities.is_empty() {
+        HashMap::new()
+    } else {
+        chunk.tile_entities.iter().filter(|(p, _)| (min_y..=max_y).contains(&p.y))
+            .map(|(p, tag)| (*p, tag.clone())).collect()
+    };
+    Chunk {
+        x: chunk.x,
+        z: chunk.z,
+        sections,
+        biomes: chunk.biomes,
+        tile_entities,
+        height_map: chunk.height_map,
+        // `Chunk::new` values for the fields the mesher never reads.
+        precipitation_height_map: [-999; 256],
+        update_skylight_columns: [false; 256],
+        is_gap_lighting_updated: false,
+        height_map_minimum: chunk.height_map_minimum,
+        terrain_populated: chunk.terrain_populated,
+        light_populated: chunk.light_populated,
+        ticked: chunk.ticked,
+        modified: false,
+        inhabited_time: 0,
+        queued_light_checks: 4096,
+    }
+}
+
 impl World {
     /// An immutable 3×3-column, three-section neighborhood for one mesh job.
+    ///
+    /// A section mesh reads at most one block outside its 16³ section (`Block.getActualState`,
+    /// face culling and AO all reach ±1), so each column only needs the section and its two
+    /// vertical neighbours. Block and light buffers are copy-on-write `Arc`s
+    /// ([`chunk::SectionData`]), so the 27 section slots are shared with a few refcount bumps
+    /// instead of 16 KiB array copies; only the column metadata the mesher can observe (biomes
+    /// for tints, the height map for sky light in absent sections, tile entities for flower
+    /// pots/pistons) is copied.
     pub fn mesh_snapshot(&self, cx: i32, sy: i32, cz: i32) -> Self {
-        let mut out = Self { chunks: FxHashMap::default(), has_sky: self.has_sky, sea_level: self.sea_level,
-            skylight_subtracted: self.skylight_subtracted, dirty: FxHashSet::default(), track_dirty: false, light_queue: Vec::new() };
+        let mut chunks = FxHashMap::with_capacity_and_hasher(9, Default::default());
         for dx in -1i32..=1 {
             for dz in -1i32..=1 {
                 let key = (cx.wrapping_add(dx), cz.wrapping_add(dz));
-                if let Some(chunk) = self.chunks.get(&key) { out.chunks.insert(key, chunk.mesh_snapshot(sy)); }
+                if let Some(chunk) = self.chunks.get(&key) { chunks.insert(key, mesh_column(chunk, sy)); }
             }
         }
-        out
+        Self { chunks, has_sky: self.has_sky, sea_level: self.sea_level,
+            skylight_subtracted: self.skylight_subtracted, dirty: FxHashSet::default(), track_dirty: false, light_queue: Vec::new() }
     }
 
     /// Inserts a chunk as-is (light and heightmap are taken from the chunk).
@@ -73,11 +119,11 @@ impl World {
         let (x, z) = (c.x, c.z);
         self.chunks.insert((x, z), c);
         if self.track_dirty {
-            for sy in 0..16 {
-                for (dx, dz) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
-                    self.dirty.insert((x.wrapping_add(dx), sy, z.wrapping_add(dz)));
-                }
-            }
+            // `NetHandlerPlayClient.handleChunkData` / `handleMapChunkBulk`: the whole column is
+            // marked, and `RenderGlobal.markBlockRangeForRenderUpdate` expands it by one block, so
+            // the adjacent sections that read across the chunk border are dirtied too.
+            let (bx, bz) = (x.wrapping_mul(16), z.wrapping_mul(16));
+            self.mark_block_range_for_render_update(bx, 0, bz, bx.wrapping_add(15), 256, bz.wrapping_add(15));
         }
     }
 
@@ -229,8 +275,12 @@ impl World {
         let (x, y, z) = ((pos.x & 15) as usize, pos.y, (pos.z & 15) as usize);
         if c.sections[(y >> 4) as usize].is_none() {
             c.sections[(y >> 4) as usize] = Some(chunk::Section::empty());
+            // `Chunk.setLightFor` always calls `generateSkylightMap`; `generateHeightMap` is its
+            // no-sky half (`WorldProvider.getHasNoSky`).
             if self.has_sky {
                 c.generate_skylight_map();
+            } else {
+                c.generate_height_map();
             }
         }
         c.modified = true;
@@ -328,10 +378,27 @@ impl World {
     }
 
     /// `Block.getMixedBrightnessForBlock` through `ChunkCache.getCombinedLight`:
-    /// `sky << 20 | max(block, emission) << 4`.
+    /// `sky << 20 | max(block, emission) << 4`. A slab whose combined light is 0 borrows the
+    /// light of the block below.
     pub fn mixed_brightness(&self, x: i32, y: i32, z: i32) -> i32 {
-        let emission = self.state_at(x, y, z).block().light_value as i32;
-        self.combined_light(x, y, z, emission)
+        let state = self.state_at(x, y, z);
+        let emission = state.block().light_value as i32;
+        let i = self.combined_light(x, y, z, emission);
+        if i == 0 && state.block().is_a("BlockSlab") {
+            let below = self.state_at(x, y - 1, z);
+            return self.combined_light(x, y - 1, z, below.block().light_value as i32);
+        }
+        i
+    }
+
+    /// `Entity.getBrightnessForRender`: `World.getCombinedLight(pos, 0)` at the entity's eye
+    /// position, or the unlit value when that block position is not loaded (the `isBlockLoaded`
+    /// guard). Returns the `(sky, block)` light levels the lightmap is indexed by.
+    pub fn brightness_for_render(&self, pos: BlockPos) -> (i32, i32) {
+        if !self.is_block_loaded(pos) {
+            return (0, 0);
+        }
+        (self.light_from_neighbors_for(true, pos), self.light_from_neighbors_for(false, pos))
     }
 
     /// `ChunkCache.getCombinedLight`
@@ -349,6 +416,9 @@ impl World {
         if !self.track_dirty {
             return;
         }
+        // `ViewFrustum.markBlocksForUpdate` walks its ring of render chunks; sections here are
+        // keyed by absolute coordinates, so intersect the range instead. Y is clamped to the 16
+        // section bands: there is no geometry below or above the world to remesh.
         let (sx1, sy1, sz1) = (x1.div_euclid(16), y1.div_euclid(16), z1.div_euclid(16));
         let (sx2, sy2, sz2) = (x2.div_euclid(16), y2.div_euclid(16), z2.div_euclid(16));
         for sx in sx1..=sx2 {
@@ -360,12 +430,12 @@ impl World {
         }
     }
 
-    /// `markBlockForUpdate`
+    /// `RenderGlobal.markBlockForUpdate` / `notifyLightSet`
     pub fn mark_block_for_update(&mut self, pos: BlockPos) {
-        // AO queries two blocks away along a face, so changes near a section boundary
-        // must invalidate both sections even when they are not immediately adjacent.
-        self.mark_blocks_for_update(pos.x.saturating_sub(2), pos.y.saturating_sub(2), pos.z.saturating_sub(2),
-            pos.x.saturating_add(2), pos.y.saturating_add(2), pos.z.saturating_add(2));
+        // Vanilla expands one block: the section containing the block plus any section sharing a
+        // face or corner with that ±1 range, whose face culling / AO reads can reach the block.
+        self.mark_blocks_for_update(pos.x.saturating_sub(1), pos.y.saturating_sub(1), pos.z.saturating_sub(1),
+            pos.x.saturating_add(1), pos.y.saturating_add(1), pos.z.saturating_add(1));
     }
 
     /// `notifyLightSet`
@@ -376,10 +446,10 @@ impl World {
         }
     }
 
-    /// `markBlockRangeForRenderUpdate`
+    /// `RenderGlobal.markBlockRangeForRenderUpdate`: the range is expanded by one block here.
     pub fn mark_block_range_for_render_update(&mut self, x1: i32, y1: i32, z1: i32, x2: i32, y2: i32, z2: i32) {
-        self.mark_blocks_for_update(x1.saturating_sub(2), y1.saturating_sub(2), z1.saturating_sub(2),
-            x2.saturating_add(2), y2.saturating_add(2), z2.saturating_add(2));
+        self.mark_blocks_for_update(x1.saturating_sub(1), y1.saturating_sub(1), z1.saturating_sub(1),
+            x2.saturating_add(1), y2.saturating_add(1), z2.saturating_add(1));
     }
 
     pub fn take_dirty(&mut self) -> FxHashSet<(i32, i32, i32)> {
@@ -698,7 +768,11 @@ impl World {
         let mut flag = false;
         let mut flag1 = false;
         let mut j = top + 16 - 1;
+        // `Chunk.func_150811_f` keeps the mutable position on the last y it visited, not the
+        // loop's exit value, and the second scan starts there.
+        let mut last = 0;
         while j > self.sea_level || j > 0 && !flag1 {
+            last = j;
             let k = self.chunks[&(cx, cz)].opacity(x, j, z);
             if k == 255 && j < self.sea_level {
                 flag1 = true;
@@ -710,7 +784,7 @@ impl World {
             }
             j -= 1;
         }
-        let mut l = j;
+        let mut l = last;
         while l > 0 {
             if self.chunks[&(cx, cz)].state(x, l, z).block().light_value > 0 {
                 self.check_light(BlockPos::new(wx, l, wz));
@@ -949,14 +1023,102 @@ pub fn moving_piston_of(tile: &mc_core::nbt::Compound) -> Option<mc_data::geomet
 mod tests {
     use super::*;
 
+    fn dirty_sections(w: &World) -> Vec<(i32, i32, i32)> {
+        let mut v: Vec<_> = w.dirty.iter().copied().collect();
+        v.sort_unstable();
+        v
+    }
+
+    /// `RenderGlobal.markBlockForUpdate`: a block more than one block away from every section
+    /// face dirties only its own section.
     #[test]
-    fn invalidation_covers_ao_and_diagonal_neighbors() {
-        let mut w = World::default(); w.track_dirty = true;
-        w.mark_block_for_update(BlockPos::new(17, 32, 17));
-        assert!(w.dirty.contains(&(0, 2, 1)));
-        w.dirty.clear();
+    fn block_in_section_middle_marks_only_its_section() {
+        let mut w = World::default();
+        w.track_dirty = true;
+        w.mark_block_for_update(BlockPos::new(8, 40, 8));
+        assert_eq!(dirty_sections(&w), vec![(0, 2, 0)]);
+    }
+
+    /// A block on a section face dirties the section on each side of the face: the neighbour
+    /// meshes the shared plane and reads this block for face culling and AO.
+    #[test]
+    fn block_on_section_face_marks_both_sections() {
+        for x in [15, 16] {
+            let mut w = World::default();
+            w.track_dirty = true;
+            w.mark_block_for_update(BlockPos::new(x, 40, 8));
+            assert_eq!(dirty_sections(&w), vec![(0, 2, 0), (1, 2, 0)], "x = {x}");
+        }
+    }
+
+    /// A block on a section corner reaches the eight sections around the shared corner.
+    #[test]
+    fn block_on_section_corner_marks_eight_sections() {
+        let mut w = World::default();
+        w.track_dirty = true;
+        w.mark_block_for_update(BlockPos::new(16, 32, 16));
+        let mut expected = Vec::new();
+        for sx in 0..=1 {
+            for sy in 1..=2 {
+                for sz in 0..=1 {
+                    expected.push((sx, sy, sz));
+                }
+            }
+        }
+        assert_eq!(dirty_sections(&w), expected);
+    }
+
+    /// `RenderGlobal.markBlockRangeForRenderUpdate` and `notifyLightSet` expand by one block too,
+    /// and repeated marks for the same sections coalesce in the dirty set.
+    #[test]
+    fn range_and_light_marks_expand_and_dedupe() {
+        let mut w = World::default();
+        w.track_dirty = true;
+        w.mark_block_range_for_render_update(16, 32, 16, 16, 32, 16);
+        assert_eq!(w.dirty.len(), 8);
+        let once = w.dirty.clone();
+        w.mark_block_range_for_render_update(16, 32, 16, 16, 32, 16);
+        w.mark_block_for_update(BlockPos::new(16, 32, 16));
+        w.notify_light_set(BlockPos::new(16, 32, 16));
+        assert_eq!(w.dirty, once);
+    }
+
+    /// A block swap with unchanged light properties (stone → dirt) leaves the light engine idle,
+    /// so the edit dirties only the section the block is in.
+    #[test]
+    fn set_block_state_in_section_middle_dirties_one_section() {
+        let mut w = World::default();
+        let mut c = Chunk::new(0, 0);
+        c.set(8, 40, 8, 1, 0);
+        c.generate_height_map();
+        w.insert(c);
+        w.track_dirty = true;
+        w.take_dirty();
+        let dirt = mc_data::Block::by_id(3).unwrap().state_from_meta(0).unwrap();
+        assert!(w.set_block_state(BlockPos::new(8, 40, 8), dirt).is_some());
+        assert_eq!(dirty_sections(&w), vec![(0, 2, 0)]);
+    }
+
+    /// `NetHandlerPlayClient.handleChunkData`: the whole column is marked, expanded by one block,
+    /// which reaches the bordering slice of every horizontal neighbour.
+    #[test]
+    fn chunk_insert_marks_the_expanded_column_range() {
+        let mut w = World::default();
+        w.track_dirty = true;
         w.insert(Chunk::new(0, 0));
-        assert!(w.dirty.contains(&(1, 2, 1)));
+        assert_eq!(w.dirty.len(), 3 * 3 * 16);
+        for sy in 0..16 {
+            for (sx, sz) in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 0), (0, 1), (1, -1), (1, 0), (1, 1)] {
+                assert!(w.dirty.contains(&(sx, sy, sz)));
+            }
+        }
+        assert!(!w.dirty.contains(&(2, 0, 0)));
+
+        let mut w = World::default();
+        w.track_dirty = true;
+        w.insert(Chunk::new(-1, -1));
+        assert!(w.dirty.contains(&(-2, 0, -2)) && w.dirty.contains(&(0, 15, 0)));
+        assert!(!w.dirty.contains(&(-3, 0, -3)));
     }
 
     #[test]
@@ -967,5 +1129,194 @@ mod tests {
         w.insert(c);
         assert_eq!(w.get(-1, 64, -1), (1, 0));
         assert_eq!(w.get(-17, 64, -1), (0, 0));
+    }
+
+    fn snapshot_world() -> World {
+        let mut w = World::default();
+        let mut c = Chunk::new(0, 0);
+        c.set(8, 40, 8, 1, 0);
+        c.generate_height_map();
+        w.insert(c);
+        let mut east = Chunk::new(1, 0);
+        east.set(0, 40, 8, 4, 0); // x = 16, the face shared with chunk (0, 0)
+        east.set(1, 41, 9, 5, 2); // x = 17, an AO diagonal for a block at x = 16
+        east.sections[2].as_mut().unwrap().sky_light[chunk::section_index(1, 9, 9)] = 7;
+        east.sections[2].as_mut().unwrap().block_light[chunk::section_index(1, 9, 9)] = 3;
+        east.generate_height_map();
+        w.insert(east);
+        w
+    }
+
+    /// The mesher reads the centre section plus one block on each side, so a block in the
+    /// horizontal neighbour must be visible through the snapshot with the same state and light.
+    #[test]
+    fn mesh_snapshot_sees_neighbour_sections() {
+        let w = snapshot_world();
+        let snap = w.mesh_snapshot(0, 2, 0);
+        assert_eq!(snap.chunks.len(), 2);
+        for pos in [BlockPos::new(16, 40, 8), BlockPos::new(17, 41, 9), BlockPos::new(8, 40, 8)] {
+            assert_eq!(snap.state_pos(pos), w.state_pos(pos), "{pos:?}");
+            assert_eq!(snap.get(pos.x, pos.y, pos.z), w.get(pos.x, pos.y, pos.z), "{pos:?}");
+            assert_eq!(snap.light(pos.x, pos.y, pos.z), w.light(pos.x, pos.y, pos.z), "{pos:?}");
+        }
+        assert_ne!(snap.state_pos(BlockPos::new(16, 40, 8)), StateId::AIR);
+        assert_eq!(snap.light(17, 41, 9), (7, 3));
+    }
+
+    /// Section buffers are copy-on-write `Arc`s: a snapshot is refcount bumps, not a copy, and a
+    /// later world edit only detaches (copy-on-write) the buffer that changed.
+    #[test]
+    fn mesh_snapshot_shares_section_buffers() {
+        let mut w = snapshot_world();
+        let snap = w.mesh_snapshot(0, 2, 0);
+        let section = |w: &World, cx, sy| w.chunks[&(cx, 0)].sections[sy as usize].as_ref().unwrap().clone();
+        let world_section = section(&w, 1, 2);
+        let snap_section = section(&snap, 1, 2);
+        assert!(std::ptr::eq(&*world_section.blocks, &*snap_section.blocks));
+        assert!(std::ptr::eq(&*world_section.sky_light, &*snap_section.sky_light));
+        assert!(std::ptr::eq(&*world_section.block_light, &*snap_section.block_light));
+
+        // Only the three sections in the vertical window can be shared; the rest cannot be read.
+        assert!(snap.chunks[&(0, 0)].sections[2].is_some());
+        assert!(snap.chunks[&(0, 0)].sections[0].is_none());
+        assert!(snap.chunks[&(0, 0)].sections[1].is_none());
+        assert!(snap.chunks[&(0, 0)].sections[3].is_none());
+        assert!(snap.chunks[&(0, 0)].sections[5].is_none());
+
+        // A later edit detaches the world's buffer; the snapshot keeps the old contents.
+        let before = snap.state_pos(BlockPos::new(16, 40, 8));
+        w.chunks.get_mut(&(1, 0)).unwrap().set(0, 40, 8, 2, 0);
+        assert_eq!(snap.state_pos(BlockPos::new(16, 40, 8)), before);
+        assert_ne!(w.state_pos(BlockPos::new(16, 40, 8)), before);
+    }
+
+    /// `ChunkCache`/`World` defaults for positions the snapshot does not hold: unloaded columns
+    /// read as air with sky light 15 / block light 0, and y outside 0..256 is the same.
+    #[test]
+    fn mesh_snapshot_out_of_range_reads_match_the_world() {
+        let w = snapshot_world();
+        let snap = w.mesh_snapshot(0, 2, 0);
+        for pos in [
+            BlockPos::new(1000, 64, 1000), // unloaded column
+            BlockPos::new(-16, 64, 0), // unloaded column west of the loaded one
+            BlockPos::new(8, -1, 8), // below the world
+            BlockPos::new(8, 256, 8), // above the world
+            BlockPos::new(8, 100, 8), // loaded column, section outside the snapshot window
+        ] {
+            assert_eq!(snap.state_pos(pos), w.state_pos(pos), "{pos:?}");
+            assert_eq!(snap.get(pos.x, pos.y, pos.z), w.get(pos.x, pos.y, pos.z), "{pos:?}");
+            assert_eq!(snap.light(pos.x, pos.y, pos.z), w.light(pos.x, pos.y, pos.z), "{pos:?}");
+            assert_eq!(snap.light_value(pos, false), w.light_value(pos, false), "{pos:?}");
+            assert_eq!(snap.biome_id(pos), w.biome_id(pos), "{pos:?}");
+        }
+        assert_eq!(snap.state_pos(BlockPos::new(1000, 64, 1000)), StateId::AIR);
+        assert_eq!(snap.light(1000, 64, 1000), (15, 0));
+        assert_eq!(snap.state_pos(BlockPos::new(8, -1, 8)), StateId::AIR);
+        assert_eq!(snap.light_value(BlockPos::new(8, -1, 8), false), 0);
+    }
+
+    /// Tile entities are copied only for the sections the mesh can see (flower pots, comparators
+    /// and pistons are read through `BlockAccess` at the block being meshed).
+    #[test]
+    fn mesh_snapshot_keeps_nearby_tile_entities_only() {
+        let mut w = World::default();
+        let mut c = Chunk::new(0, 0);
+        c.tile_entities.insert(BlockPos::new(1, 40, 1), [("id".into(), mc_core::nbt::Tag::String("FlowerPot".into()))].into());
+        c.tile_entities.insert(BlockPos::new(2, 100, 2), [("id".into(), mc_core::nbt::Tag::String("FlowerPot".into()))].into());
+        w.insert(c);
+        let snap = w.mesh_snapshot(0, 2, 0);
+        assert_eq!(snap.chunks[&(0, 0)].tile_entities.len(), 1);
+        assert!(snap.tile_entity(BlockPos::new(1, 40, 1)).is_some());
+        assert!(snap.tile_entity(BlockPos::new(2, 100, 2)).is_none());
+        assert!(w.tile_entity(BlockPos::new(2, 100, 2)).is_some());
+    }
+
+    /// The one-pass column copy must be indistinguishable from `Chunk::mesh_snapshot` in every
+    /// field the mesher (or the light fallback) can read.
+    #[test]
+    fn mesh_snapshot_matches_the_chunk_level_constructor() {
+        let w = snapshot_world();
+        let a = w.mesh_snapshot(0, 2, 0);
+        let b = previous_snapshot(&w, 0, 2, 0);
+        assert_eq!(a.has_sky, b.has_sky);
+        assert_eq!(a.sea_level, b.sea_level);
+        assert_eq!(a.skylight_subtracted, b.skylight_subtracted);
+        assert_eq!(a.track_dirty, b.track_dirty);
+        assert!(a.dirty.is_empty() && b.dirty.is_empty());
+        assert_eq!(a.chunks.len(), b.chunks.len());
+        for (key, ca) in &a.chunks {
+            let cb = &b.chunks[key];
+            assert_eq!((ca.x, ca.z), (cb.x, cb.z));
+            for y in 0..16 {
+                assert_eq!(ca.sections[y].is_some(), cb.sections[y].is_some(), "{key:?} y = {y}");
+                if let (Some(sa), Some(sb)) = (&ca.sections[y], &cb.sections[y]) {
+                    assert!(std::ptr::eq(&*sa.blocks, &*sb.blocks));
+                    assert_eq!(&*sa.sky_light, &*sb.sky_light);
+                    assert_eq!(&*sa.block_light, &*sb.block_light);
+                    assert_eq!((sa.block_count, sa.tick_count), (sb.block_count, sb.tick_count));
+                }
+            }
+            assert_eq!(ca.biomes, cb.biomes);
+            assert_eq!(ca.height_map, cb.height_map);
+            assert_eq!(ca.precipitation_height_map, cb.precipitation_height_map);
+            assert_eq!(ca.update_skylight_columns, cb.update_skylight_columns);
+            assert_eq!(ca.tile_entities, cb.tile_entities);
+            assert_eq!(ca.height_map_minimum, cb.height_map_minimum);
+            assert_eq!(ca.terrain_populated, cb.terrain_populated);
+            assert_eq!(ca.light_populated, cb.light_populated);
+            assert_eq!(ca.ticked, cb.ticked);
+            assert_eq!(ca.modified, cb.modified);
+            assert_eq!(ca.inhabited_time, cb.inhabited_time);
+            assert_eq!(ca.queued_light_checks, cb.queued_light_checks);
+        }
+    }
+
+    /// The pre-optimisation snapshot (`Chunk::new` + overwrite), kept for the benchmark's before
+    /// number.
+    fn previous_snapshot(w: &World, cx: i32, sy: i32, cz: i32) -> World {
+        let mut out = World { chunks: FxHashMap::default(), has_sky: w.has_sky, sea_level: w.sea_level,
+            skylight_subtracted: w.skylight_subtracted, dirty: FxHashSet::default(), track_dirty: false, light_queue: Vec::new() };
+        for dx in -1i32..=1 {
+            for dz in -1i32..=1 {
+                let key = (cx.wrapping_add(dx), cz.wrapping_add(dz));
+                if let Some(chunk) = w.chunks.get(&key) { out.chunks.insert(key, chunk.mesh_snapshot(sy)); }
+            }
+        }
+        out
+    }
+
+    /// Run with `cargo test --release -p mc-world mesh_snapshot_bench -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "manual CPU benchmark"]
+    fn mesh_snapshot_bench() {
+        let mut w = World::default();
+        for cx in -8..=8 {
+            for cz in -8..=8 {
+                let mut c = Chunk::new(cx, cz);
+                for x in 0..16 {
+                    for z in 0..16 {
+                        for y in 31..34 { c.set(x, y, z, 1, 0); }
+                    }
+                }
+                c.biomes.fill(((cx + cz) & 3) as u8 + 1);
+                c.tile_entities.insert(BlockPos::new(cx * 16 + 3, 33, cz * 16 + 3),
+                    [("id".into(), mc_core::nbt::Tag::String("FlowerPot".into()))].into());
+                c.generate_height_map();
+                w.insert(c);
+            }
+        }
+        let mut keys = Vec::new();
+        for cx in -8..=8 { for cz in -8..=8 { for sy in 0..4 { keys.push((cx, sy, cz)); } } }
+        let rounds = 100;
+        let time = |snapshot: &dyn Fn(&World, i32, i32, i32) -> World| {
+            for _ in 0..32 { for &(cx, sy, cz) in &keys { std::hint::black_box(snapshot(&w, cx, sy, cz)); } }
+            let t = std::time::Instant::now();
+            for _ in 0..rounds { for &(cx, sy, cz) in &keys { std::hint::black_box(snapshot(&w, cx, sy, cz)); } }
+            t.elapsed().as_secs_f64() / (rounds * keys.len()) as f64
+        };
+        let previous = time(&previous_snapshot);
+        let current = time(&World::mesh_snapshot);
+        eprintln!("mesh_snapshot: {} columns, previous {:.3} us -> current {:.3} us, {:.1} -> {:.1} us per 16 dispatches",
+            w.chunks.len(), previous * 1e6, current * 1e6, previous * 16. * 1e6, current * 16. * 1e6);
     }
 }

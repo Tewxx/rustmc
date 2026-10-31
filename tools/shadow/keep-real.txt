@@ -6,6 +6,10 @@
 ^net/minecraft/client/gui/(Gui|GuiScreen|GuiButton|GuiTextField|GuiSlot|GuiLabel)(\$[^/]*)?\.class$
 # --- plain data
 ^net/minecraft/util/(Session|ChatAllowedCharacters|StringUtils|ResourceLocation|ChatComponent[A-Za-z]*|ChatStyle|ClickEvent|HoverEvent|IChatComponent)(\$[^/]*)?\.class$
+^net/minecraft/util/(AxisAlignedBB|Vec3|Vec3i|BlockPos|EnumTypeAdapterFactory)(\$[^/]*)?\.class$
+^net/minecraft/entity/DataWatcher(\$[^/]*)?\.class$
+^net/minecraft/network/PacketBuffer\.class$
+^net/minecraft/network/play/client/
 # --- Forge events and the reflection helper (pure Java)
 ^net/minecraftforge/client/event/
 ^net/minecraftforge/event/
@@ -13,3 +17,39 @@
 ^net/minecraftforge/fml/common/event/
 ^net/minecraftforge/fml/common/eventhandler/(Event|Cancelable|ListenerList|EventPriority|SubscribeEvent|IEventListener)(\$[^/]*)?\.class$
 ^net/minecraftforge/fml/relauncher/(ReflectionHelper|Side|SideOnly)(\$[^/]*)?\.class$
+^net/minecraft/event/(ClickEvent|HoverEvent)(\$[^/]*)?\.class$
+^net/minecraft/util/(EnumChatFormatting|EnumFacing|MovingObjectPosition|FoodStats|RegistryNamespaced|RegistrySimple|ObjectIntIdentityMap|IntHashMap|EnumParticleTypes|EnumWorldBlockLayer)(\$[^/]*)?\.class$
+^net/minecraft/nbt/
+^net/minecraft/network/play/server/
+^net/minecraft/network/(handshake|status|login)/
+^net/minecraft/potion/
+^net/minecraft/scoreboard/(Score|ScoreObjective|IScoreObjectiveCriteria|ScoreDummyCriteria)(\$[^/]*)?\.class$
+^net/minecraft/item/(EnumAction|EnumRarity|ItemArmor\$ArmorMaterial|Item\$ToolMaterial)\.class$
+^net/minecraft/entity/player/PlayerCapabilities\.class$
+^net/minecraft/client/multiplayer/(ServerAddress|ServerData)(\$[^/]*)?\.class$
+^net/minecraft/world/(WorldSettings|WorldType)(\$[^/]*)?\.class$
+^net/minecraft/command/[A-Za-z]*Exception\.class$
+# --- Forge config and progress bars: plain Java over files
+^net/minecraftforge/common/config/
+^net/minecraftforge/fml/common/ProgressManager(\$[^/]*)?\.class$
+# --- FML launch data and mod metadata: plain Java, filled by BootTweaker/ModLoader
+^net/minecraftforge/fml/relauncher/FMLInjectionData\.class$
+^net/minecraftforge/fml/common/ModMetadata\.class$
+# --- Block/Item registries: vanilla's own Bootstrap fills them (ModLoader.registries), so Blocks.*/Items.* and
+#     states, properties, materials, tools and creative tabs are the real objects mods compare against
+^net/minecraft/block/
+^net/minecraft/init/(Blocks|Items)\.class$
+^net/minecraft/item/
+^net/minecraft/creativetab/
+^net/minecraft/util/(RegistryNamespacedDefaultedByKey|RegistryDefaulted|IRegistry|IObjectIntIterable|MathHelper|Cartesian|MapPopulator|LongHashMap|JsonUtils|WeightedRandom|WeightedRandomChestContent|EnumWorldBlockLayer|EnumFacing|StatCollector)(\$[^/]*)?\.class$
+^net/minecraftforge/fml/common/registry/(GameData|FMLControlledNamespacedRegistry|PersistentRegistryManager|RegistryDelegate|IncompatibleSubstitutionException|ExistingSubstitutionException|GameRegistry)(\$[^/]*)?\.class$
+^net/minecraftforge/common/property/
+# --- biomes: BiomeGenBase.getBiome over the vanilla list (Live.biome reads the mirrored chunk ids)
+^net/minecraft/world/biome/(BiomeGenBase|BiomeGen[A-Za-z]*)(\$[^/]*)?\.class$
+# --- more pure data/logic: enchantments, attribute modifiers, small caches and names
+^net/minecraft/enchantment/
+^net/minecraft/entity/ai/attributes/
+^net/minecraft/util/IntegerCache\.class$
+^net/minecraft/client/resources/model/ModelResourceLocation\.class$
+^net/minecraft/scoreboard/Team(\$[^/]*)?\.class$
+^net/minecraft/profiler/Profiler(\$[^/]*)?\.class$

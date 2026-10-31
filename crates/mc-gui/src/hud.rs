@@ -1,10 +1,12 @@
 //! `GuiIngame`: crosshair, hotbar, player stats, XP bar, chat and the F3 overlay.
 
+use crate::achievement::AchievementToast;
 use crate::batch::{Blend, GuiBatch};
 use crate::component::{chat_colors, split_text, Component, Piece};
-use crate::font::FONT_HEIGHT;
+use crate::font::{FontRenderer, FONT_HEIGHT};
 use crate::widgets::WIDGETS;
 use crate::{Scaled, Ui};
+use std::sync::Arc;
 
 pub const ICONS: &str = "textures/gui/icons.png";
 
@@ -85,22 +87,36 @@ pub struct DebugInfo {
     pub limit_framerate: i32,
 }
 
+/// Java object identity for a built [`Sidebar`]/[`TabList`]: every build takes a new id, so the
+/// HUD's measurement caches rebuild when the scoreboard hands over a different view (like
+/// `ItemStack::fresh_obj` elsewhere).
+pub fn fresh_layout_id() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// `GuiIngame.renderScoreboard` input: the objective title and (formatted name, points),
-/// lowest score first.
+/// lowest score first. The strings are shared with the scoreboard's own cache, so the copy the
+/// HUD takes every frame is a refcount bump rather than a fresh allocation.
 #[derive(Clone, Debug, Default)]
 pub struct Sidebar {
-    pub title: String,
-    pub lines: Vec<(String, i32)>,
+    pub title: Arc<str>,
+    pub lines: Vec<(Arc<str>, i32)>,
+    /// The [`fresh_layout_id`] of the build that produced this view.
+    pub layout: u64,
 }
 
 #[derive(Clone, Debug)]
 pub struct TabEntry {
-    /// `getPlayerName`: the list display name, else the team-formatted profile name.
-    pub name: String,
+    /// `getPlayerName`: the list display name, else the team-formatted profile name. Spectators
+    /// get vanilla's `EnumChatFormatting.ITALIC` prefix here (`renderPlayerlist` prepends it).
+    pub name: Arc<str>,
     pub ping: i32,
     pub spectator: bool,
     /// The list objective's points (display slot 0), if one is shown.
     pub score: Option<i32>,
+    /// `drawScoreboardValues`' `§e<points>`, formatted once per rebuild.
+    pub score_text: Option<Arc<str>>,
 }
 
 /// `GuiPlayerTabOverlay.renderPlayerlist` input, already in `PlayerComparator` order.
@@ -108,8 +124,87 @@ pub struct TabEntry {
 pub struct TabList {
     pub entries: Vec<TabEntry>,
     pub hearts: bool,
-    pub header: Option<String>,
-    pub footer: Option<String>,
+    pub header: Option<Arc<str>>,
+    pub footer: Option<Arc<str>>,
+    /// The [`fresh_layout_id`] of the build that produced this view.
+    pub layout: u64,
+}
+
+/// `GuiIngame.renderScoreboard`'s measured text: `getStringWidth` of the title and every
+/// `"...: §c<points>"` line. Rebuilt only when the view or the screen width changes.
+#[derive(Default)]
+struct SidebarLayout {
+    /// `(layout id, screen width)` these measurements were taken for.
+    key: Option<(u64, i32)>,
+    /// `i`: the widest title or `"...: §c<points>"` line.
+    width: i32,
+    title_width: i32,
+    /// The `§c<points>` text of every line, with its width.
+    lines: Vec<(String, i32)>,
+}
+
+impl SidebarLayout {
+    fn ensure(&mut self, font: &FontRenderer, s: &Sidebar, screen_width: i32) {
+        let key = (s.layout, screen_width);
+        if self.key == Some(key) {
+            return;
+        }
+        self.key = Some(key);
+        self.title_width = font.width(&s.title);
+        self.width = self.title_width;
+        self.lines.clear();
+        self.lines.reserve(s.lines.len());
+        for (name, points) in &s.lines {
+            let text = format!("\u{a7}c{points}");
+            self.width = self.width.max(font.width(&format!("{name}: {text}")));
+            let w = font.width(&text);
+            self.lines.push((text, w));
+        }
+    }
+}
+
+/// `GuiPlayerTabOverlay.renderPlayerlist`'s measured text: the name/score column widths, the
+/// `§e<points>` widths and the header/footer wrapped to the screen. Rebuilt only when the view
+/// or the screen width changes.
+#[derive(Default)]
+struct TabLayout {
+    key: Option<(u64, i32)>,
+    /// `i` and `j`: the widest `getPlayerName` and `" <points>"` over every entry.
+    name_width: i32,
+    score_width: i32,
+    /// `getStringWidth("§e<points>")` per entry (0 where no score is drawn).
+    score_text_widths: Vec<i32>,
+    /// The wrapped header/footer lines with their widths.
+    header: Option<Vec<(String, i32)>>,
+    footer: Option<Vec<(String, i32)>>,
+}
+
+impl TabLayout {
+    fn ensure(&mut self, font: &FontRenderer, t: &TabList, screen_width: i32) {
+        let key = (t.layout, screen_width);
+        if self.key == Some(key) {
+            return;
+        }
+        self.key = Some(key);
+        self.name_width = 0;
+        self.score_width = 0;
+        self.score_text_widths.clear();
+        self.score_text_widths.reserve(t.entries.len());
+        for e in &t.entries {
+            self.name_width = self.name_width.max(font.width(&e.name));
+            if let (Some(v), false) = (e.score, t.hearts) {
+                self.score_width = self.score_width.max(font.width(&format!(" {v}")));
+            }
+            self.score_text_widths.push(e.score_text.as_deref().map_or(0, |s| font.width(s)));
+        }
+        let wrap = |text: &Option<Arc<str>>| {
+            text.as_ref().map(|s| {
+                font.list_to_width(s, screen_width - 50).into_iter().map(|l| { let w = font.width(&l); (l, w) }).collect()
+            })
+        };
+        self.header = wrap(&t.header);
+        self.footer = wrap(&t.footer);
+    }
 }
 
 /// `titleFadeIn` / `titleDisplayTime` / `titleFadeOut`
@@ -146,6 +241,13 @@ pub struct ChatGui {
 }
 
 impl ChatGui {
+    /// `deleteChatLine`: every drawn and stored line carrying `id`.
+    pub fn delete_line(&mut self, id: i32) {
+        self.chat_lines.retain(|l| l.id != id);
+        self.drawn.retain(|l| l.id != id);
+        self.pending.retain(|l| l.id != id);
+    }
+
     /// `getChatWidth` / `getChatScale` / `getLineCount`
     fn metrics(ui: &Ui, chat_open: bool) -> (i32, f32, i32) {
         let st = &ui.settings;
@@ -262,6 +364,8 @@ impl ChatGui {
 #[derive(Default)]
 pub struct Hud {
     pub chat: ChatGui,
+    /// `Minecraft.guiAchievement`: the achievement toast, drawn even with `hideGUI`.
+    pub achievement: AchievementToast,
     /// Integer client ticks (`updateCounter`).
     pub update_counter: i32,
     /// `GuiIngame.recordPlaying` / `recordPlayingUpFor`: the action bar message.
@@ -283,9 +387,20 @@ pub struct Hud {
     pub sidebar: Option<Sidebar>,
     /// `Some` while the player list key is held (and the list is worth showing).
     pub tab_list: Option<TabList>,
+    /// `GuiIngame.renderScoreboard`'s measured text, kept across frames.
+    sidebar_layout: SidebarLayout,
+    /// `GuiPlayerTabOverlay.renderPlayerlist`'s measured text, kept across frames.
+    tab_layout: TabLayout,
 }
 
 impl Hud {
+    /// `Minecraft.refreshResources`: a re-read font measures differently, so drop the cached
+    /// layouts. `client_packs::reload_resources` calls this after `Ui::reload`.
+    pub fn invalidate_text_layout(&mut self) {
+        self.sidebar_layout = SidebarLayout::default();
+        self.tab_layout = TabLayout::default();
+    }
+
     /// `GuiNewChat.printChatMessage`: newest first.
     pub fn add_chat(&mut self, c: impl Into<Component>) {
         self.add_chat_with_id(c, 0);
@@ -400,14 +515,14 @@ impl Hud {
         if !ui.settings.hide_gui || chat_open {
             let pt = ui.ticks - self.update_counter as f32;
             self.titles(ui, b, sr, pt);
-            if let Some(s) = self.sidebar.take() {
-                render_scoreboard(ui, b, sr, &s);
-                self.sidebar = Some(s);
+            let (sidebar, sidebar_layout) = (&self.sidebar, &mut self.sidebar_layout);
+            if let Some(s) = sidebar {
+                render_scoreboard(ui, b, sr, s, sidebar_layout);
             }
             self.draw_chat(ui, b, h, chat_open);
-            if let Some(t) = self.tab_list.take() {
-                render_player_list(ui, b, w, &t);
-                self.tab_list = Some(t);
+            let (tab_list, tab_layout) = (&self.tab_list, &mut self.tab_layout);
+            if let Some(t) = tab_list {
+                render_player_list(ui, b, w, t, tab_layout);
             }
         }
     }
@@ -670,47 +785,37 @@ impl Hud {
 }
 
 /// `GuiIngame.renderScoreboard`
-fn render_scoreboard(ui: &mut Ui, b: &mut GuiBatch, sr: Scaled, s: &Sidebar) {
+fn render_scoreboard(ui: &mut Ui, b: &mut GuiBatch, sr: Scaled, s: &Sidebar, cache: &mut SidebarLayout) {
     let fh = FONT_HEIGHT;
-    let mut i = ui.font.width(&s.title);
-    for (name, points) in &s.lines {
-        i = i.max(ui.font.width(&format!("{name}: \u{a7}c{points}")));
-    }
+    cache.ensure(&ui.font, s, sr.width);
+    let i = cache.width;
     let i1 = s.lines.len() as i32 * fh;
     let j1 = sr.height / 2 + i1 / 3;
     let k1 = 3;
     let l1 = sr.width - i - k1;
-    for (j, (name, points)) in s.lines.iter().enumerate() {
+    for (j, (name, _)) in s.lines.iter().enumerate() {
         let j = j as i32 + 1;
-        let s2 = format!("\u{a7}c{points}");
+        let (s2, w2) = &cache.lines[j as usize - 1];
         let k = j1 - j * fh;
         let l = sr.width - k1 + 2;
         b.rect(l1 - 2, k, l, k + fh, 1342177280);
         // The text color's 0x20 alpha is moot: drawRect leaves blending off, so it draws opaque.
         ui.font.draw(b, name, l1 as f32, k as f32, 0xFFFFFFFF);
-        let w2 = ui.font.width(&s2);
-        ui.font.draw(b, &s2, (l - w2) as f32, k as f32, 0xFFFFFFFF);
+        ui.font.draw(b, s2, (l - *w2) as f32, k as f32, 0xFFFFFFFF);
         if j == s.lines.len() as i32 {
             b.rect(l1 - 2, k - fh - 1, l, k - 1, 1610612736);
             b.rect(l1 - 2, k - 1, l, k, 1342177280);
-            let tw = ui.font.width(&s.title);
-            ui.font.draw(b, &s.title, (l1 + i / 2 - tw / 2) as f32, (k - fh) as f32, 0xFFFFFFFF);
+            ui.font.draw(b, &s.title, (l1 + i / 2 - cache.title_width / 2) as f32, (k - fh) as f32, 0xFFFFFFFF);
         }
     }
 }
 
 /// `GuiPlayerTabOverlay.renderPlayerlist` (no skin heads: they need an encrypted connection or
 /// the integrated server).
-fn render_player_list(ui: &mut Ui, b: &mut GuiBatch, width: i32, t: &TabList) {
+fn render_player_list(ui: &mut Ui, b: &mut GuiBatch, width: i32, t: &TabList, cache: &mut TabLayout) {
     let fh = FONT_HEIGHT;
-    let mut i = 0;
-    let mut j = 0;
-    for e in &t.entries {
-        i = i.max(ui.font.width(&e.name));
-        if let (Some(v), false) = (e.score, t.hearts) {
-            j = j.max(ui.font.width(&format!(" {v}")));
-        }
-    }
+    cache.ensure(&ui.font, t, width);
+    let (i, j) = (cache.name_width, cache.score_width);
     let list = &t.entries[..t.entries.len().min(80)];
     let l3 = list.len() as i32;
     let mut i4 = l3;
@@ -734,17 +839,15 @@ fn render_player_list(ui: &mut Ui, b: &mut GuiBatch, width: i32, t: &TabList) {
     let j1 = width / 2 - (i1 * j4 + (j4 - 1) * 5) / 2;
     let mut k1 = 10;
     let mut l1 = i1 * j4 + (j4 - 1) * 5;
-    let header = t.header.as_ref().map(|h| ui.font.list_to_width(h, width - 50));
-    let footer = t.footer.as_ref().map(|f| ui.font.list_to_width(f, width - 50));
-    for s in header.iter().chain(footer.iter()).flatten() {
-        l1 = l1.max(ui.font.width(s));
+    let (header, footer) = (cache.header.as_ref(), cache.footer.as_ref());
+    for (_, w) in header.iter().chain(footer.iter()).flat_map(|lines| lines.iter()) {
+        l1 = l1.max(*w);
     }
     b.blend = Blend::Alpha;
-    if let Some(lines) = &header {
+    if let Some(lines) = header {
         b.rect(width / 2 - l1 / 2 - 1, k1 - 1, width / 2 + l1 / 2 + 1, k1 + lines.len() as i32 * fh, i32::MIN as u32);
-        for s in lines {
-            let w = ui.font.width(s);
-            ui.font.draw_shadow(b, s, (width / 2 - w / 2) as f32, k1 as f32, 0xFFFFFFFF);
+        for (s, w) in lines {
+            ui.font.draw_shadow(b, s, (width / 2 - *w / 2) as f32, k1 as f32, 0xFFFFFFFF);
             k1 += fh;
         }
         k1 += 1;
@@ -758,17 +861,16 @@ fn render_player_list(ui: &mut Ui, b: &mut GuiBatch, width: i32, t: &TabList) {
         b.rect(j2, k2, j2 + i1, k2 + 8, 553648127);
         b.color = [1.0; 4];
         let e = &list[k4 as usize];
-        if e.spectator {
-            let s1 = format!("\u{a7}o{}", e.name);
-            ui.font.draw_shadow(b, &s1, j2 as f32, k2 as f32, 0x90FFFFFF);
-        } else {
-            ui.font.draw_shadow(b, &e.name, j2 as f32, k2 as f32, 0xFFFFFFFF);
-        }
+        // Vanilla prepends `EnumChatFormatting.ITALIC` to a spectator's name; the build did it.
+        let color = if e.spectator { 0x90FFFFFF } else { 0xFFFFFFFF };
+        ui.font.draw_shadow(b, &e.name, j2 as f32, k2 as f32, color);
         if let (Some(v), false) = (e.score, e.spectator) {
             let k5 = j2 + i + 1;
             let l5 = k5 + l;
             if l5 - k5 > 5 {
-                scoreboard_value(ui, b, t.hearts, v, k2, k5, l5);
+                let text = e.score_text.as_deref().unwrap_or("");
+                let w = cache.score_text_widths.get(k4 as usize).copied().unwrap_or(0);
+                scoreboard_value(ui, b, t.hearts, v, k2, k5, l5, text, w);
             }
         }
         // drawPing
@@ -782,23 +884,20 @@ fn render_player_list(ui: &mut Ui, b: &mut GuiBatch, width: i32, t: &TabList) {
         };
         b.textured_rect(ICONS, j2 + i1 - 11, k2, 0, 176 + jj * 8, 10, 8);
     }
-    if let Some(lines) = &footer {
+    if let Some(lines) = footer {
         k1 = k1 + i4 * 9 + 1;
         b.rect(width / 2 - l1 / 2 - 1, k1 - 1, width / 2 + l1 / 2 + 1, k1 + lines.len() as i32 * fh, i32::MIN as u32);
-        for s in lines {
-            let w = ui.font.width(s);
-            ui.font.draw_shadow(b, s, (width / 2 - w / 2) as f32, k1 as f32, 0xFFFFFFFF);
+        for (s, w) in lines {
+            ui.font.draw_shadow(b, s, (width / 2 - *w / 2) as f32, k1 as f32, 0xFFFFFFFF);
             k1 += fh;
         }
     }
 }
 
 /// `drawScoreboardValues` (hearts without the change flash: that needs per-player history).
-fn scoreboard_value(ui: &mut Ui, b: &mut GuiBatch, hearts: bool, i: i32, y: i32, x0: i32, x1: i32) {
+fn scoreboard_value(ui: &mut Ui, b: &mut GuiBatch, hearts: bool, i: i32, y: i32, x0: i32, x1: i32, text: &str, width: i32) {
     if !hearts {
-        let s1 = format!("\u{a7}e{i}");
-        let w = ui.font.width(&s1);
-        ui.font.draw_shadow(b, &s1, (x1 - w) as f32, y as f32, 16777215);
+        ui.font.draw_shadow(b, text, (x1 - width) as f32, y as f32, 16777215);
         return;
     }
     let last = i;
@@ -958,5 +1057,76 @@ mod tests {
         let mut r = JavaRandom::new(42);
         assert_eq!(r.next_int(10), 0);
         assert_eq!(r.next_int(10), 3);
+    }
+
+    /// An empty pack loads a `FontRenderer` whose every glyph is zero wide; enough to observe
+    /// whether the measurement caches ran, which is what these tests are about.
+    fn font() -> FontRenderer {
+        Ui::new(&mc_assets::AssetSource::new(), crate::settings::Settings::default()).font
+    }
+
+    fn sidebar(layout: u64) -> Sidebar {
+        Sidebar { title: Arc::from("Kills"), lines: vec![(Arc::from("a"), 3)], layout }
+    }
+
+    fn tab_list(layout: u64) -> TabList {
+        TabList {
+            entries: vec![
+                TabEntry { name: Arc::from("a"), ping: 20, spectator: false, score: Some(5), score_text: Some(Arc::from("\u{a7}e5")) },
+                TabEntry { name: Arc::from("\u{a7}ob"), ping: 900, spectator: true, score: None, score_text: None },
+            ],
+            hearts: false,
+            header: Some(Arc::from("head")),
+            footer: None,
+            layout,
+        }
+    }
+
+    #[test]
+    fn sidebar_layout_rebuilds_only_when_the_view_or_width_changes() {
+        let font = font();
+        let mut cache = SidebarLayout::default();
+        let a = sidebar(fresh_layout_id());
+        cache.ensure(&font, &a, 427);
+        assert_eq!(cache.lines, vec![("\u{a7}c3".to_string(), 0)]);
+        assert_eq!(cache.title_width, 0);
+        // A cache hit must not measure again: wipe the result and re-ensure with the same key.
+        cache.lines.clear();
+        cache.ensure(&font, &a, 427);
+        assert!(cache.lines.is_empty(), "the same view at the same width must not be rebuilt");
+        // A new build id is a different view.
+        cache.ensure(&font, &sidebar(fresh_layout_id()), 427);
+        assert_eq!(cache.lines.len(), 1);
+        // The screen width is part of the key too.
+        let b = sidebar(fresh_layout_id());
+        cache.ensure(&font, &b, 427);
+        cache.lines.clear();
+        cache.ensure(&font, &b, 428);
+        assert_eq!(cache.lines.len(), 1);
+    }
+
+    #[test]
+    fn tab_layout_caches_widths_and_header_wrapping() {
+        let font = font();
+        let mut cache = TabLayout::default();
+        let a = tab_list(fresh_layout_id());
+        cache.ensure(&font, &a, 427);
+        assert_eq!(cache.score_text_widths.len(), 2);
+        // `getCharWidth` hardcodes the space, so even the empty test pack measures " 5".
+        assert_eq!(cache.score_width, 4);
+        assert!(cache.header.is_some());
+        // A cache hit must not re-measure: wipe the results and re-ensure with the same key.
+        cache.score_text_widths.clear();
+        cache.header = None;
+        cache.ensure(&font, &a, 427);
+        assert!(cache.score_text_widths.is_empty(), "the same view at the same width must not be rebuilt");
+        assert!(cache.header.is_none());
+        // The header wrap is `list_to_width(..., width - 50)`, so a resize is a different key.
+        cache.ensure(&font, &a, 428);
+        assert!(cache.header.is_some());
+        // A new build id rebuilds as well.
+        cache.score_text_widths.clear();
+        cache.ensure(&font, &tab_list(fresh_layout_id()), 428);
+        assert_eq!(cache.score_text_widths.len(), 2);
     }
 }

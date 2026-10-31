@@ -1604,6 +1604,8 @@ version = "0.1.0"
 dependencies = [
  "jni 0.21.1",
  "mc-core",
+ "mc-data",
+ "serde_json",
 ]
 
 [[package]]

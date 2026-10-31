@@ -63,16 +63,18 @@ impl App {
                 std::thread::sleep(Duration::from_millis(20));
             }
             self.visual_teleport();
+            // The full client tick (hud, screen, world), inside Minecraft.runTick when Forge mods run.
             for _ in 0..40 {
                 self.process_net();
-                self.run_tick();
-                self.hud_tick();
+                self.forge_run_client_tick(false);
             }
             std::thread::sleep(Duration::from_millis(500));
             self.process_net();
-            for (cell, rgba) in self.skins.poll() {
-                if let Some(r) = &self.renderer {
+            for (uuid, cell, rgba) in self.skins.poll() {
+                if let Some(r) = &mut self.renderer {
                     r.upload_skin(cell, &rgba);
+                    r.register_gui_texture(&skins::gui_path(uuid), 64, 64, &rgba);
+                    skins::mark_gui_skin(uuid);
                 }
             }
         }
@@ -256,6 +258,35 @@ impl App {
                 }
                 self.sync_view();
             }
+            "underwater" => {
+                // A water pool around the camera: GL_EXP water fog and the narrowed FOV.
+                self.send_chat("/fill ~-3 ~-1 ~-3 ~3 ~3 ~3 water");
+                for _ in 0..5 {
+                    self.run_tick();
+                }
+                self.entity.pitch = 0.;
+                self.screen = None;
+                self.sync_view();
+            }
+            "skulls" | "skulls-body" => {
+                // Every skull type in the hotbar; a creeper head worn.
+                for k in 0..5 {
+                    if let Some(item) = self.catalogue.find("skull", k) {
+                        self.ui.inventory[k as usize] = Some(mc_gui::ItemStack { damage: k as i16, ..self.catalogue.stack(item, 1) });
+                    }
+                }
+                if let Some(item) = self.catalogue.find("skull", 4) {
+                    self.ui.armor[0] = Some(mc_gui::ItemStack { damage: 4, ..self.catalogue.stack(item, 1) });
+                }
+                if which == "skulls" {
+                    self.open(Box::new(survival::SurvivalInventory::new(self.catalogue.clone())), false);
+                } else {
+                    self.entity.perspective = 2;
+                    self.entity.pitch = 10.;
+                    self.screen = None;
+                }
+                self.sync_view();
+            }
             w if w.starts_with("use-") => {
                 // use-<item>[-<ticks used>][-body]: an item in use, first person or F5.
                 let rest = w.strip_prefix("use-").unwrap();
@@ -328,6 +359,70 @@ impl App {
             }
             _ => self.screen = None,
         }
+        // RUSTMC_SHOT_KEYS="24 54": LWJGL key codes tapped in-game before the capture, e.g. a Forge mod's GUI key.
+        if let Ok(keys) = std::env::var("RUSTMC_SHOT_KEYS") {
+            for code in keys.split_whitespace().filter_map(|k| k.parse::<i32>().ok()) {
+                self.forge_key(code, true, false, None);
+                // Held across one frame (runGameLoop: render-tick handlers) and one client tick.
+                self.forge_frame(|_| {});
+                self.forge_run_client_tick(false);
+                self.forge_key(code, false, false, None);
+                self.forge_run_client_tick(false);
+            }
+        }
+        // RUSTMC_SHOT_CLICKS="390,32,0 645,32,1": framebuffer-pixel clicks (x,y,button) on the open mod screen.
+        if let Ok(clicks) = std::env::var("RUSTMC_SHOT_CLICKS") {
+            let f = self.scaled().factor.max(1) as i32;
+            // RUSTMC_SHOT_WAIT_MS: let opening animations finish (frames keep drawing) before clicking.
+            let wait = std::env::var("RUSTMC_SHOT_WAIT_MS").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+            let until = std::time::Instant::now() + std::time::Duration::from_millis(wait);
+            let (mut n, mut spent) = (0u32, std::time::Duration::ZERO);
+            while std::time::Instant::now() < until {
+                let t = std::time::Instant::now();
+                self.build_gui();
+                spent += t.elapsed();
+                n += 1;
+            }
+            if n > 0 { eprintln!("shot: {n} gui frames, avg {:.2} ms", spent.as_secs_f64() * 1000.0 / n as f64); }
+            for click in clicks.split_whitespace() {
+                let v: Vec<i32> = click.split(',').filter_map(|n| n.parse().ok()).collect();
+                let [x, y, button] = v[..] else { continue };
+                // The pointer is there first, as a real click is (screens hit-test with Mouse.getX/getY).
+                self.mouse_px = (x as f64, y as f64);
+                mc_forge::impls::set_mouse(x, y);
+                // A drawn frame at that position: screens track hover in drawScreen.
+                self.build_gui();
+                for down in [true, false] {
+                    mc_forge::runtime::with_env(|env| mc_forge::game::mouse_event(env, x / f, y / f, button, down, 0));
+                    self.forge_frame(|_| {});
+                }
+                self.forge_run_client_tick(false);
+            }
+            // A click may have opened another screen (a frame's forge_sync).
+            self.forge_sync();
+            if std::env::var_os("RUSTMC_SHOT_DEBUG").is_some() {
+                let f = mc_forge::runtime::with_env(|env| (mc_forge::game::focus(env).ok(), mc_forge::game::vanilla_screen(env).ok()));
+                let css = mc_forge::runtime::with_env(|env| -> Option<(f32, f32, i32)> {
+                    let mc = mc_forge::impls::minecraft(env).ok()?;
+                    let sc = env.get_field(&mc, "field_71462_r", "Lnet/minecraft/client/gui/GuiScreen;").ok()?.l().ok()?;
+                    let x = env.get_field(&sc, "mouseCssX", "F").ok()?.f().ok()?;
+                    let y = env.get_field(&sc, "mouseCssY", "F").ok()?.f().ok()?;
+                    let hits = env.get_field(&sc, "hits", "Ljava/util/List;").ok()?.l().ok()?;
+                    let n = env.call_method(&hits, "size", "()I", &[]).ok()?.i().ok()?;
+                    Some((x, y, n))
+                });
+                let _ = mc_forge::runtime::with_env(|env| env.exception_clear());
+                eprintln!("shot: lunar css/hits {css:?}");
+                eprintln!("shot: after clicks focus={f:?} mod_screen={} screen_kind={:?}", self.forge_mod_screen, self.screen.as_ref().and_then(|s| s.java_screen()));
+            }
+        }
+        // RUSTMC_SHOT_MOD_MULTIPLAYER: the current (mod) screen opens vanilla GuiMultiplayer, as mod menus' buttons do.
+        if std::env::var_os("RUSTMC_SHOT_MOD_MULTIPLAYER").is_some() {
+            mc_forge::runtime::with_env(|env| { let _ = mc_forge::game::open_multiplayer_from_current(env); });
+            self.forge_sync();
+            // "back": then its Cancel (closing it returns to the mod's screen).
+            if std::env::var("RUSTMC_SHOT_MOD_MULTIPLAYER").as_deref() == Ok("back") { self.close_screen(); self.forge_sync(); }
+        }
         // Give screens a fake mouse over the first button for hover states.
         let sr = self.scaled();
         self.mouse_px = (
@@ -353,6 +448,8 @@ impl App {
         self.fps = 0;
         self.sync_view();
         let sr = self.build_gui();
+        // As a live frame does: mod texture uploads made while building the GUI reach the renderer first.
+        self.sync_pack_ui();
         let cam = self.in_game.then_some(&self.camera);
         let r = self.renderer.as_mut().unwrap();
         let (w, h) = (r.config.width, r.config.height);
@@ -362,4 +459,61 @@ impl App {
             Err(e) => eprintln!("failed to save {}: {e}", path.display()),
         }
     }
+
+    /// `ScreenShotHelper.saveScreenshot` (F2, or a mod): `path`, or `screenshots/yyyy-MM-dd_HH.mm.ss[_n].png` in local
+    /// time, then the `screenshot.success` chat line with the file name underlined and clickable. The PNG encode runs
+    /// off the render thread; vanilla's synchronous write would stall the frame.
+    pub(crate) fn save_screenshot(&mut self, path: Option<PathBuf>) {
+        let Some(r) = self.renderer.as_mut() else { return };
+        let path = path.unwrap_or_else(|| {
+            let dir = self.ui.settings.game_dir().join("screenshots");
+            let stamp = local_stamp();
+            (1..).map(|n| dir.join(if n == 1 { format!("{stamp}.png") } else { format!("{stamp}_{n}.png") }))
+                .find(|p| !p.exists()).unwrap()
+        });
+        let sr = self.build_gui();
+        let cam = self.in_game.then_some(&self.camera);
+        let r = self.renderer.as_mut().unwrap();
+        let (w, h) = (r.config.width, r.config.height);
+        let pixels = r.capture(cam, Some((&self.batch, sr)), &self.assets, w, h);
+        let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let full = std::fs::canonicalize(path.parent().unwrap_or(Path::new("."))).map(|d| d.join(&name)).unwrap_or_else(|_| path.clone());
+        let json = serde_json::json!({"translate":"screenshot.success","with":[{"text":name,"underlined":true,
+            "clickEvent":{"action":"open_file","value":full.to_string_lossy()}}]}).to_string();
+        self.hud.add_chat(crate::chat::parse(&json, &self.ui.lang));
+        std::thread::spawn(move || {
+            if let Some(dir) = path.parent() { let _ = std::fs::create_dir_all(dir); }
+            if let Err(e) = image::save_buffer(&path, &pixels, w, h, image::ColorType::Rgba8) {
+                eprintln!("Couldn't save screenshot {}: {e}", path.display());
+            }
+        });
+    }
+}
+
+/// `new SimpleDateFormat("yyyy-MM-dd_HH.mm.ss").format(new Date())`, in the local time zone.
+fn local_stamp() -> String {
+    let (y, mo, d, h, mi, s) = local_now();
+    format!("{y:04}-{mo:02}-{d:02}_{h:02}.{mi:02}.{s:02}")
+}
+
+#[cfg(windows)]
+fn local_now() -> (i32, u32, u32, u32, u32, u32) {
+    #[repr(C)]
+    #[derive(Default)]
+    struct SystemTime { year: u16, month: u16, weekday: u16, day: u16, hour: u16, minute: u16, second: u16, millis: u16 }
+    extern "system" { fn GetLocalTime(t: *mut SystemTime); }
+    let mut t = SystemTime::default();
+    unsafe { GetLocalTime(&mut t) };
+    (t.year as i32, t.month as u32, t.day as u32, t.hour as u32, t.minute as u32, t.second as u32)
+}
+
+#[cfg(unix)]
+fn local_now() -> (i32, u32, u32, u32, u32, u32) {
+    #[repr(C)]
+    struct Tm { sec: i32, min: i32, hour: i32, mday: i32, mon: i32, year: i32, wday: i32, yday: i32, isdst: i32, gmtoff: i64, zone: *const u8 }
+    extern "C" { fn localtime_r(t: *const i64, out: *mut Tm) -> *mut Tm; }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    let mut tm: Tm = unsafe { std::mem::zeroed() };
+    unsafe { localtime_r(&now, &mut tm) };
+    (tm.year + 1900, (tm.mon + 1) as u32, tm.mday as u32, tm.hour as u32, tm.min as u32, tm.sec as u32)
 }

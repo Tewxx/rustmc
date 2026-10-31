@@ -9,6 +9,8 @@ pub(crate) mod server_list;
 impl App {
     pub(crate) fn open(&mut self, mut s: Box<dyn Screen>, keep_parent: bool) {
         server_list::install();
+        // `displayGuiScreen` runs the old screen's `onGuiClosed` before swapping.
+        let closed = self.screen.as_mut().map_or(Action::None, |s| s.close_action());
         let sr = self.scaled();
         s.init(&self.ui, sr.width, sr.height);
         if let Some(old) = self.screen.take() {
@@ -20,7 +22,30 @@ impl App {
         self.grab(false);
         self.keys.clear();
         self.buttons.clear();
+        self.forge_unpress();
         self.forge_open_native();
+        self.finish_close_action(closed);
+    }
+
+    /// `C12PacketUpdateSign` / `MC|TrSel`: the packets a closing or navigating screen queues.
+    fn finish_close_action(&mut self, a: Action) {
+        match a {
+            Action::UpdateSign { pos, lines } => {
+                // The edit lives in the client tile entity in vanilla; keep our copy in sync
+                // even when the server does not echo an `S33PacketUpdateSign` back.
+                self.signs.insert(pos, lines.clone());
+                self.tiles.insert(pos);
+                self.send(mc_protocol::packets::PlayServerbound::UpdateSignC(mc_protocol::packets::UpdateSignC { pos, lines }));
+            }
+            Action::MerchantSelect(index) => {
+                let data = index.to_be_bytes().to_vec();
+                self.send(mc_protocol::packets::PlayServerbound::PluginMessageC(mc_protocol::packets::PluginMessageC {
+                    channel: "MC|TrSel".into(),
+                    data,
+                }));
+            }
+            _ => {}
+        }
     }
 
     /// `EntityPlayerSP.respawnPlayer`: request respawn from the server.
@@ -28,7 +53,30 @@ impl App {
         self.send(mc_protocol::packets::PlayServerbound::ClientStatus(mc_protocol::packets::ClientStatus { status: mc_protocol::packets::ClientStatusKind::PerformRespawn }));
     }
 
+    /// `GuiGameOver` / `GuiWinGame`'s respawn: ask the server, or respawn the local world.
+    /// Both then run `displayGuiScreen(null)`, so every parent screen is dropped too.
+    pub(crate) fn respawn(&mut self) {
+        if self.net.is_some() {
+            self.request_respawn();
+            self.close_all();
+            return;
+        }
+        self.entity.dead = false;
+        let g = self.entity.game_type;
+        self.entity.set_game_type(g);
+        let at = match self.entity.spawn_point {
+            Some(p) => mc_core::Vec3::new(p.x as f64 + 0.5, p.y as f64 + 0.1, p.z as f64 + 0.5),
+            None => self.spawn,
+        };
+        self.entity.teleport(at);
+        self.close_all();
+        self.sync_view();
+    }
+
     pub(crate) fn close_screen(&mut self) {
+        if self.forge_close_vanilla() { return; }
+        // `GuiEditSign.onGuiClosed` queues `C12PacketUpdateSign` before the screen goes.
+        let closed = self.screen.as_mut().map_or(Action::None, |s| s.close_action());
         self.screen = self.parents.pop();
         if let Some(s) = &mut self.screen {
             let sr = Scaled::new(
@@ -43,20 +91,24 @@ impl App {
         }
         // The parent's Java twin was dropped when the child opened; rebuild it so mods re-add their buttons.
         self.forge_open_native();
+        self.finish_close_action(closed);
     }
 
     /// `displayGuiScreen(null)`: drops the screen and its parents; leaving `GuiChat` resets
     /// the chat scroll (`onGuiClosed`).
     pub(crate) fn close_all(&mut self) {
+        let closed = self.screen.as_mut().map_or(Action::None, |s| s.close_action());
         if self.screen.as_ref().is_some_and(|s| s.is_chat()) || self.parents.iter().any(|s| s.is_chat()) {
             self.hud.chat.reset_scroll();
         }
         self.parents.clear();
         self.screen = None;
+        self.forge_return = None;
         if self.in_game {
             self.grab(true);
         }
         self.forge_open_native();
+        self.finish_close_action(closed);
     }
 
     /// `GuiChat.getChatComponent(Mouse.getX(), Mouse.getY())`
@@ -133,6 +185,11 @@ impl App {
                 self.send(mc_protocol::packets::PlayServerbound::EnchantItem(mc_protocol::packets::EnchantItem { window_id, enchantment: choice }));
             }
             Action::Close => self.close_screen(),
+            Action::UpdateSign { pos, lines } => {
+                self.finish_close_action(Action::UpdateSign { pos, lines });
+                self.close_screen();
+            }
+            Action::MerchantSelect(index) => self.finish_close_action(Action::MerchantSelect(index)),
             Action::Open(s) => {
                 // `servers.dat` picks up a pack choice the last joined client stored.
                 server_list::sync_from_store(&mc_gui::multiplayer::game_dir(&self.ui));
@@ -176,6 +233,8 @@ impl App {
                 open_web_link(&url);
                 self.close_screen();
             }
+            // `GuiScreenDemo`'s store button keeps the screen open.
+            Action::OpenUrl(url) => open_web_link(&url),
             Action::ResourcePackDecision(accept) => self.resource_pack_decision(accept),
             Action::TabComplete(prefix) => {
                 if self.net.is_some() {
@@ -192,22 +251,7 @@ impl App {
                 self.close_all();
                 self.send_chat(&msg);
             }
-            Action::Respawn if self.net.is_some() => {
-                self.request_respawn();
-                self.close_screen();
-            }
-            Action::Respawn => {
-                self.entity.dead = false;
-                let g = self.entity.game_type;
-                self.entity.set_game_type(g);
-                let at = match self.entity.spawn_point {
-                    Some(p) => mc_core::Vec3::new(p.x as f64 + 0.5, p.y as f64 + 0.1, p.z as f64 + 0.5),
-                    None => self.spawn,
-                };
-                self.entity.teleport(at);
-                self.close_screen();
-                self.sync_view();
-            }
+            Action::Respawn => self.respawn(),
         }
         self.apply_settings();
     }
@@ -222,7 +266,10 @@ impl App {
             if let Some(n) = &mut self.net {
                 n.send_settings(&s.language, s.render_distance as i8, s.chat_visibility as i8, s.chat_colors, s.model_parts);
             }
-            if s.language != self.applied.language { self.ui.lang = mc_gui::lang::Lang::load(&self.assets, &s.language); }
+            if s.language != self.applied.language {
+                self.ui.lang = mc_gui::lang::Lang::load(&self.assets, &s.language);
+                if self.forge_on { mc_forge::impls::set_translations(self.ui.lang.table().clone()); }
+            }
             self.applied.language = s.language.clone();
             self.applied.chat_visibility = s.chat_visibility;
             self.applied.chat_colors = s.chat_colors;

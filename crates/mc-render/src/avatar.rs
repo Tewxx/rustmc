@@ -1,6 +1,6 @@
 //! The local player's body (`RenderPlayer` + `LayerHeldItem`), first-person hand and held item
 //! (`ItemRenderer.renderItemInFirstPerson`) and the block selection box.
-use crate::entity_model::{lights_in, standard_lighting, ModelQuad, PlayerModel, Pose};
+use crate::entity_model::{gl_normal, lights_in, standard_lighting, ModelQuad, PlayerModel, Pose};
 use crate::items::{ItemModel, TransformType};
 use crate::mobs::{MobFrame, MobModels, Tex};
 use crate::Camera;
@@ -40,6 +40,15 @@ pub struct DamageQuad {
 }
 
 /// One worn armor piece (`LayerBipedArmor`).
+/// `LayerCustomHead` with a skull in the helmet slot: `SkullType` (item damage), the owner's
+/// downloaded skin cell and the default-skin choice.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SkullHead {
+    pub kind: u8,
+    pub skin: Option<u32>,
+    pub alex: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct ArmorPiece {
     /// `ArmorMaterial` ordinal: 0 leather, 1 chain, 2 iron, 3 gold, 4 diamond.
@@ -152,6 +161,8 @@ pub struct AvatarFrame {
     pub use_anim: Option<UseAnim>,
     /// `armorInventory` (0 boots .. 3 helmet).
     pub armor: [Option<ArmorPiece>; 4],
+    /// A skull worn in the helmet slot (`LayerCustomHead`).
+    pub head_skull: Option<SkullHead>,
     /// Living mobs in view.
     pub mobs: Vec<MobFrame>,
     /// Tile entities (`TileEntityRendererDispatcher`); drawn with the world, after the entities.
@@ -207,6 +218,31 @@ struct EntityInstance {
     color: [f32; 4], kind: f32, overlay: [f32; 4],
 }
 
+struct QuadTransforms {
+    projection: Mat4,
+    previous: Option<Mat4>,
+    mvp: Mat4,
+    normal: Mat3,
+    enabled: bool,
+}
+
+impl QuadTransforms {
+    fn new(projection: Mat4, enabled: bool) -> Self {
+        Self { projection, previous: None, mvp: Mat4::IDENTITY, normal: Mat3::IDENTITY, enabled }
+    }
+
+    #[inline]
+    fn get(&mut self, matrix: Mat4) -> (Mat4, Mat3) {
+        // Signed zero is part of the key: reused results must come from identical float inputs.
+        if !self.enabled || self.previous.as_ref().is_none_or(|old| bytemuck::bytes_of(old) != bytemuck::bytes_of(&matrix)) {
+            self.previous = Some(matrix);
+            self.mvp = self.projection * matrix;
+            self.normal = Mat3::from_mat4(matrix).inverse().transpose();
+        }
+        (self.mvp, self.normal)
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct ParticleGlobals { vp: [[f32; 4]; 4], camera: [f32; 4] }
@@ -218,6 +254,9 @@ pub struct AvatarRenderer {
     entity_instances: wgpu::Buffer,
     entity_capacity: usize,
     use_entity_instancing: bool,
+    use_item_instancing: bool,
+    use_entity_culling: bool,
+    cache_transforms: bool,
     particle_globals: wgpu::Buffer,
     particle_bind_group: wgpu::BindGroup,
     particle_instances: wgpu::Buffer,
@@ -225,6 +264,10 @@ pub struct AvatarRenderer {
     use_particle_instancing: bool,
     particle_scratch: Vec<ParticleInstance>,
     entity_scratch: Vec<EntityInstance>,
+    entity_runs: Vec<(usize, std::ops::Range<usize>)>,
+    vertex_scratch: Vec<Vertex>,
+    damage_scratch: Vec<Vertex>,
+    gui_scratch: Vec<Vertex>,
     damage_pipeline: wgpu::RenderPipeline,
     sign_text_pipeline: wgpu::RenderPipeline,
     banner_pipeline: wgpu::RenderPipeline,
@@ -256,14 +299,25 @@ pub const SKIN_ATLAS: u32 = 2048;
 
 const SKIN: f32 = 0.;
 const ATLAS: f32 = 1.;
+const ATLAS_CLIP: f32 = 11.;
 const LINE: f32 = 3.;
 const ARMOR: f32 = 6.;
 const GLINT: f32 = 7.;
 /// Armor sheets stacked vertically: `{material}_layer_{1,2}`, then the leather overlays.
 const ARMOR_CELLS: u32 = 12;
 const MOB: f32 = 8.;
-/// Vertices per buffer (a frame's world pass, hand pass and inventory preview).
+/// Initial vertices per buffer (world, hand and inventory preview), grown on demand.
 const MAX_VERTS: usize = 131072;
+
+fn grow_vertex_buffer(device: &wgpu::Device, buffer: &mut wgpu::Buffer, count: usize) {
+    let size = count as u64 * std::mem::size_of::<Vertex>() as u64;
+    assert!(size <= device.limits().max_buffer_size && count <= u32::MAX as usize, "avatar geometry exceeds device limits");
+    if size > buffer.size() {
+        *buffer = device.create_buffer(&wgpu::BufferDescriptor { label: Some("avatar vertices"),
+            size: size.next_power_of_two().min(device.limits().max_buffer_size),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    }
+}
 
 fn make_particle_buffer(device: &wgpu::Device, count: usize) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor { label: Some("particle instances"),
@@ -275,8 +329,13 @@ fn record_entity_run(verts: &mut Vec<Vertex>, entities: &mut Vec<EntityInstance>
     if entities.len() > max {
         let fallback = entities.drain(instance_start..).flat_map(|instance| {
             let mvp = Mat4::from_cols_array_2d(&instance.mvp);
-            [0, 1, 2, 0, 2, 3].map(|i| Vertex { clip: (mvp * Vec3::from_array(instance.pos[i]).extend(1.)).to_array(),
-                uv: instance.uv[i], color: instance.color, kind: instance.kind, overlay: instance.overlay })
+            [0, 1, 2, 0, 2, 3].map(|i| {
+                let packed = instance.kind == ATLAS_CLIP;
+                Vertex { clip: if packed { [instance.pos[i][0], instance.pos[i][1], instance.pos[i][2], instance.overlay[i]] }
+                    else { (mvp * Vec3::from_array(instance.pos[i]).extend(1.)).to_array() },
+                    uv: instance.uv[i], color: instance.color, kind: if packed { ATLAS } else { instance.kind },
+                    overlay: if packed { [0.; 4] } else { instance.overlay } }
+            })
         });
         verts.splice(vertex_start..vertex_start, fallback);
     } else if entities.len() > instance_start {
@@ -349,7 +408,12 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  @location(12) color:vec4<f32>, @location(13) kind:f32, @location(14) overlay:vec4<f32>)->V {{
  var p=p0; var uv=u0;
  if(vertex==1u) {{p=p1;uv=u1;}} else if(vertex==2u || vertex==4u) {{p=p2;uv=u2;}} else if(vertex==5u) {{p=p3;uv=u3;}}
- var o:V; o.pos=mat4x4<f32>(m0,m1,m2,m3)*vec4<f32>(p,1.0);
+ var o:V;
+ if(kind==11.0) {{
+  var w=overlay.x;
+  if(vertex==1u) {{w=overlay.y;}} else if(vertex==2u || vertex==4u) {{w=overlay.z;}} else if(vertex==5u) {{w=overlay.w;}}
+  o.pos=vec4<f32>(p,w);
+ }} else {{o.pos=mat4x4<f32>(m0,m1,m2,m3)*vec4<f32>(p,1.0);}}
  o.uv=uv; o.color=color; o.kind=u32(kind); o.overlay=overlay; return o;
 }}
 @fragment fn fs_sign(v:V)->@location(0) vec4<f32> {{
@@ -361,7 +425,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
 @fragment fn fs(v:V)->@location(0) vec4<f32> {{
  var c=v.color;
  if(v.kind==0u){{c*=textureSampleLevel(skin,samp,v.uv,0.0);}}
- if(v.kind==1u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);}}
+ if(v.kind==1u || v.kind==11u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);}}
  if(v.kind==2u){{c*=textureSampleLevel(alex,samp,v.uv,0.0);}}
  if(v.kind==5u){{c*=textureSampleLevel(skins,samp,v.uv,0.0);}}
  if(v.kind==6u){{c*=textureSampleLevel(armor,samp,v.uv,0.0);}}
@@ -369,7 +433,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
  if(v.kind==8u){{c*=textureSampleLevel(mobs,samp,v.uv,0.0);}}
  if(v.kind==9u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);}}
  if(v.kind==10u){{c*=textureSampleLevel(mobs,samp,v.uv,0.0);}}
- c=vec4<f32>(mix(c.rgb,v.overlay.rgb,v.overlay.a),c.a);
+ if(v.kind!=11u){{c=vec4<f32>(mix(c.rgb,v.overlay.rgb,v.overlay.a),c.a);}}
  if(v.kind==4u){{c*=textureSampleLevel(atlas,samp,v.uv,0.0);c=vec4<f32>(min(c.rgb*2.0,vec3<f32>(1.0)),c.a);}}
  if(v.kind!=3u && v.kind!=10u && c.a<=0.1){{discard;}}
  if(v.kind==10u && c.a<=0.003921569){{discard;}}
@@ -703,12 +767,17 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             particle_pipeline,
             entity_pipeline, entity_instances, entity_capacity,
             use_entity_instancing: std::env::var_os("RUSTMC_NO_ENTITY_INSTANCING").is_none(),
+            use_item_instancing: std::env::var_os("RUSTMC_NO_ITEM_INSTANCING").is_none(),
+            use_entity_culling: std::env::var_os("RUSTMC_NO_ENTITY_CULLING").is_none(),
+            cache_transforms: std::env::var_os("RUSTMC_NO_TRANSFORM_CACHE").is_none(),
             particle_globals,
             particle_bind_group,
             particle_instances,
             particle_capacity,
             use_particle_instancing: std::env::var_os("RUSTMC_NO_PARTICLE_INSTANCING").is_none(),
             particle_scratch: Vec::new(), entity_scratch: Vec::new(),
+            entity_runs: Vec::new(),
+            vertex_scratch: Vec::new(), damage_scratch: Vec::new(), gui_scratch: Vec::new(),
             damage_pipeline, sign_text_pipeline, banner_pipeline, sign_text_layout, sign_textures: Default::default(),
             vertices,
             bind_group,
@@ -761,21 +830,27 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         assets: &AssetSource,
         hand_stage: bool,
     ) {
-        let mut verts = Vec::new();
-        let mut damage = Vec::new();
+        let mut verts = std::mem::take(&mut self.vertex_scratch);
+        let mut damage = std::mem::take(&mut self.damage_scratch);
+        verts.clear(); damage.clear();
         let mut sign_text_runs: Vec<(std::ops::Range<usize>, String)> = Vec::new();
         let mut banner_runs: Vec<(std::ops::Range<usize>, String)> = Vec::new();
         let mut particles = std::mem::take(&mut self.particle_scratch);
         let mut entities = std::mem::take(&mut self.entity_scratch);
         particles.clear(); entities.clear();
-        let mut entity_runs: Vec<(usize, std::ops::Range<usize>)> = Vec::new();
+        let mut entity_runs = std::mem::take(&mut self.entity_runs);
+        entity_runs.clear();
         let max_entities = (device.limits().max_buffer_size / std::mem::size_of::<EntityInstance>() as u64).min(u32::MAX as u64) as usize;
         let max_instances = (device.limits().max_buffer_size / std::mem::size_of::<ParticleInstance>() as u64).min(u32::MAX as u64) as usize;
         let use_particle_instancing = self.use_particle_instancing && frame.particles.len() <= max_instances;
         let mut particle_split = 0;
         let world_vp = cam.view_proj(aspect, far);
+        let planes = crate::gpu::frustum_planes(world_vp);
         if !hand_stage {
             for player in (frame.perspective != 0).then_some(frame).into_iter().chain(&frame.others) {
+                // Swept bounds include animated limbs, armor and arbitrary held-item models.
+                let radius = 3. + player.held.as_ref().map_or(0., |i| i.model.held_radius());
+                if self.use_entity_culling && !crate::gpu::sphere_visible(&planes, player.pos - cam.pos, radius) { continue; }
                 let vertex_start = verts.len();
                 let instance_start = entities.len();
                 let use_instances = self.use_entity_instancing && !player.armor.iter().flatten().any(|a| a.glint);
@@ -783,6 +858,9 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 record_entity_run(&mut verts, &mut entities, &mut entity_runs, vertex_start, instance_start, max_entities);
             }
             for m in &frame.mobs {
+                let humanoid = matches!(m.mob, crate::mobs::Mob::Zombie { .. } | crate::mobs::Mob::Skeleton { .. } | crate::mobs::Mob::PigZombie);
+                let radius = 4. + 2. * m.held.as_ref().map_or(0., |i| i.model.held_radius());
+                if self.use_entity_culling && humanoid && !crate::gpu::sphere_visible(&planes, m.pos - cam.pos, radius) { continue; }
                 let vertex_start = verts.len();
                 let instance_start = entities.len();
                 let use_instances = self.use_entity_instancing && !m.armor.iter().flatten().any(|a| a.glint);
@@ -812,7 +890,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 }
                 let start = verts.len(); let light = tile.light(); let lights = lights_in(Mat3::IDENTITY);
                 crate::tile::render(tile, &self.chests, &mut |_, pm, q| {
-                    let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+                    let n = gl_normal(Mat3::from_mat4(pm).inverse().transpose(), q.normal, false);
                     let shade = standard_lighting(n, lights);
                     let color = [shade * light[0], shade * light[1], shade * light[2], 1.];
                     let clip = q.pos.map(|p| world_vp * ((pm * p.extend(1.)).truncate() - cam.pos).extend(1.));
@@ -852,7 +930,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             }
             for b in &frame.billboards {
                 // RenderSnowball: translate, scale 0.5, rotate(-playerViewY, Y),
-                // rotate(playerViewX, X), then the item's GROUND transform.
+                // rotate(playerViewX, X), then the item's GROUND transform. It leaves the
+                // camera-space standard lighting from `RenderGlobal.renderEntities` alone.
                 let m = Mat4::from_translation(b.pos - cam.pos)
                     * Mat4::from_scale(Vec3::splat(0.5))
                     * Mat4::from_rotation_y((-cam.yaw).to_radians())
@@ -860,6 +939,9 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
                 render_item(&mut verts, &mut self.glint, world_vp, m, &b.item, TransformType::Ground, lights_in(Mat3::IDENTITY), b.light);
             }
             for f in &frame.fixed_items {
+                // `RenderItemFrame.renderItem` sets `enableStandardItemLighting` with the frame's
+                // modelview current, then draws the item under that same modelview, so the
+                // frame's rotation and 0.5 scale cancel out of the light/normal dot products.
                 render_item(&mut verts, &mut self.glint, world_vp, f.m, &f.item, TransformType::Fixed, lights_in(Mat3::IDENTITY), f.light);
             }
             for q in &frame.world_quads {
@@ -906,7 +988,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         // The crack overlay draws right after the terrain, before entities.
         let split = damage.len() as u32;
         particle_split += split as usize;
-        damage.extend(verts);
+        damage.extend_from_slice(&verts);
+        self.vertex_scratch = verts;
         let additive_start = damage.len() as u32;
         damage.append(&mut self.additive);
         let glint_start = damage.len() as u32;
@@ -914,6 +997,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let verts = damage;
         if verts.is_empty() && particles.is_empty() && entities.is_empty() {
             self.particle_scratch = particles; self.entity_scratch = entities;
+            self.entity_runs = entity_runs;
+            self.damage_scratch = verts;
             return;
         }
         if !entities.is_empty() {
@@ -935,8 +1020,9 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         }
         let particle_count = particles.len();
         self.particle_scratch = particles; self.entity_scratch = entities;
-        let buf = &self.vertices[hand_stage as usize];
-        if !verts.is_empty() { queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)])); }
+        let buf = &mut self.vertices[hand_stage as usize];
+        grow_vertex_buffer(device, buf, verts.len());
+        if !verts.is_empty() { queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts)); }
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(if hand_stage { "first person" } else { "player" }),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -957,7 +1043,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, buf.slice(..));
-        let end = verts.len().min(MAX_VERTS) as u32;
+        let end = verts.len() as u32;
         if split > 0 {
             pass.set_pipeline(&self.damage_pipeline);
             pass.draw(0..split.min(end), 0..1);
@@ -1014,18 +1100,20 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             pass.draw(glint_start..end, 0..1);
         }
         drop(pass);
+        self.entity_runs = entity_runs;
         let mut kept = 0;
         self.sign_textures.retain(|key, _| {
             if !key.starts_with("banner:") { return true; }
             kept += 1;
             kept <= 256
         });
+        self.damage_scratch = verts;
     }
 
     /// `GuiInventory.drawEntityOnScreen`: the player in the inventory, drawn over the GUI
     /// with its own depth clear.
     #[allow(clippy::too_many_arguments)]
-    pub fn encode_gui(&mut self, queue: &wgpu::Queue, enc: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, depth: &wgpu::TextureView, w: f32, h: f32, frame: &AvatarFrame) {
+    pub fn encode_gui(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, enc: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, depth: &wgpu::TextureView, w: f32, h: f32, frame: &AvatarFrame) {
         let Some(g) = frame.gui_player else { return };
         let ortho = Mat4::from_cols(
             Vec4::new(2. / w, 0., 0., 0.),
@@ -1050,6 +1138,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             swing: frame.swing,
             use_anim: frame.use_anim,
             armor: frame.armor,
+            head_skull: frame.head_skull,
             ..Default::default()
         };
         f.head_yaw = f.head_yaw.clamp(f.body_yaw - 75., f.body_yaw + 75.);
@@ -1059,15 +1148,18 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             * Mat4::from_rotation_z(180f32.to_radians());
         let lights = lights_in(Mat3::from_mat4(Mat4::from_scale(Vec3::new(-1., 1., 1.)) * Mat4::from_rotation_z(180f32.to_radians()) * Mat4::from_rotation_y(135f32.to_radians())));
         let m = base * Mat4::from_rotation_x(pitch.to_radians());
-        let mut verts = Vec::new();
+        let mut verts = std::mem::take(&mut self.gui_scratch);
+        verts.clear();
         self.body_at(&mut verts, &mut Vec::new(), false, &f, ortho, m, lights);
         if verts.is_empty() {
+            self.gui_scratch = verts;
             return;
         }
         let glint_start = verts.len() as u32;
         verts.append(&mut self.glint);
-        let buf = &self.vertices[2];
-        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts[..verts.len().min(MAX_VERTS)]));
+        let buf = &mut self.vertices[2];
+        grow_vertex_buffer(device, buf, verts.len());
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(&verts));
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("gui player"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1085,13 +1177,15 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         });
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, buf.slice(..));
-        let end = verts.len().min(MAX_VERTS) as u32;
+        let end = verts.len() as u32;
         pass.set_pipeline(&self.pipeline);
         pass.draw(0..glint_start.min(end), 0..1);
         if glint_start < end {
             pass.set_pipeline(&self.glint_pipeline);
             pass.draw(glint_start..end, 0..1);
         }
+        drop(pass);
+        self.gui_scratch = verts;
     }
 
     /// `RendererLivingEntity.doRender` for the local player, plus `LayerHeldItem`.
@@ -1126,6 +1220,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
     }
 
     fn body_at(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &AvatarFrame, vp: Mat4, at: Mat4, lights: [Vec3; 2]) {
+        let mut transforms = QuadTransforms::new(vp, self.cache_transforms);
         let model = if f.slim { &mut self.alex } else { &mut self.steve };
         let m = at
             * Mat4::from_rotation_y((180. - f.body_yaw).to_radians())
@@ -1136,7 +1231,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let light = f.light;
         let start = out.len();
         let instance_start = instances.len();
-        model.render(m, &mut |pm, q| player_quad(out, instances, use_instances, vp, pm, q, kind, lights, light, [1.; 3]));
+        model.render(m, &mut |pm, q| player_quad(out, instances, use_instances, &mut transforms, pm, q, kind, lights, light, [1.; 3]));
         retarget_skin(&mut out[start..], f.skin);
         if let Some(cell) = f.skin {
             let per = (SKIN_ATLAS / 64) as f32;
@@ -1161,7 +1256,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             let mut pass = |cell: u32, tint: [f32; 3]| {
                 let start = out.len();
                 let instance_start = instances.len();
-                am.render(m, &mut |pm, q| player_quad(out, instances, use_instances, vp, pm, q, ARMOR, lights, light, tint));
+                am.render(m, &mut |pm, q| player_quad(out, instances, use_instances, &mut transforms, pm, q, ARMOR, lights, light, tint));
                 for v in &mut out[start..] {
                     v.uv[1] = (cell as f32 + v.uv[1]) / ARMOR_CELLS as f32;
                 }
@@ -1193,7 +1288,30 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
             if f.sneaking {
                 im *= Mat4::from_translation(Vec3::new(0., 0.203125, 0.));
             }
-            render_item(out, &mut self.glint, vp, im, item, TransformType::ThirdPerson, lights, light);
+            render_item_inner(out, (use_instances && self.use_item_instancing).then_some(instances), &mut self.glint, vp, im, item, TransformType::ThirdPerson, lights, light);
+        }
+        // LayerCustomHead: postRender on the head, scale(1.1875, -1.1875, -1.1875), then
+        // renderSkull(-0.5, 0, -0.5, UP, 180).
+        if let Some(s) = f.head_skull {
+            let mut hm = m;
+            if f.sneaking {
+                hm *= Mat4::from_translation(Vec3::new(0., 0.2, 0.));
+            }
+            hm = hm * model.head.post_render() * Mat4::from_scale(Vec3::new(1.1875, -1.1875, -1.1875));
+            let tf = crate::tile::TileFrame::Skull { pos: Vec3::new(-0.5, 0., -0.5), facing: 1, rotation: 8, kind: s.kind, light, skin: s.skin, alex: s.alex };
+            let atlas = &self.mob_atlas;
+            crate::tile::render(&tf, &self.chests, &mut |l, pm, q| {
+                let (kind, r) = tex_rect(l.tex, atlas);
+                let pm = hm * pm;
+                let n = gl_normal(Mat3::from_mat4(pm).inverse().transpose(), q.normal, false);
+                let shade = standard_lighting(n, lights);
+                let color = [shade * light[0], shade * light[1], shade * light[2], 1.];
+                let clip = q.pos.map(|p| vp * pm * p.extend(1.));
+                for i in [0, 1, 2, 0, 2, 3] {
+                    let [u, v] = q.uv[i];
+                    out.push(Vertex { clip: clip[i].to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay: [0.; 4] });
+                }
+            });
         }
     }
 
@@ -1204,8 +1322,7 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
         let proj = Mat4::perspective_rh(70f32.to_radians(), aspect, 0.05, far * 2.);
         let equip = f.equip;
         let swing = f.swing;
-        // rotateArroundXAndY: the light directions follow the camera's pitch/yaw.
-        let lights = lights_in(Mat3::from_mat4(f.bob) * Mat3::from_rotation_x(f.pitch.to_radians()) * Mat3::from_rotation_y(f.yaw.to_radians()));
+        let lights = hand_lights(f.bob, f.pitch, f.yaw);
         // rotateWithPlayerRotations
         let mut m = f.bob
             * Mat4::from_rotation_x(((f.pitch - f.arm_pitch) * 0.1).to_radians())
@@ -1317,6 +1434,8 @@ struct V {{ @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @locati
 impl AvatarRenderer {
     /// `RendererLivingEntity.doRender` for a mob, then `LayerHeldItem`.
     fn mob(&mut self, out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, f: &MobFrame, vp: Mat4, cam: Vec3) {
+        let mut transforms = QuadTransforms::new(vp, self.cache_transforms);
+        let mut texture: Option<(Tex, (f32, [f32; 4]))> = None;
         let base = Mat4::from_translation(f.pos - cam);
         let lights = lights_in(Mat3::IDENTITY);
         let (atlas, glint, additive) = (&self.mob_atlas, &mut self.glint, &mut self.additive);
@@ -1326,15 +1445,15 @@ impl AvatarRenderer {
                 armor_glint(glint, vp * pm, q, f.age, light);
                 return;
             }
-            let (kind, r) = match l.tex {
-                Tex::Mob(t) => (MOB, atlas.get(t).copied().unwrap_or([0., 0., 0., 0.])),
-                Tex::Armor(cell) => (ARMOR, [0., cell as f32 / ARMOR_CELLS as f32, 1., 1. / ARMOR_CELLS as f32]),
+            let (kind, r) = if let Some((_, mapped)) = texture.filter(|(tex, _)| *tex == l.tex) { mapped } else {
+                let mapped = tex_rect(l.tex, atlas);
+                texture = Some((l.tex, mapped)); mapped
             };
-            let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+            let (mvp, normal) = if use_instances { transforms.get(pm) } else { (vp * pm, Mat3::from_mat4(pm).inverse().transpose()) };
+            let n = gl_normal(normal, q.normal, l.normalize);
             let shade = standard_lighting(n, lights);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
             let overlay = l.overlay.map_or([0.; 4], |o| [o[0] * light[0], o[1] * light[1], o[2] * light[2], o[3]]);
-            let mvp = vp * pm;
             if use_instances && !l.additive {
                 instances.push(EntityInstance { pos: q.pos.map(|p| p.to_array()),
                     uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]),
@@ -1349,7 +1468,7 @@ impl AvatarRenderer {
             }
         });
         if let (Some(item), Some(m)) = (&f.held, held) {
-            render_item(out, &mut self.glint, vp, m, item, TransformType::ThirdPerson, lights, f.light);
+            render_item_inner(out, (use_instances && self.use_item_instancing).then_some(instances), &mut self.glint, vp, m, item, TransformType::ThirdPerson, lights, f.light);
         }
     }
 
@@ -1363,11 +1482,8 @@ impl AvatarRenderer {
                 armor_glint(glint, vp * pm, q, 0., light);
                 return;
             }
-            let (kind, r) = match l.tex {
-                Tex::Mob(t) => (MOB, atlas.get(t).copied().unwrap_or([0., 0., 0., 0.])),
-                Tex::Armor(cell) => (ARMOR, [0., cell as f32 / ARMOR_CELLS as f32, 1., 1. / ARMOR_CELLS as f32]),
-            };
-            let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+            let (kind, r) = tex_rect(l.tex, atlas);
+            let n = gl_normal(Mat3::from_mat4(pm).inverse().transpose(), q.normal, false);
             let shade = standard_lighting(n, lights);
             let alpha = crate::objects::layer_alpha(l);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], alpha];
@@ -1391,26 +1507,30 @@ impl AvatarRenderer {
         let light = f.light();
         let atlas = &self.mob_atlas;
         crate::tile::render(f, &self.chests, &mut |l, pm, q| {
-            let r = match l.tex {
-                Tex::Mob(t) => atlas.get(t).copied().unwrap_or([0., 0., 0., 0.]),
-                Tex::Armor(cell) => [0., cell as f32 / ARMOR_CELLS as f32, 1., 1. / ARMOR_CELLS as f32],
-            };
-            let n = Mat3::from_mat4(pm).inverse().transpose() * q.normal;
+            let (kind, r) = tex_rect(l.tex, atlas);
+            let n = gl_normal(Mat3::from_mat4(pm).inverse().transpose(), q.normal, false);
             let shade = standard_lighting(n, lights);
             let color = [l.tint[0] * shade * light[0], l.tint[1] * shade * light[1], l.tint[2] * shade * light[2], 1.];
             if use_instances {
                 instances.push(EntityInstance { pos: q.pos.map(|p| ((pm * p.extend(1.)).truncate() - cam).to_array()),
                     uv: q.uv.map(|[u,v]| [r[0] + u * r[2], r[1] + v * r[3]]), mvp: vp.to_cols_array_2d(),
-                    color, kind: MOB, overlay: [0.; 4] });
+                    color, kind, overlay: [0.; 4] });
                 return;
             }
             let clip = q.pos.map(|p| vp * ((pm * p.extend(1.)).truncate() - cam).extend(1.));
             for i in [0, 1, 2, 0, 2, 3] {
                 let [u, v] = q.uv[i];
-                out.push(Vertex { clip: clip[i].to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind: MOB, overlay: [0.; 4] });
+                out.push(Vertex { clip: clip[i].to_array(), uv: [r[0] + u * r[2], r[1] + v * r[3]], color, kind, overlay: [0.; 4] });
             }
         });
     }
+}
+
+/// `ItemRenderer.rotateArroundXAndY`: `enableStandardItemLighting` runs under
+/// `viewBobbing . rotate(pitch, X) . rotate(yaw, Y)` and that rotation stays in the light
+/// directions after the matrix is popped, so the first-person hand is lit player-relative.
+fn hand_lights(bob: Mat4, pitch: f32, yaw: f32) -> [Vec3; 2] {
+    lights_in(Mat3::from_mat4(bob) * Mat3::from_rotation_x(pitch.to_radians()) * Mat3::from_rotation_y(yaw.to_radians()))
 }
 
 /// `LayerArmorBase.renderGlint` for one quad: two passes, lighting off, color
@@ -1466,6 +1586,19 @@ fn mob_atlas(load: &dyn Fn(&str) -> image::RgbaImage) -> (image::RgbaImage, std:
     (atlas, rects)
 }
 
+/// The shader texture kind and the `[u, v, width, height]` rectangle a layer's texture maps to.
+fn tex_rect(tex: Tex, atlas: &std::collections::HashMap<&'static str, [f32; 4]>) -> (f32, [f32; 4]) {
+    match tex {
+        Tex::Mob(t) => (MOB, atlas.get(t).copied().unwrap_or([0., 0., 0., 0.])),
+        Tex::Armor(cell) => (ARMOR, [0., cell as f32 / ARMOR_CELLS as f32, 1., 1. / ARMOR_CELLS as f32]),
+        Tex::Skin(cell) => {
+            let per = (SKIN_ATLAS / 64) as f32;
+            let (cx, cy) = ((cell % (SKIN_ATLAS / 64)) as f32, (cell / (SKIN_ATLAS / 64)) as f32);
+            (5., [cx / per, cy / per, 1. / per, 1. / per])
+        }
+    }
+}
+
 fn retarget_skin(verts: &mut [Vertex], skin: Option<u32>) {
     let Some(cell) = skin else { return };
     let per = (SKIN_ATLAS / 64) as f32;
@@ -1495,6 +1628,11 @@ fn item_glint(glint: &mut Vec<Vertex>, clip: &[Vec4; 4], uv: &[[f32; 2]; 4], lig
 
 #[allow(clippy::too_many_arguments)]
 fn render_item(out: &mut Vec<Vertex>, glint: &mut Vec<Vertex>, proj: Mat4, m: Mat4, item: &HeldItem, t: TransformType, lights: [Vec3; 2], light: [f32; 3]) {
+    render_item_inner(out, None, glint, proj, m, item, t, lights, light);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_item_inner(out: &mut Vec<Vertex>, mut instances: Option<&mut Vec<EntityInstance>>, glint: &mut Vec<Vertex>, proj: Mat4, m: Mat4, item: &HeldItem, t: TransformType, lights: [Vec3; 2], light: [f32; 3]) {
     let model = &item.model;
     let display = model.transform(t);
     // ItemRenderer.renderItem scales 3D items by 2, RenderItem.preTransform scales flat ones by 2.
@@ -1502,10 +1640,13 @@ fn render_item(out: &mut Vec<Vertex>, glint: &mut Vec<Vertex>, proj: Mat4, m: Ma
     // isThereOneNegativeScale → glCullFace(FRONT)
     let flip = display.determinant() < 0.;
     let normal_m = Mat3::from_mat4(m).inverse().transpose();
+    let mvp = proj * m;
+    let mut shades = [None; 6];
     for q in &model.quads {
-        let (nx, ny, nz) = q.face.offset();
-        let n = normal_m * Vec3::new(nx as f32, ny as f32, nz as f32);
-        let shade = standard_lighting(n, lights);
+        let shade = *shades[q.face.index()].get_or_insert_with(|| {
+            let (nx, ny, nz) = q.face.offset();
+            standard_lighting(gl_normal(normal_m, Vec3::new(nx as f32, ny as f32, nz as f32), false), lights)
+        });
         let tint = if q.tint_index >= 0 { item.tints[(q.tint_index as usize).min(3)] } else { 0xFFFFFF };
         let c = [
             ((tint >> 16) & 255) as f32 / 255. * shade * light[0],
@@ -1513,12 +1654,18 @@ fn render_item(out: &mut Vec<Vertex>, glint: &mut Vec<Vertex>, proj: Mat4, m: Ma
             (tint & 255) as f32 / 255. * shade * light[2],
             1.,
         ];
-        let clip = q.pos.map(|p| proj * m * Vec3::from(p).extend(1.));
+        let clip = q.pos.map(|p| mvp * Vec3::from(p).extend(1.));
         if is_back_face(&clip) != flip {
             continue;
         }
-        for i in [0, 1, 2, 0, 2, 3] {
-            out.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: c, kind: ATLAS, overlay: [0.; 4] });
+        if let Some(instances) = &mut instances {
+            // Preserve the CPU's clip-space arithmetic, including near-plane and mirrored culling.
+            instances.push(EntityInstance { pos: clip.map(|p| p.truncate().to_array()), uv: q.uv,
+                mvp: [[0.; 4]; 4], color: c, kind: ATLAS_CLIP, overlay: clip.map(|p| p.w) });
+        } else {
+            for i in [0, 1, 2, 0, 2, 3] {
+                out.push(Vertex { clip: clip[i].to_array(), uv: q.uv[i], color: c, kind: ATLAS, overlay: [0.; 4] });
+            }
         }
         if item.glint {
             item_glint(glint, &clip, &q.uv, light);
@@ -1569,7 +1716,7 @@ fn entity_item(out: &mut Vec<Vertex>, glint: &mut Vec<Vertex>, vp: Mat4, m: Mat4
     let normal_m = Mat3::from_mat4(m).inverse().transpose();
     for q in &item.model.quads {
         let (nx, ny, nz) = q.face.offset();
-        let shade = standard_lighting(normal_m * Vec3::new(nx as f32, ny as f32, nz as f32), lights);
+        let shade = standard_lighting(gl_normal(normal_m, Vec3::new(nx as f32, ny as f32, nz as f32), false), lights);
         let tint = if q.tint_index >= 0 { item.tints[(q.tint_index as usize).min(3)] } else { 0xFFFFFF };
         let c = [
             ((tint >> 16) & 255) as f32 / 255. * shade * light[0],
@@ -1606,17 +1753,18 @@ fn is_back_face(clip: &[Vec4; 4]) -> bool {
 
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
-fn player_quad(out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f32, lights: [Vec3; 2], light: [f32; 3], tint: [f32; 3]) {
-    if !use_instances { model_quad(out, proj, m, q, kind, lights, light, tint, false); return; }
-    let n = Mat3::from_mat4(m).inverse().transpose() * q.normal;
+fn player_quad(out: &mut Vec<Vertex>, instances: &mut Vec<EntityInstance>, use_instances: bool, transforms: &mut QuadTransforms, m: Mat4, q: &ModelQuad, kind: f32, lights: [Vec3; 2], light: [f32; 3], tint: [f32; 3]) {
+    if !use_instances { model_quad(out, transforms.projection, m, q, kind, lights, light, tint, false); return; }
+    let (mvp, normal) = transforms.get(m);
+    let n = gl_normal(normal, q.normal, false);
     let shade = standard_lighting(n, lights);
     let color = [tint[0] * shade * light[0], tint[1] * shade * light[1], tint[2] * shade * light[2], 1.];
     instances.push(EntityInstance { pos: q.pos.map(|p| p.to_array()), uv: q.uv,
-        mvp: (proj * m).to_cols_array_2d(), color, kind, overlay: [0.; 4] });
+        mvp: mvp.to_cols_array_2d(), color, kind, overlay: [0.; 4] });
 }
 
 fn model_quad(out: &mut Vec<Vertex>, proj: Mat4, m: Mat4, q: &ModelQuad, kind: f32, lights: [Vec3; 2], light: [f32; 3], tint: [f32; 3], _cull: bool) {
-    let n = Mat3::from_mat4(m).inverse().transpose() * q.normal;
+    let n = gl_normal(Mat3::from_mat4(m).inverse().transpose(), q.normal, false);
     let shade = standard_lighting(n, lights);
     let c = [tint[0] * shade * light[0], tint[1] * shade * light[1], tint[2] * shade * light[2], 1.];
     let mvp = proj * m;
@@ -1786,8 +1934,9 @@ mod particle_instance_tests {
             age: 3., ticks: 3, swing: 0., child: false, hurt: true, death: 0., light: [1.;3], bright: [1.;3],
             held: None, armor: [None;4] };
         let frame = AvatarFrame { mobs: vec![mob; 200], ..Default::default() };
-        for (enabled, reuse) in [(false, true), (true, false), (true, true)] {
+        for (enabled, reuse, cache) in [(false, true, false), (true, false, false), (true, true, false), (true, true, true)] {
             renderer.use_entity_instancing = enabled;
+            renderer.cache_transforms = cache;
             let mut sum = std::time::Duration::ZERO;
             for iteration in 0..31 {
                 let mut enc = device.create_command_encoder(&Default::default());
@@ -1798,7 +1947,7 @@ mod particle_instance_tests {
                 queue.submit(Some(enc.finish())); device.poll(wgpu::Maintain::Wait);
                 if iteration > 0 { sum += elapsed; }
             }
-            eprintln!("mobs {}: 200 zombies, mean CPU encode {:.3} ms", if !enabled { "legacy" } else if reuse { "instanced/reused" } else { "instanced/fresh" }, sum.as_secs_f64()*1000./30.);
+            eprintln!("mobs {}: 200 zombies, mean CPU encode {:.3} ms", if !enabled { "legacy" } else if !reuse { "instanced/fresh" } else if cache { "instanced/cached transforms" } else { "instanced/reused" }, sum.as_secs_f64()*1000./30.);
         }
     }
 
@@ -1809,8 +1958,11 @@ mod particle_instance_tests {
         let Some(adapter) = crate::headless_adapter(&instance) else { return };
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
         let mut assets = AssetSource::new(); assets.push(&jar).unwrap();
-        let atlas = texture(&device, &queue, &image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])));
+        let atlas = texture(&device, &queue, &image::RgbaImage::from_raw(2, 2,
+            vec![255,64,16,255, 32,255,64,128, 64,32,255,0, 128,160,192,255]).unwrap());
         let mut renderer = AvatarRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, &assets, atlas.create_view(&Default::default()));
+        renderer.vertices[0] = device.create_buffer(&wgpu::BufferDescriptor { label: Some("small test avatar buffer"), size: 64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         let camera = Camera { pos: Vec3::new(0.15, 0.1, 0.2), yaw: 0., pitch: 0., fov_deg: 70., bob: Mat4::IDENTITY };
         let quad = |z, color, tex| ParticleQuad {
             pos: [Vec3::new(-0.8,-0.8,z), Vec3::new(-0.8,0.8,z), Vec3::new(0.8,0.8,z), Vec3::new(0.8,-0.8,z)],
@@ -1884,10 +2036,13 @@ mod particle_instance_tests {
         let new = render(&mut renderer, &frame, true);
         assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "player must be visible");
         assert_eq!(old, new);
+        renderer.cache_transforms = false;
+        assert_eq!(new, render(&mut renderer, &frame, true));
+        renderer.cache_transforms = true;
         let held_model = ItemModel { quads: vec![mc_assets::model::BakedQuad {
             pos: [[0.,0.,0.],[0.,1.,0.],[1.,1.,0.],[1.,0.,0.]], uv: [[0.,1.],[0.,0.],[1.,0.],[1.,1.]],
             face: mc_core::Facing::North, cullface: None, tint_index: -1, shade: 1. }],
-            gui3d: false, builtin: false, transforms: Default::default() };
+            gui3d: false, builtin: false, transforms: Default::default(), bounds: [Vec3::ZERO, Vec3::ONE] };
         frame.others[0].held = Some(HeldItem { model: Arc::new(held_model), tints: [0xffffff; 4], entity_block: false, glint: false });
         frame.mobs.push(MobFrame { mob: crate::mobs::Mob::Zombie { villager: false }, id: 2,
             pos: Vec3::new(0.2, -1., 3.), body_yaw: 0., head_yaw: 0., pitch: 0., limb_swing: 0., limb_amount: 0.,
@@ -1897,6 +2052,55 @@ mod particle_instance_tests {
         let new = render(&mut renderer, &frame, true);
         assert_eq!(old, new);
         frame.mobs.clear();
+        let mut saw_packed_item = false;
+        for (z, sx) in [(2.5, 1.), (0.25, 1.), (3., -1.)] {
+            frame.others[0].pos.z = z;
+            let item = frame.others[0].held.as_mut().unwrap();
+            Arc::get_mut(&mut item.model).unwrap().transforms.insert(TransformType::ThirdPerson,
+                Mat4::from_rotation_y(0.4) * Mat4::from_scale(Vec3::new(sx, 1., 1.)));
+            renderer.use_item_instancing = false;
+            let old = render(&mut renderer, &frame, true);
+            renderer.use_item_instancing = true;
+            let new = render(&mut renderer, &frame, true);
+            saw_packed_item |= renderer.entity_scratch.iter().any(|i| i.kind == ATLAS_CLIP);
+            assert_eq!(old, new, "held item z={z} scale={sx}");
+        }
+        assert!(saw_packed_item, "pixel comparisons must exercise packed held items");
+        frame.others[0].pos = Vec3::ZERO;
+        let mut vertices = Vec::new(); let mut instances = Vec::new();
+        for i in 0..32 {
+            let player = &mut frame.others[0];
+            player.swing = i as f32 / 31.; player.sneaking = i & 1 != 0;
+            player.body_yaw = i as f32 * 37.; player.head_yaw = i as f32 * -19.;
+            player.pitch = i as f32 * 11. - 180.; player.limb_swing = i as f32 * 1.5;
+            player.limb_amount = 1.;
+            vertices.clear(); instances.clear();
+            renderer.body(&mut vertices, &mut instances, true, player, Mat4::IDENTITY, Vec3::ZERO);
+            let radius = 3. + player.held.as_ref().unwrap().model.held_radius();
+            let check = |p: Vec3| assert!(p.length() <= radius, "animated geometry {p:?} exceeds swept bound {radius}");
+            for v in &vertices { check(Vec4::from_array(v.clip).truncate()); }
+            for instance in &instances {
+                let m = Mat4::from_cols_array_2d(&instance.mvp);
+                for p in instance.pos {
+                    check(if instance.kind == ATLAS_CLIP { Vec3::from_array(p) } else { m.transform_point3(Vec3::from_array(p)) });
+                }
+            }
+        }
+        frame.others[0].sneaking = false; frame.others[0].swing = 0.;
+        let mut culled = false;
+        for pos in [Vec3::new(10., -1., 4.), Vec3::new(20., -1., 4.), Vec3::new(0., -1., -20.)] {
+            frame.others[0].pos = pos;
+            renderer.use_entity_culling = false;
+            let old = render(&mut renderer, &frame, true);
+            let count = renderer.entity_scratch.len();
+            renderer.use_entity_culling = true;
+            let new = render(&mut renderer, &frame, true);
+            culled |= renderer.entity_scratch.len() < count;
+            assert_eq!(old, new, "entity culling at {pos:?}");
+        }
+        assert!(culled, "pixel comparisons must remove off-screen geometry");
+        frame.others[0].pos = Vec3::new(-0.3, -1., 2.5);
+        frame.others[0].pos.z = 2.5;
         frame.others[0].armor[2].as_mut().unwrap().glint = true;
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
@@ -1908,7 +2112,7 @@ mod particle_instance_tests {
             skin: crate::tile::ChestSkin::Normal, x_shift: false, z_shift: false, lid: 0.5, light: [1.;3] });
         frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(0.3, -1., 2.5), standing: true, meta: 3, light: [1.;3], glyphs: Vec::new() });
         frame.tiles.push(crate::tile::TileFrame::Sign { pos: Vec3::new(-0.5, -0.5, 3.), standing: false, meta: 2, light: [1.;3], glyphs: Vec::new() });
-        frame.tiles.push(crate::tile::TileFrame::Skull { pos: Vec3::new(-0.2, -0.5, 2.), facing: 1, rotation: 5, kind: 2, light: [1.;3] });
+        frame.tiles.push(crate::tile::TileFrame::Skull { pos: Vec3::new(-0.2, -0.5, 2.), facing: 1, rotation: 5, kind: 2, light: [1.;3], skin: None, alex: false });
         let old = render(&mut renderer, &frame, false);
         let new = render(&mut renderer, &frame, true);
         assert!(old.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0), "objects and tiles must be visible");
@@ -1951,5 +2155,30 @@ mod particle_instance_tests {
         assert!(renderer.particle_capacity >= 1500);
         assert!(renderer.particle_scratch.capacity() >= 1500);
         assert!(renderer.entity_scratch.capacity() > 0);
+    }
+}
+
+#[cfg(test)]
+mod light_tests {
+    use super::*;
+
+    /// `ItemRenderer.rotateArroundXAndY` composes `viewBobbing . Rx(pitch) . Ry(yaw)` and keeps
+    /// that rotation in the light directions while the hand itself is only rotated a tenth of
+    /// the way, so the first-person item's shading follows the player's look direction.
+    #[test]
+    fn first_person_lights_follow_pitch_then_yaw() {
+        let shade = |lights, n: Vec3| standard_lighting(gl_normal(Mat3::IDENTITY, n, false), lights);
+        let level = hand_lights(Mat4::IDENTITY, 0., 0.);
+        assert!((shade(level, Vec3::Z) - 0.7396).abs() < 1e-3, "{}", shade(level, Vec3::Z));
+        // Looking straight up rotates both lights until the south-facing surface is edge-on.
+        let up = hand_lights(Mat4::IDENTITY, -90., 0.);
+        assert!((shade(up, Vec3::Z) - 0.4).abs() < 1e-3, "{}", shade(up, Vec3::Z));
+        // Yaw is applied after pitch; a quarter turn swaps which light the south face sees.
+        let turned = hand_lights(Mat4::IDENTITY, 0., 90.);
+        assert!((shade(turned, Vec3::Z) - 0.4970).abs() < 1e-3, "{}", shade(turned, Vec3::Z));
+        // View bobbing is part of the matrix the lights were set in.
+        let bobbed = hand_lights(Mat4::from_rotation_z(10f32.to_radians()), 0., 0.);
+        assert!((shade(level, Vec3::X) - 0.4970).abs() < 1e-3);
+        assert!((shade(bobbed, Vec3::X) - 0.4113).abs() < 1e-3, "{}", shade(bobbed, Vec3::X));
     }
 }

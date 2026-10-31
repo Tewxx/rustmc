@@ -12,6 +12,7 @@ pub mod mesh;
 pub mod mobs;
 pub mod models;
 pub mod objects;
+pub mod post;
 pub mod sky;
 mod sky_gpu;
 pub mod tile;

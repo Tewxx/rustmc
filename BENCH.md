@@ -5,19 +5,25 @@ mock server below (the commands in this file). Offline generated-terrain runs (`
 `--features singleplayer` build.
 
 `rustmc --bench <s>` flies a fixed time-based camera path uncapped (vsync off) and prints avg FPS, 1%/0.1% lows,
-frame/cpu percentiles (p50/p99/p99.9/max), hitch counts (>16.7 ms, >33 ms) and, once wired, per-phase CPU ms.
-`bench.csv` gets one row per frame (`frame_ms,cpu_ms,net_ms,mesh_ms,world_ms,entities_ms,gui_ms,present_ms`).
-Note `cpu_ms` is the whole `update + draw_frame`, so it **includes time blocked in `get_current_texture` / present**.
+frame/cpu percentiles (p50/p99/p99.9/max), hitch counts (>16.7 ms, >33 ms) and per-phase elapsed ms.
+`bench.csv` records `frame_ms,cpu_ms,net_ms,mesh_ms,world_ms,entities_ms,gui_ms,acquire_ms,submit_ms,present_ms,update_ms,animation_ms,outside_ms`.
+Intervals and phases belong to the same frame. `cpu_ms` is elapsed callback work, **including waits**; it is not an OS measurement of CPU execution time.
+`outside_ms` is the interval minus that frame's callback work. Phases overlap: update contains net/mesh/entities/animation; world contains acquire/submit/present.
+Benchmark mode builds normal render data and runs normal client ticks while retaining the scripted camera.
+
+Windows results, visual checks, controls, and the remaining optimization backlog are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+`tools/bench-windows.ps1 -Seconds 20 -Repeats 3` runs quiet, streaming, crowded, and frequent-edit scenes. Use `-Reference <exe>` for alternating comparisons.
+The script saves binary hashes, settings overrides, logs, frame CSVs, and a summary under `tests/forge/build/tmp/bench-*`; it requires a free loopback port (25599 by default).
 
 ## Asynchronous mesh workers
 
-Client remeshing uses a bounded persistent worker pool. Each job captures three vertical sections from each of the 3×3 neighboring columns, their biomes, heightmaps and nearby tile entities; revisions discard results invalidated by later changes or unloads. The main thread creates at most four snapshots per frame and performs GPU uploads. The current AO code can read two blocks past a face, so an 18³ snapshot would not preserve the current results without changing its sampling semantics. This is a larger snapshot than the R1 target, and incremental lighting still runs on the main thread.
+Client remeshing uses a bounded persistent worker pool. Each job captures three vertical sections from each of the 3×3 neighboring columns, their biomes, heightmaps and nearby tile entities. Revision tokens cancel obsolete queued work and discard stale results. Workers prepare packed vertices, draw layers and bounds, and reuse mesh/geometry storage. The main thread creates at most four snapshots per frame and uploads at most four completed sections, stopping when their cumulative size reaches 4 MiB (a soft byte budget, allowing an oversized section to make progress). GPU staging storage and compatible existing arena ranges are reused without waiting for GPU completion. The current AO code can read two blocks past a face, so an 18³ snapshot would not preserve the current results without changing its sampling semantics. Incremental lighting still runs on the main thread.
 
 A headless CPU-only synthetic terrain test (`RUSTMC_REQUIRE_GOLDEN=1 cargo test --release -p mc-client mesh_worker_headless_bench -- --ignored --nocapture`) meshed 169 sections twice on this shared Mac. The old blocking parallel call took 23.51 / 92.79 ms; the new queue took 56.73 / 95.15 ms wall time, with worst individual polls of 0.11 / 0.51 ms. The queue test sleeps 1 ms between polls, and both runs were affected by concurrent builds; these are not comparable frame rates or reliable throughput estimates. The test confirms matching index counts, not pixel parity. No before/after FPS, frame-time, full image-parity, or cross-platform GPU measurements have been made. The baseline below predates this change.
 
 ## Instanced particles
 
-Particles retain their CPU-generated, sorted corners and per-corner UVs, but upload one 100-byte instance per quad; the vertex shader applies the camera transform. The previous path uploaded six 60-byte vertices per quad. `RUSTMC_NO_PARTICLE_INSTANCING=1` selects the old path for comparisons. Entity models still use CPU-expanded vertices.
+Particles retain their CPU-generated, sorted corners and per-corner UVs, but upload one 100-byte instance per quad; the vertex shader applies the camera transform. The previous path uploaded six 60-byte vertices per quad. `RUSTMC_NO_PARTICLE_INSTANCING=1` selects the old path for comparisons. Entity models also have an instanced path (`RUSTMC_NO_ENTITY_INSTANCING=1` disables it), with reusable scratch and exact per-part transform caching; glint and other fallback geometry retain their expanded path.
 
 On this shared Mac, two headless Metal release runs of `cargo test --release -p mc-render particle_headless_bench -- --ignored --nocapture` used 4,000 synthetic quads. Mean CPU encoding time was 0.482–0.999 ms for the old path and 0.154–0.517 ms for instancing; particle vertex uploads were 1,440,000 and 400,000 bytes/frame respectively. This excludes particle simulation, sorting, GPU wait and presentation, and concurrent activity makes the timings noisy. The off-screen pixel test compares both paths for overlapping particles, mixed world geometry and a 1,500-particle growth case; full-game visual parity and cross-platform performance remain unverified.
 

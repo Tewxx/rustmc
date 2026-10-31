@@ -4,6 +4,8 @@ pub mod game;
 pub mod impls;
 pub mod runtime;
 pub mod stubs;
+pub mod live;
+pub mod hooks;
 
 use jni::{errors::Result, objects::{GlobalRef, JClass, JStaticMethodID, JValue}, signature::{Primitive, ReturnType}, JNIEnv};
 

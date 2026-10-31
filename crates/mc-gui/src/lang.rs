@@ -26,6 +26,9 @@ impl Lang {
         Self { map }
     }
 
+    /// Every translation, for the Forge runtime's `I18n`.
+    pub fn table(&self) -> &HashMap<String, String> { &self.map }
+
     /// `I18n.format(key)`: the key itself when missing, like vanilla.
     pub fn get(&self, key: &str) -> String {
         self.map.get(key).cloned().unwrap_or_else(|| key.to_string())

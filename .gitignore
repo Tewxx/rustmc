@@ -45,3 +45,10 @@ __pycache__/
 # Native WASM guest build output
 /mods/wasm/target/
 /mods/wasm/harness/target/
+
+# Local scratch, server list and review temp files
+/servers.dat
+/resourcepacks/
+/.review-tmp/
+/x
+/bench.csv

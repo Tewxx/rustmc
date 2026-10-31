@@ -3,7 +3,7 @@
 use crate::inventory::Catalogue;
 use mc_gui::{
     batch::GuiBatch,
-    screens::{Action, Key, Screen},
+    screens::{Action, Key, Screen, Trade},
     ItemStack, Ui,
 };
 use std::sync::{Arc, Mutex};
@@ -34,6 +34,12 @@ pub struct Window {
     pub transaction: i16,
     pub level: i32,
     drag: Option<(i8, Vec<usize>)>,
+    /// `IMerchant.getRecipes`: `None` until `MC|TrList` arrives (`NpcMerchant.setRecipes`).
+    pub recipes: Option<Vec<Trade>>,
+    /// `GuiMerchant.selectedMerchantRecipe` / `InventoryMerchant.currentRecipeIndex`.
+    pub selected_recipe: usize,
+    /// `InventoryMerchant.currentRecipe`: the recipe the input slots currently satisfy.
+    pub current_recipe: Option<usize>,
 }
 
 impl Window {
@@ -45,9 +51,26 @@ impl Window {
             "minecraft:anvil" => 3,
             "minecraft:beacon" => 1,
             "minecraft:brewing_stand" => 4,
+            // `ContainerMerchant` always builds three merchant slots.
+            "minecraft:villager" => 3,
             _ => slots as usize,
         };
-        Window { id, kind: kind.into(), title, slots: vec![None; n], cursor: None, props: [0, 0, 0, 0, -1, -1, -1], clicks: Vec::new(), closed: false, transaction: 0, level: 0, drag: None }
+        Window {
+            id,
+            kind: kind.into(),
+            title,
+            slots: vec![None; n],
+            cursor: None,
+            props: [0, 0, 0, 0, -1, -1, -1],
+            clicks: Vec::new(),
+            closed: false,
+            transaction: 0,
+            level: 0,
+            drag: None,
+            recipes: None,
+            selected_recipe: 0,
+            current_recipe: None,
+        }
     }
 
     /// Window slot index → storage: container slots first, then main inventory, then hotbar.
@@ -87,6 +110,12 @@ impl Window {
         if let Some(slot) = self.get(ui, i) {
             *slot = s;
         }
+        // `Slot.putStack` runs `InventoryMerchant.setInventorySlotContents` and then
+        // `markDirty`, both of which call `resetRecipeAndSlots` for the input slots; that is
+        // what keeps `currentRecipe` in step with server-side slot changes.
+        if self.kind == "minecraft:villager" && i < 2 {
+            self.reset_recipe();
+        }
     }
 
     /// Slots that only accept output (crafting result, furnace output).
@@ -94,15 +123,178 @@ impl Window {
         match self.kind.as_str() {
             "minecraft:crafting_table" => i == 0,
             "minecraft:furnace" | "minecraft:anvil" => i == 2,
+            // `SlotMerchantResult.isItemValid` is always false.
+            "minecraft:villager" => i == 2,
             "player" => i == 0,
             _ => false,
         }
+    }
+
+    // ------------------------------------------------------------ InventoryMerchant
+
+    /// `MerchantRecipeList.size()`
+    pub fn trade_count(&self) -> usize {
+        self.recipes.as_ref().map_or(0, Vec::len)
+    }
+
+    /// The selected `MerchantRecipe`, as `GuiMerchant.drawScreen` reads it.
+    pub fn trade(&self) -> Option<&Trade> {
+        self.recipes.as_ref()?.get(self.selected_recipe)
+    }
+
+    /// `ContainerMerchant.setCurrentRecipeIndex` from `GuiMerchant.actionPerformed`.
+    pub fn set_recipe_index(&mut self, index: usize) {
+        self.selected_recipe = index;
+        self.reset_recipe();
+    }
+
+    /// `MerchantRecipeList.func_181078_a`: equal item and metadata, and the recipe's NBT, when it
+    /// has any, must be contained in the stack's.
+    fn recipe_item_eq(stack: &ItemStack, recipe: &ItemStack) -> bool {
+        stack.item == recipe.item && stack.damage == recipe.damage && match recipe.tag {
+            None => true,
+            Some(want) => stack.tag.is_some_and(|have| Self::nbt_contains(&want.get(), &have.get())),
+        }
+    }
+
+    /// `NBTUtil.func_181123_a(recipe, stack, false)`: every recipe tag appears in the stack.
+    fn nbt_contains(recipe: &mc_core::nbt::Compound, stack: &mc_core::nbt::Compound) -> bool {
+        recipe.iter().all(|(k, v)| stack.get(k).is_some_and(|w| Self::tag_matches(v, w)))
+    }
+
+    fn tag_matches(recipe: &mc_core::nbt::Tag, stack: &mc_core::nbt::Tag) -> bool {
+        match (recipe, stack) {
+            (mc_core::nbt::Tag::Compound(a), mc_core::nbt::Tag::Compound(b)) => Self::nbt_contains(a, b),
+            // compareTagLists is false: lists compare by their element type and contents.
+            _ => recipe == stack,
+        }
+    }
+
+    /// `MerchantRecipeList.canRecipeBeUsed(first, second, index)`: a selected recipe (`index > 0`)
+    /// is the only candidate; index 0 scans the whole list.
+    fn can_recipe_be_used(&self, first: ItemStack, second: Option<ItemStack>, index: usize) -> Option<usize> {
+        let recipes = self.recipes.as_ref()?;
+        if index > 0 && index < recipes.len() {
+            let r = &recipes[index];
+            let buy = r.buy?;
+            if !Self::recipe_item_eq(&first, &buy) {
+                return None;
+            }
+            if (second.is_some() || r.buy2.is_some()) && (r.buy2.is_none() || !second.is_some_and(|s| Self::recipe_item_eq(&s, &r.buy2.unwrap()))) {
+                return None;
+            }
+            if (first.count as i32) < buy.count as i32 {
+                return None;
+            }
+            if let Some(buy2) = r.buy2 {
+                if !second.is_some_and(|s| (s.count as i32) >= buy2.count as i32) {
+                    return None;
+                }
+            }
+            return Some(index);
+        }
+        recipes.iter().position(|r| {
+            let Some(buy) = r.buy else { return false };
+            if !Self::recipe_item_eq(&first, &buy) || (first.count as i32) < buy.count as i32 {
+                return false;
+            }
+            match r.buy2 {
+                None => second.is_none(),
+                Some(buy2) => second.is_some_and(|s| Self::recipe_item_eq(&s, &buy2) && (s.count as i32) >= buy2.count as i32),
+            }
+        })
+    }
+
+    /// `InventoryMerchant.resetRecipeAndSlots`: recompute the result slot from the two input slots
+    /// and the selected recipe.
+    fn reset_recipe(&mut self) {
+        self.current_recipe = None;
+        let mut first = self.slots.first().copied().flatten();
+        let mut second = self.slots.get(1).copied().flatten();
+        if first.is_none() {
+            first = second;
+            second = None;
+        }
+        if first.is_none() {
+            // `setInventorySlotContents(2, null)`: both inputs are empty.
+            if let Some(slot) = self.slots.get_mut(2) {
+                *slot = None;
+            }
+            return;
+        }
+        // `theMerchant.getRecipes` returning null (no `MC|TrList` yet) leaves the result slot
+        // untouched; an empty list still clears it.
+        if self.recipes.is_none() {
+            return;
+        }
+        let first = first.unwrap();
+        let index = self.selected_recipe;
+        let mut matched = self.can_recipe_be_used(first, second, index);
+        if !matched.is_some_and(|i| !self.recipes.as_ref().unwrap()[i].disabled()) {
+            matched = match second {
+                Some(other) => self.can_recipe_be_used(other, Some(first), index),
+                None => None,
+            };
+        }
+        let usable = matched.filter(|&i| !self.recipes.as_ref().unwrap()[i].disabled());
+        self.current_recipe = usable;
+        let sell = usable.and_then(|i| self.recipes.as_ref().unwrap()[i].sell);
+        if let Some(slot) = self.slots.get_mut(2) {
+            *slot = sell;
+        }
+    }
+
+    /// `MerchantRecipe.doTrade` (called directly, therefore item-only matching): consume the buy
+    /// items from the two input slots. Returns whether the combination traded.
+    fn do_trade(recipe: &Trade, first: &mut Option<ItemStack>, second: &mut Option<ItemStack>) -> bool {
+        let (Some(first_stack), Some(buy)) = (first.as_mut(), recipe.buy) else { return false };
+        if first_stack.item != buy.item {
+            return false;
+        }
+        match (recipe.buy2, second.as_mut()) {
+            (Some(buy2), Some(second_stack)) if buy2.item == second_stack.item => {
+                first_stack.count = (first_stack.count as i32 - buy.count as i32).max(0) as u8;
+                second_stack.count = (second_stack.count as i32 - buy2.count as i32).max(0) as u8;
+                true
+            }
+            (None, None) => {
+                first_stack.count = (first_stack.count as i32 - buy.count as i32).max(0) as u8;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// `SlotMerchantResult.onPickupFromSlot`: the result was taken, so consume the current
+    /// recipe's buy items and let the merchant count the use. The server applies the same trade
+    /// from the C0E click, so no extra packet is sent.
+    pub fn merchant_pickup(&mut self) {
+        let Some(index) = self.current_recipe else { return };
+        let Some(recipe) = self.recipes.as_ref().and_then(|r| r.get(index)).cloned() else { return };
+        let mut first = self.slots.first().copied().flatten();
+        let mut second = self.slots.get(1).copied().flatten();
+        if !(Self::do_trade(&recipe, &mut first, &mut second) || Self::do_trade(&recipe, &mut second, &mut first)) {
+            return;
+        }
+        // `NpcMerchant.useRecipe` on the client only bumps the recipe's tool uses; the result
+        // slot's disabled overlay follows from it.
+        if let Some(r) = self.recipes.as_mut().and_then(|r| r.get_mut(index)) {
+            r.uses += 1;
+        }
+        // `setInventorySlotContents(0/1, …)` drops emptied stacks.
+        if let Some(slot) = self.slots.get_mut(0) {
+            *slot = first.filter(|s| s.count > 0);
+        }
+        if let Some(slot) = self.slots.get_mut(1) {
+            *slot = second.filter(|s| s.count > 0);
+        }
+        self.reset_recipe();
     }
 }
 
 pub struct ContainerScreen {
     pub window: Arc<Mutex<Window>>,
-    catalogue: Arc<Catalogue>,
+    pub(crate) catalogue: Arc<Catalogue>,
     left: i32,
     top: i32,
     hover: Option<usize>,
@@ -128,7 +320,27 @@ struct Layout {
 
 impl ContainerScreen {
     pub fn new(window: Arc<Mutex<Window>>, catalogue: Arc<Catalogue>) -> Self {
-        Self { window, catalogue, left: 0, top: 0, hover: None, is_player: false, last_click: None, dragging: None, creative: false, shift_clicked: None }
+        {
+            let mut w = window.lock().unwrap();
+            // `ContainerMerchant` always builds three slots whatever S2D says; a stray slot
+            // index beyond them is ignored like `Container.setSlot`'s failed list lookup.
+            if w.kind == "minecraft:villager" {
+                w.slots.resize(3, None);
+                w.slots.truncate(3);
+            }
+        }
+        Self {
+            window,
+            catalogue,
+            left: 0,
+            top: 0,
+            hover: None,
+            is_player: false,
+            last_click: None,
+            dragging: None,
+            creative: false,
+            shift_clicked: None,
+        }
     }
 
     fn layout(w: &Window) -> Layout {
@@ -138,8 +350,8 @@ impl ContainerScreen {
                 texture: "textures/gui/container/inventory.png",
                 w: 176,
                 h: 166,
-                slots: std::iter::once((154, 28))
-                    .chain((0..4).map(|i| (98 + i % 2 * 18, 18 + i / 2 * 18)))
+                slots: std::iter::once((144, 36))
+                    .chain((0..4).map(|i| (88 + i % 2 * 18, 26 + i / 2 * 18)))
                     .chain((0..4).map(|i| (8, 8 + i * 18)))
                     .collect(),
                 inv: (8, 84),
@@ -184,6 +396,11 @@ impl ContainerScreen {
             "minecraft:beacon" => Layout {
                 texture: "textures/gui/container/beacon.png", w: 230, h: 219,
                 slots: vec![(136, 110)], inv: (36, 137), rows: None,
+            },
+            "minecraft:villager" => Layout {
+                // ContainerMerchant: two input slots and `SlotMerchantResult`.
+                texture: "textures/gui/container/villager.png", w: 276, h: 166,
+                slots: vec![(36, 53), (62, 53), (120, 53)], inv: (8, 84), rows: None,
             },
             "minecraft:furnace" => Layout {
                 texture: "textures/gui/container/furnace.png",
@@ -283,6 +500,59 @@ impl ContainerScreen {
     fn can_take(&self, w: &Window, i: usize) -> bool {
         w.kind != "minecraft:anvil" || i != 2 ||
             (w.props[0] > 0 && (self.creative || w.level >= w.props[0] as i32))
+    }
+
+    // ------------------------------------------------------------ ContainerMerchant
+
+    /// `GuiMerchant.selectedMerchantRecipe`
+    pub(crate) fn selected_recipe(&self) -> usize {
+        self.window.lock().unwrap().selected_recipe
+    }
+
+    /// `MerchantRecipeList.size()`
+    pub(crate) fn trade_count(&self) -> usize {
+        self.window.lock().unwrap().trade_count()
+    }
+
+    /// The selected `MerchantRecipe`, as `GuiMerchant.drawScreen` reads it.
+    pub(crate) fn trade(&self) -> Option<Trade> {
+        self.window.lock().unwrap().trade().cloned()
+    }
+
+    /// The panel's top-left corner (`GuiContainer.guiLeft` / `guiTop`).
+    pub(crate) fn origin(&self) -> (i32, i32) {
+        (self.left, self.top)
+    }
+
+    /// `ContainerMerchant.setCurrentRecipeIndex` from `GuiMerchant.actionPerformed`.
+    pub(crate) fn set_recipe_index(&mut self, index: usize) {
+        self.window.lock().unwrap().set_recipe_index(index);
+    }
+
+    /// Merchant bookkeeping after one `slotClick`: the result-slot pickup hook and
+    /// `InventoryMerchant.resetRecipeAndSlots` whenever an input slot was changed (or a left
+    /// click landed on the merchant inventory, whose `Slot.onSlotChanged` marks it dirty).
+    fn merchant_click(&mut self, i: usize, mode: i8, before: [Option<ItemStack>; 3]) {
+        let mut w = self.window.lock().unwrap();
+        let after = [w.slots.first().copied().flatten(), w.slots.get(1).copied().flatten(), w.slots.get(2).copied().flatten()];
+        // Only the result slot itself and the double-click collect (which sweeps every slot)
+        // can take it; resets caused by input changes never count as a pickup. `InventoryMerchant.
+        // decrStackSize(2, n)` hands over and clears the whole result stack.
+        let taken = (i == 2 || mode == 6) && match (before[2], after[2]) {
+            (Some(_), None) => true,
+            (Some(b), Some(a)) => a.count < b.count,
+            _ => false,
+        };
+        if taken {
+            w.merchant_pickup();
+        }
+        if (i < 3 && mode == 0) || before[0] != after[0] || before[1] != after[1] {
+            w.reset_recipe();
+        }
+    }
+
+    fn merchant_slots(w: &Window) -> [Option<ItemStack>; 3] {
+        [w.slots.first().copied().flatten(), w.slots.get(1).copied().flatten(), w.slots.get(2).copied().flatten()]
     }
 
     fn crafting_grid(w: &Window) -> Option<usize> {
@@ -385,10 +655,13 @@ impl ContainerScreen {
             (w.kind == "minecraft:furnace" && i == 1 && cursor.is_some_and(|c| self.catalogue.items[c.item].id == 325)) { 1 } else { 64 };
         let Some(cur) = w.get(ui, i).map(|s| *s) else { return };
         let max_of = |s: ItemStack| self.max(s);
+        // `InventoryMerchant.decrStackSize(2, n)` ignores `n`: any click on the merchant result
+        // hands over the whole stack, even the right-click "half".
+        let whole_result = w.kind == "minecraft:villager" && i == 2;
         let (new_slot, new_cursor) = match (cursor, cur) {
             (None, None) => return,
             (None, Some(s)) => {
-                let n = if right { s.count.div_ceil(2) } else { s.count };
+                let n = if right && !whole_result { s.count.div_ceil(2) } else { s.count };
                 ((s.count > n).then_some(ItemStack { count: s.count - n, ..s }), Some(ItemStack { count: n, ..s }))
             }
             (Some(c), None) if valid => {
@@ -521,6 +794,24 @@ impl ContainerScreen {
             w.set(ui, i, rest);
             return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
         }
+        if w.kind == "minecraft:villager" {
+            // ContainerMerchant.transferStackInSlot: the result and inputs go to the inventory;
+            // the inventory only shuffles between main inventory and hotbar.
+            let range = if i == 2 {
+                (3..39).rev().collect()
+            } else if i == 0 || i == 1 {
+                (3..39).collect()
+            } else if i < 30 {
+                (30..39).collect()
+            } else if i < 39 {
+                (3..30).collect()
+            } else {
+                Vec::new()
+            };
+            let rest = self.merge(w, ui, s, range);
+            w.set(ui, i, rest);
+            return (rest.map_or(0, |r| r.count) != s.count).then_some(s);
+        }
         let n = w.slots.len();
         let range: Vec<usize> = if i < n { (n..w.total()).rev().collect() } else { (0..n).filter(|&k| !w.output_slot(k)).collect() };
         let rest = self.merge(w, ui, s, range);
@@ -572,7 +863,7 @@ impl ContainerScreen {
         w.clicks.push(Click { slot, button, mode: 5, item: None });
     }
 
-    #[cfg(test)]
+    /// `PlayerControllerMP.windowClick` from a mod: the same prediction and queued C0E as a GUI click.
     pub(crate) fn replay_click(&mut self, ui: &mut Ui, slot: i16, button: i8, mode: i8) {
         if slot == -999 && mode == 0 && self.window.lock().unwrap().cursor.is_some() {
             self.mouse(ui, -1, -1, button == 1);
@@ -584,6 +875,7 @@ impl ContainerScreen {
 
     fn click_slot(&mut self, ui: &mut Ui, i: usize, button: i8, mode: i8) {
         let mut w = self.window.lock().unwrap();
+        let merchant_before = (w.kind == "minecraft:villager").then(|| Self::merchant_slots(&w));
         let item = w.get(ui, i).and_then(|s| *s);
         let grid_size = Self::crafting_grid(&w);
         let grid_before: Vec<_> = grid_size.map(|n| (1..=n*n).map(|j| *w.get(ui, j).unwrap()).collect()).unwrap_or_default();
@@ -640,7 +932,10 @@ impl ContainerScreen {
             }
             4 if w.cursor.is_none() && self.can_take(&w, i) => {
                 if let Some(stack) = item {
-                    let count = if button == 0 { 1 } else { stack.count };
+                    // `SlotMerchantResult.decrStackSize` hands back the whole result stack
+                    // whatever amount the drop key asked for.
+                    let merchant_result = w.kind == "minecraft:villager" && i == 2;
+                    let count = if button == 0 && !merchant_result { 1 } else { stack.count };
                     w.set(ui, i, (stack.count > count).then_some(ItemStack { count: stack.count - count, ..stack }));
                 }
                 None
@@ -679,6 +974,10 @@ impl ContainerScreen {
             if grid_before != grid_after { self.recraft(&mut w, ui); }
         }
         w.clicks.push(Click { slot: i as i16, button, mode, item: returned });
+        drop(w);
+        if let Some(before) = merchant_before {
+            self.merchant_click(i, mode, before);
+        }
     }
 
     fn beacon_buttons(w: &Window) -> Vec<(i32, i32, i16, i16)> {
@@ -813,6 +1112,15 @@ impl Screen for ContainerScreen {
     fn pauses(&self) -> bool {
         false
     }
+    fn merchant_recipes(&mut self, window_id: i32, recipes: Vec<Trade>) {
+        if self.window.lock().unwrap().id as i32 != window_id {
+            return;
+        }
+        // `NpcMerchant.setRecipes` only stores the list; `InventoryMerchant.resetRecipeAndSlots`
+        // runs on the next click, and `GuiMerchant` keeps its selected index until a button is
+        // pressed.
+        self.window.lock().unwrap().recipes = Some(recipes);
+    }
     fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, w: i32, h: i32, mx: i32, my: i32) {
         mc_gui::screens::default_background(ui, b, w, h);
         let win = self.window.lock().unwrap();
@@ -882,12 +1190,13 @@ impl Screen for ContainerScreen {
             let p = if total_cook != 0 && cook != 0 { cook * 24 / total_cook } else { 0 };
             b.textured_rect(l.texture, x + 79, y + 34, 176, 14, p + 1, 16);
         }
+        // GuiMerchant titles the screen with `chatComponent.getUnformattedText`.
+        let title = if win.kind == "minecraft:villager" { mc_gui::component::strip_codes(&win.title) } else { win.title.clone() };
         let title_x = match win.kind.as_str() {
-            "minecraft:furnace" | "minecraft:brewing_stand" | "minecraft:dispenser" | "minecraft:dropper" => l.w / 2 - ui.font.width(&win.title) / 2,
+            "minecraft:furnace" | "minecraft:brewing_stand" | "minecraft:dispenser" | "minecraft:dropper" | "minecraft:villager" => l.w / 2 - ui.font.width(&title) / 2,
             "minecraft:crafting_table" => 28,
             _ => 8,
         };
-        let title = win.title.clone();
         if win.kind == "player" {
             // GuiInventory: only "Crafting" above the grid.
             ui.font.draw(b, &title, (x + 86) as f32, (y + 16) as f32, 0xff404040);
@@ -1205,5 +1514,254 @@ mod tests {
         assert!(ui.inventory[0].is_none());
         assert_eq!(ui.armor[0].map(|a| a.item), Some(helmet));
         assert_eq!(w.lock().unwrap().clicks[0].slot, 36);
+    }
+
+    #[test]
+    fn player_slot_layout_matches_container_player() {
+        let w = Window::new(0, "player", String::new(), 5);
+        let l = ContainerScreen::layout(&w);
+        let pos = ContainerScreen::positions(&l);
+        // ContainerPlayer's constructor: result (144,36), the 2×2 grid at 88/106 × 26/44,
+        // armor at 8 × 8/26/44/62, main inventory 8..152 × 84/102/120 and the hotbar at 142.
+        assert_eq!(pos[0], (144, 36));
+        assert_eq!(&pos[1..5], &[(88, 26), (106, 26), (88, 44), (106, 44)]);
+        assert_eq!(&pos[5..9], &[(8, 8), (8, 26), (8, 44), (8, 62)]);
+        assert_eq!(pos[9], (8, 84));
+        assert_eq!(pos[10], (26, 84));
+        assert_eq!(pos[35], (152, 120));
+        assert_eq!(pos[36], (8, 142));
+        assert_eq!(pos[44], (152, 142));
+        let s = ContainerScreen::new(Arc::new(Mutex::new(w)), Arc::new(Catalogue::metadata()));
+        // GuiContainer.isPointInRegion: left-1 <= mouse < left+16+1.
+        assert_eq!(s.at(&l, 87, 25), Some(1));
+        assert_eq!(s.at(&l, 104, 42), Some(1));
+        assert_eq!(s.at(&l, 105, 26), Some(2));
+        assert_eq!(s.at(&l, 143, 35), Some(0));
+        assert_eq!(s.at(&l, 144, 36), Some(0));
+    }
+
+    /// A merchant window and screen over the metadata-only catalogue, so these tests need no
+    /// vanilla jar.
+    fn merchant_window(slots: u8) -> (Arc<Mutex<Window>>, ContainerScreen, Ui) {
+        let cat = Arc::new(Catalogue::metadata());
+        let ui = Ui::new(&mc_assets::AssetSource::new(), mc_gui::settings::Settings::default());
+        let w = Arc::new(Mutex::new(Window::new(1, "minecraft:villager", "Villager".into(), slots)));
+        let s = ContainerScreen::new(w.clone(), cat);
+        (w, s, ui)
+    }
+
+    #[test]
+    fn merchant_slot_layout_matches_container_merchant() {
+        let (window, screen, _ui) = merchant_window(0);
+        // `ContainerMerchant` always builds its three slots whatever S2D's slot count says.
+        assert_eq!(window.lock().unwrap().slots.len(), 3);
+        let l = ContainerScreen::layout(&window.lock().unwrap());
+        assert_eq!((l.w, l.h), (276, 166));
+        assert_eq!(l.inv, (8, 84));
+        let pos = ContainerScreen::positions(&l);
+        assert_eq!(pos.len(), 39);
+        // Inputs (36,53)/(62,53), `SlotMerchantResult` (120,53), main inventory at 8/26/… ×
+        // 84/102/120 and the hotbar at 142.
+        assert_eq!(&pos[..3], &[(36, 53), (62, 53), (120, 53)]);
+        assert_eq!(pos[3], (8, 84));
+        assert_eq!(pos[11], (152, 84));
+        assert_eq!(pos[29], (152, 120));
+        assert_eq!(pos[30], (8, 142));
+        assert_eq!(pos[38], (152, 142));
+        assert_eq!(screen.at(&l, 35, 52), Some(0));
+        assert_eq!(screen.at(&l, 63, 53), Some(1));
+        assert_eq!(screen.at(&l, 119, 52), Some(2));
+        let stone = ItemStack::new(screen.catalogue.index_of(1, 0).unwrap(), 1, 0);
+        let w = window.lock().unwrap();
+        // `SlotMerchantResult.isItemValid` is false; the two inputs take anything.
+        assert!(!screen.accepts(&w, 2, stone));
+        assert!(screen.accepts(&w, 0, stone));
+        assert!(screen.accepts(&w, 1, stone));
+    }
+
+    #[test]
+    fn merchant_shift_click_follows_container_merchant_transfer_rules() {
+        let (window, mut screen, mut ui) = merchant_window(3);
+        let cat = Arc::clone(&screen.catalogue);
+        let wheat = cat.index_of(296, 0).unwrap();
+        let emerald = cat.index_of(388, 0).unwrap();
+        // Main inventory → hotbar (30..39 forward), hotbar → main inventory (3..30 forward).
+        ui.inventory[9] = Some(ItemStack::new(wheat, 5, 0));
+        screen.click_slot(&mut ui, 3, 0, 1);
+        assert!(ui.inventory[9].is_none());
+        assert_eq!(ui.inventory[0].unwrap().count, 5);
+        screen.click_slot(&mut ui, 30, 0, 1);
+        assert!(ui.inventory[0].is_none());
+        assert_eq!(ui.inventory[9].unwrap().count, 5);
+        // An input slot empties into the main inventory (3..39 forward, so it joins slot 3).
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(wheat, 3, 0));
+        screen.click_slot(&mut ui, 0, 0, 1);
+        assert!(window.lock().unwrap().slots[0].is_none());
+        assert_eq!(ui.inventory[9].unwrap().count, 8);
+        // The result goes to the inventory back to front (hotbar 8 first) and
+        // `SlotMerchantResult.onPickupFromSlot` consumes the buy items.
+        ui.inventory = [None; 36];
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(wheat, 3, 0));
+        screen.merchant_recipes(
+            1,
+            vec![Trade {
+                buy: Some(ItemStack::new(wheat, 3, 0)),
+                buy2: None,
+                sell: Some(ItemStack::new(emerald, 1, 0)),
+                uses: 0,
+                max_uses: 7,
+            }],
+        );
+        screen.set_recipe_index(0);
+        assert_eq!(window.lock().unwrap().slots[2].map(|s| s.item), Some(emerald));
+        screen.click_slot(&mut ui, 2, 0, 1);
+        {
+            let w = window.lock().unwrap();
+            assert_eq!(w.clicks.len(), 4, "one C0E click per slot click");
+            let click = w.clicks.last().unwrap();
+            assert_eq!((click.slot, click.button, click.mode), (2, 0, 1));
+            // `transferStackInSlot` returns the pre-merge result stack, which C0E carries.
+            assert_eq!(click.item, Some(ItemStack::new(emerald, 1, 0)));
+            assert!(w.slots[0].is_none());
+            assert!(w.slots[2].is_none());
+        }
+        assert_eq!(ui.inventory[8].unwrap().item, emerald);
+        // `NpcMerchant.useRecipe` bumps the matched recipe's tool uses on the client too.
+        assert_eq!(screen.trade().unwrap().uses, 1);
+    }
+
+    #[test]
+    fn merchant_reset_recipe_matches_inventory_merchant_rules() {
+        let (window, mut screen, _ui) = merchant_window(3);
+        let cat = Arc::clone(&screen.catalogue);
+        let wheat = cat.index_of(296, 0).unwrap();
+        let emerald = cat.index_of(388, 0).unwrap();
+        let diamond = cat.index_of(264, 0).unwrap();
+        let buy3 = ItemStack::new(wheat, 3, 0);
+        let recipe = |buy: Option<ItemStack>, buy2: Option<ItemStack>, sell: Option<ItemStack>, uses: i32| Trade { buy, buy2, sell, uses, max_uses: 7 };
+        screen.merchant_recipes(
+            1,
+            vec![
+                recipe(Some(buy3), None, Some(ItemStack::new(emerald, 1, 0)), 0),
+                recipe(Some(ItemStack::new(wheat, 1, 0)), None, Some(ItemStack::new(diamond, 1, 0)), 0),
+            ],
+        );
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(wheat, 3, 0));
+        // `currentRecipeIndex == 0` scans the list, so the first satisfiable recipe wins.
+        screen.set_recipe_index(0);
+        assert_eq!(window.lock().unwrap().slots[2].map(|s| s.item), Some(emerald));
+        // A selected index is the only candidate, and recipe 1 only needs one wheat.
+        screen.set_recipe_index(1);
+        assert_eq!(window.lock().unwrap().slots[2].map(|s| s.item), Some(diamond));
+        // Too few buy items leave the result empty.
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(wheat, 2, 0));
+        screen.merchant_recipes(1, vec![recipe(Some(buy3), None, Some(ItemStack::new(emerald, 1, 0)), 0)]);
+        screen.set_recipe_index(0);
+        assert!(window.lock().unwrap().slots[2].is_none());
+        // `isRecipeDisabled` (`uses >= maxUses`) hides the trade.
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(wheat, 3, 0));
+        screen.merchant_recipes(1, vec![recipe(Some(buy3), None, Some(ItemStack::new(emerald, 1, 0)), 7)]);
+        screen.set_recipe_index(0);
+        assert!(window.lock().unwrap().slots[2].is_none());
+        // A second buy item must be present in slot 1 and match.
+        screen.merchant_recipes(1, vec![recipe(Some(ItemStack::new(wheat, 1, 0)), Some(ItemStack::new(diamond, 1, 0)), Some(ItemStack::new(emerald, 1, 0)), 0)]);
+        window.lock().unwrap().slots[1] = None;
+        screen.set_recipe_index(0);
+        assert!(window.lock().unwrap().slots[2].is_none(), "second buy item missing");
+        window.lock().unwrap().slots[1] = Some(ItemStack::new(diamond, 2, 0));
+        screen.set_recipe_index(0);
+        assert_eq!(window.lock().unwrap().slots[2].map(|s| s.item), Some(emerald));
+    }
+
+    #[test]
+    fn merchant_collect_and_number_key_take_the_result_through_shared_modes() {
+        let (window, mut screen, mut ui) = merchant_window(3);
+        let cat = Arc::clone(&screen.catalogue);
+        let wheat = cat.index_of(296, 0).unwrap();
+        let emerald = cat.index_of(388, 0).unwrap();
+        screen.merchant_recipes(
+            1,
+            vec![Trade {
+                buy: Some(ItemStack::new(wheat, 3, 0)),
+                buy2: None,
+                sell: Some(ItemStack::new(emerald, 2, 0)),
+                uses: 0,
+                max_uses: 7,
+            }],
+        );
+        {
+            let mut w = window.lock().unwrap();
+            w.slots[0] = Some(ItemStack::new(wheat, 3, 0));
+            w.cursor = Some(ItemStack::new(emerald, 2, 0));
+        }
+        screen.set_recipe_index(0);
+        // Double-click collect sweeps the result into the cursor (`slotClick` mode 6) and then
+        // runs `SlotMerchantResult.onPickupFromSlot`.
+        screen.click_slot(&mut ui, 1, 0, 6);
+        {
+            let w = window.lock().unwrap();
+            assert_eq!(w.cursor.unwrap().count, 4);
+            assert!(w.slots[0].is_none());
+            assert!(w.slots[2].is_none());
+            assert_eq!(w.clicks.last().unwrap().mode, 6);
+        }
+        assert_eq!(screen.trade().unwrap().uses, 1);
+        // The hotbar number keys use `slotClick` mode 2 and take the result the same way.
+        {
+            let mut w = window.lock().unwrap();
+            w.cursor = None;
+            w.slots[0] = Some(ItemStack::new(wheat, 3, 0));
+        }
+        ui.inventory = [None; 36];
+        screen.set_recipe_index(0);
+        screen.hover = Some(2);
+        assert!(matches!(screen.key(&mut ui, Key::Number(3)), Action::None));
+        assert_eq!(ui.inventory[3].unwrap().item, emerald);
+        let w = window.lock().unwrap();
+        assert_eq!((w.clicks.last().unwrap().button, w.clicks.last().unwrap().mode), (3, 2));
+        assert!(w.slots[0].is_none());
+        drop(w);
+        assert_eq!(screen.trade().unwrap().uses, 2);
+    }
+
+    #[test]
+    fn merchant_result_right_click_and_drop_take_the_whole_stack() {
+        let (window, mut screen, mut ui) = merchant_window(3);
+        let cat = Arc::clone(&screen.catalogue);
+        let wheat = cat.index_of(296, 0).unwrap();
+        let emerald = cat.index_of(388, 0).unwrap();
+        screen.merchant_recipes(
+            1,
+            vec![Trade {
+                buy: Some(ItemStack::new(wheat, 3, 0)),
+                buy2: None,
+                sell: Some(ItemStack::new(emerald, 3, 0)),
+                uses: 0,
+                max_uses: 7,
+            }],
+        );
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(wheat, 3, 0));
+        screen.set_recipe_index(0);
+        // `InventoryMerchant.decrStackSize(2, n)` ignores `n`, so the right-click "half" is the
+        // whole result stack; the pickup then consumes the buy items.
+        screen.click_slot(&mut ui, 2, 1, 0);
+        {
+            let w = window.lock().unwrap();
+            assert_eq!(w.cursor.unwrap().count, 3);
+            assert!(w.slots[0].is_none());
+            assert!(w.slots[2].is_none());
+            assert_eq!((w.clicks.last().unwrap().slot, w.clicks.last().unwrap().mode), (2, 0));
+        }
+        assert_eq!(screen.trade().unwrap().uses, 1);
+        // The drop key on the result slot drops the whole stack too (mode 4, button 0).
+        window.lock().unwrap().cursor = None;
+        window.lock().unwrap().slots[0] = Some(ItemStack::new(wheat, 3, 0));
+        screen.set_recipe_index(0);
+        screen.hover = Some(2);
+        assert!(matches!(screen.key(&mut ui, Key::Drop), Action::None));
+        let w = window.lock().unwrap();
+        assert_eq!((w.clicks.last().unwrap().slot, w.clicks.last().unwrap().button, w.clicks.last().unwrap().mode), (2, 0, 4));
+        assert!(w.slots[0].is_none());
+        assert!(w.slots[2].is_none());
     }
 }

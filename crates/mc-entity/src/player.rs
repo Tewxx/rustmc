@@ -42,6 +42,7 @@ pub struct PlayerEntity {
     pub in_water: bool,
     in_web: bool,
     pub no_clip: bool,
+    pub mod_no_clip: Option<bool>,
     pub ticks_existed: i32,
     pub step_height: f32,
     pub distance_walked: f32,
@@ -57,6 +58,8 @@ pub struct PlayerEntity {
     pub move_strafe: f32,
     pub jump_key: bool,
     pub sneak_key: bool,
+    /// One-tick MovementInput override supplied by the Java mod bridge, after sneak scaling.
+    pub movement_override: Option<(f32, f32, bool, bool)>,
     // EntityLivingBase
     pub move_forward_e: f32,
     pub move_strafe_e: f32,
@@ -142,6 +145,7 @@ impl PlayerEntity {
             in_water: false,
             in_web: false,
             no_clip: false,
+            mod_no_clip: None,
             ticks_existed: 0,
             step_height: 0.6,
             distance_walked: 0.,
@@ -154,6 +158,7 @@ impl PlayerEntity {
             move_strafe: 0.,
             jump_key: false,
             sneak_key: false,
+            movement_override: None,
             move_forward_e: 0.,
             move_strafe_e: 0.,
             is_jumping: false,
@@ -373,6 +378,12 @@ impl PlayerEntity {
         if self.sneak_key {
             self.move_strafe = (self.move_strafe as f64 * 0.3) as f32;
             self.move_forward = (self.move_forward as f64 * 0.3) as f32;
+        }
+        if let Some((strafe, forward, jump, sneak)) = self.movement_override.take() {
+            self.move_strafe = strafe;
+            self.move_forward = forward;
+            self.jump_key = jump;
+            self.sneak_key = sneak;
         }
         if keys.using_item && !self.riding {
             self.move_strafe *= 0.2;

@@ -18,6 +18,8 @@ pub struct BlockEntry {
     /// Weighted alternatives in vanilla's sorted order.
     pub models: Vec<(i32, BakedModel)>,
     pub weights: Vec<i32>,
+    pub(crate) bounds: Vec<Vec<[crate::ao::QuadBounds; 2]>>,
+    pub(crate) tinted: Vec<bool>,
 }
 
 pub struct BlockModels {
@@ -161,7 +163,11 @@ impl BlockModels {
                 };
                 model::sort_weighted(&mut models);
                 let weights = models.iter().map(|(w, _)| *w).collect();
-                BlockEntry { models, weights }
+                let bounds = models.iter().map(|(_, m)| m.quads.iter().map(|q| [
+                    crate::ao::fill_quad_bounds(&q.pos, q.face, false), crate::ao::fill_quad_bounds(&q.pos, q.face, true),
+                ]).collect()).collect();
+                let tinted = models.iter().map(|(_, m)| m.quads.iter().any(|q| q.tint_index >= 0)).collect();
+                BlockEntry { models, weights, bounds, tinted }
             })
             .collect();
         // `BlockModelShapes.getTexture(state)`: the model's `particle` texture. Models that do

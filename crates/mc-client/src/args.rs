@@ -2,6 +2,9 @@
 
 use crate::*;
 
+/// Offline name when `--name` is not given. Set `RUSTMC_DEFAULT_NAME` at build time to use your own.
+pub(crate) const DEFAULT_NAME: &str = match option_env!("RUSTMC_DEFAULT_NAME") { Some(n) => n, None => "Player" };
+
 pub(crate) struct Args {
     #[cfg(feature = "singleplayer")]
     pub(crate) play: bool,
@@ -44,7 +47,7 @@ pub(crate) fn print_usage() {
         "rustmc — Minecraft 1.8.9 client\n\n\
 Usage: rustmc [options]\n\n\
   --connect <host[:port]>  join a server (offline-mode by default)\n\
-  --name <name>            player name for offline-mode servers (default: Player)\n\
+  --name <name>            player name for offline-mode servers (default: {DEFAULT_NAME})\n\
   --online                 sign in with a Microsoft account for online-mode servers\n\
   --jar <1.8.9.jar>        client jar with the assets (auto-detected otherwise)\n\
   --pack <zip|dir>         extra resource pack (repeatable)\n\
@@ -82,7 +85,7 @@ fn parse_args_from(args: impl Iterator<Item = String>) -> Args {
         #[cfg(feature = "singleplayer")]
         seed: None,
         connect: None,
-        name: "Player".into(),
+        name: DEFAULT_NAME.into(),
         online: false,
         pack_mode: None,
         assets_dir: None,
@@ -110,7 +113,7 @@ fn parse_args_from(args: impl Iterator<Item = String>) -> Args {
             "--online" => a.online = true,
             "--pack-mode" => a.pack_mode = it.next().map(|s| pack::Mode::parse(&s)),
             "--connect" => a.connect = it.next(),
-            "--name" => a.name = it.next().unwrap_or_else(|| "Player".into()),
+            "--name" => a.name = it.next().unwrap_or_else(|| DEFAULT_NAME.into()),
             #[cfg(feature = "singleplayer")]
             "--radius" => a.radius = it.next().and_then(|s| s.parse().ok()).unwrap_or(4),
             #[cfg(feature = "singleplayer")]

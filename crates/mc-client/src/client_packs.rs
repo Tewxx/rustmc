@@ -30,6 +30,15 @@ impl App {
                 r.register_gui_texture(&path, w, h, &rgba);
             }
         }
+        // DynamicTexture uploads from Forge mods (fonts, capes, images), before this frame replays their draws.
+        if self.forge_on {
+            for u in mc_forge::impls::take_texture_uploads() {
+                if let Some(r) = &mut self.renderer {
+                    r.register_gui_texture(&u.path, u.width, u.height, &u.rgba);
+                }
+                self.forge_textures.insert(u.path.clone(), u);
+            }
+        }
     }
 
     /// The `ResourcePackRepository` constructor: drops selected packs that vanished or are no
@@ -70,10 +79,13 @@ impl App {
         let selected = self.selected_pack_paths();
         let stack = |s: &Self| repository::build_stack(&s.jar, &s.base_packs, &selected, server.as_deref()).map_err(|e| format!("{}: {e}", s.jar.display()));
         self.assets = stack(self)?;
+        if self.forge_on { self.forge_resources(server.as_deref()); }
         self.mesh_workers = None;
         self.models = BlockModels::load(&self.assets);
         self.catalogue = Arc::new(inventory::Catalogue::load(&self.assets, &self.models));
         self.ui.reload(&self.assets);
+        self.hud.invalidate_text_layout();
+        self.tiles.clear_sign_layouts();
         if self.sound.is_some() {
             // `SoundHandler.onResourceManagerReload`: every pack's sounds.json, sound files
             // from the highest pack that has them.
@@ -87,9 +99,14 @@ impl App {
         // The renderer owns every GPU texture and bind group built from the old stack.
         if let Some(win) = self.window.clone() {
             self.renderer = None;
-            let renderer = pollster::block_on(Renderer::new(win, &self.models, &self.assets));
-            for (cell, rgba) in self.skins.cells() {
+            let mut renderer = pollster::block_on(Renderer::new(win, &self.models, &self.assets));
+            for (uuid, cell, rgba) in self.skins.cells() {
                 renderer.upload_skin(cell, &rgba);
+                renderer.register_gui_texture(&skins::gui_path(uuid), 64, 64, &rgba);
+            }
+            // Mod DynamicTextures live in the JVM and are uploaded once; the new renderer needs them again.
+            for u in self.forge_textures.values() {
+                renderer.register_gui_texture(&u.path, u.width, u.height, &u.rgba);
             }
             self.renderer = Some(renderer);
         }

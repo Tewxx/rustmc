@@ -158,6 +158,8 @@ pub struct Settings {
     pub chat_width: f32,
     pub chat_height_focused: f32,
     pub chat_height_unfocused: f32,
+    /// `showInventoryAchievementHint`
+    pub show_inventory_achievement_hint: bool,
     /// `GameSettings.lastServer`: the direct-connect address last typed.
     pub last_server: String,
     /// Skin-parts mask sent in `C15PacketClientSettings`.
@@ -212,6 +214,7 @@ impl Default for Settings {
             chat_width: 1.0,
             chat_height_focused: 1.0,
             chat_height_unfocused: 0.44366196,
+            show_inventory_achievement_hint: true,
             last_server: String::new(),
             model_parts: 0x7f,
             key_codes: Default::default(),
@@ -282,6 +285,7 @@ impl Settings {
                 "chatWidth" => s.chat_width = f.unwrap_or(s.chat_width),
                 "chatHeightFocused" => s.chat_height_focused = f.unwrap_or(s.chat_height_focused),
                 "chatHeightUnfocused" => s.chat_height_unfocused = f.unwrap_or(s.chat_height_unfocused),
+                "showInventoryAchievementHint" => s.show_inventory_achievement_hint = b,
                 "resourcePacks" => s.resource_packs = parse_list(v),
                 "incompatibleResourcePacks" => s.incompatible_resource_packs = parse_list(v),
                 "lastServer" => s.last_server = v.to_string(),
@@ -345,6 +349,7 @@ impl Settings {
             ("chatWidth", self.chat_width.to_string()),
             ("chatHeightFocused", self.chat_height_focused.to_string()),
             ("chatHeightUnfocused", self.chat_height_unfocused.to_string()),
+            ("showInventoryAchievementHint", self.show_inventory_achievement_hint.to_string()),
             ("resourcePacks", gson_list(&self.resource_packs)),
             ("incompatibleResourcePacks", gson_list(&self.incompatible_resource_packs)),
             ("lastServer", self.last_server.clone()),

@@ -24,15 +24,15 @@ impl VisGraph {
         if self.count < 256 { return ALL_VISIBLE; }
         if self.count == 4096 { return 0; }
         let mut visible = 0u64;
-        let mut queue = Vec::with_capacity(4096);
+        let mut queue = [0u16; 4096];
         for start in 0..4096 {
             let x = start & 15; let z = (start >> 4) & 15; let y = start >> 8;
             if x != 0 && x != 15 && y != 0 && y != 15 && z != 0 && z != 15 { continue; }
             if self.opaque[start >> 6] & (1 << (start & 63)) != 0 { continue; }
             self.opaque[start >> 6] |= 1 << (start & 63);
-            queue.clear(); queue.push(start); let mut head = 0; let mut faces = 0u8;
-            while head < queue.len() {
-                let i = queue[head]; head += 1;
+            queue[0] = start as u16; let mut len = 1; let mut head = 0; let mut faces = 0u8;
+            while head < len {
+                let i = queue[head] as usize; head += 1;
                 let x = i & 15; let z = (i >> 4) & 15; let y = i >> 8;
                 if x == 0 { faces |= 1 << Facing::West.index(); }
                 if x == 15 { faces |= 1 << Facing::East.index(); }
@@ -47,7 +47,7 @@ impl VisGraph {
                 ] {
                     if valid && self.opaque[next >> 6] & (1 << (next & 63)) == 0 {
                         self.opaque[next >> 6] |= 1 << (next & 63);
-                        queue.push(next);
+                        queue[len] = next as u16; len += 1;
                     }
                 }
             }
@@ -65,18 +65,71 @@ pub fn connects(mask: u64, from: Facing, to: Facing) -> bool {
 
 type SectionKey = (i32, i32, i32);
 
+pub trait SectionSet {
+    fn contains(&self, key: &SectionKey) -> bool;
+}
+
+impl SectionSet for std::collections::HashSet<SectionKey> {
+    fn contains(&self, key: &SectionKey) -> bool { std::collections::HashSet::contains(self, key) }
+}
+
+impl<T: SectionSet> SectionSet for std::sync::Arc<T> {
+    fn contains(&self, key: &SectionKey) -> bool { self.as_ref().contains(key) }
+}
+
+pub struct VisibleSections {
+    start: SectionKey,
+    radius: i32,
+    width: usize,
+    seen: Vec<u8>,
+}
+
+impl SectionSet for VisibleSections {
+    fn contains(&self, key: &SectionKey) -> bool {
+        let x = key.0 as i64 - self.start.0 as i64 + self.radius as i64;
+        let z = key.2 as i64 - self.start.2 as i64 + self.radius as i64;
+        (0..16).contains(&key.1) && x >= 0 && z >= 0 && x < self.width as i64 && z < self.width as i64 &&
+            self.seen[(key.1 as usize * self.width + z as usize) * self.width + x as usize] != 0
+    }
+}
+
+impl VisibleSections {
+    #[cfg(test)]
+    pub(crate) fn from_keys(start: SectionKey, radius: i32, keys: impl IntoIterator<Item = SectionKey>) -> Self {
+        let width = radius as usize * 2 + 1;
+        let mut seen = vec![0; width * width * 16];
+        for key in keys {
+            let x = (key.0 - start.0 + radius) as usize;
+            let z = (key.2 - start.2 + radius) as usize;
+            seen[(key.1 as usize * width + z) * width + x] = 63;
+        }
+        Self { start, radius, width, seen }
+    }
+}
+
 struct Walk {
     start: SectionKey,
     radius: i32,
-    seen: std::collections::HashMap<SectionKey, u8>,
+    seen: Vec<u8>,
+    width: usize,
     queue: std::collections::VecDeque<(SectionKey, Option<Facing>)>,
 }
 
 impl Walk {
     fn new(start: SectionKey, radius: i32) -> Self {
-        let mut seen = std::collections::HashMap::new(); seen.insert(start, 63);
+        let width = radius.max(0) as usize * 2 + 1;
+        let mut seen = vec![0; width * width * 16];
+        if (0..16).contains(&start.1) { seen[(start.1 as usize * width + width / 2) * width + width / 2] = 63; }
         let mut queue = std::collections::VecDeque::new(); queue.push_back((start, None));
-        Self { start, radius, seen, queue }
+        Self { start, radius, seen, width, queue }
+    }
+
+    fn finish(self) -> std::collections::HashSet<SectionKey> {
+        let (start, radius, width) = (self.start, self.radius.max(0) as i64, self.width);
+        std::iter::once(start).chain(self.seen.into_iter().enumerate().filter(|(_, faces)| *faces != 0).map(|(i, _)| {
+            ((start.0 as i64 + (i % width) as i64 - radius) as i32, (i / (width * width)) as i32,
+                (start.2 as i64 + (i / width % width) as i64 - radius) as i32)
+        })).collect()
     }
 
     fn advance(&mut self, masks: &std::collections::HashMap<SectionKey, u64>, budget: usize) -> bool {
@@ -90,7 +143,9 @@ impl Walk {
                 if !(0..16).contains(&next.1) || (next.0 as i64 - self.start.0 as i64).abs() > self.radius as i64 ||
                     (next.2 as i64 - self.start.2 as i64).abs() > self.radius as i64 { continue; }
                 let from = to.opposite();
-                let entry = self.seen.entry(next).or_insert(0);
+                let x = (next.0 as i64 - self.start.0 as i64 + self.radius as i64) as usize;
+                let z = (next.2 as i64 - self.start.2 as i64 + self.radius as i64) as usize;
+                let entry = &mut self.seen[(next.1 as usize * self.width + z) * self.width + x];
                 let bit = 1 << from.index();
                 if *entry & bit != 0 { continue; }
                 if masks.get(&next).copied().unwrap_or(ALL_VISIBLE) == ALL_VISIBLE { *entry = 63; }
@@ -106,12 +161,12 @@ impl Walk {
 pub fn reachable(start: SectionKey, radius: i32, masks: &std::collections::HashMap<SectionKey, u64>) -> std::collections::HashSet<SectionKey> {
     let mut walk = Walk::new(start, radius);
     while !walk.advance(masks, usize::MAX) {}
-    walk.seen.into_keys().collect()
+    walk.finish()
 }
 
 /// Sections outside the traversed region remain visible; custom models can extend far beyond
 /// their nominal section and the renderer has no CPU far-plane culling.
-pub fn culls(visible: &std::collections::HashSet<SectionKey>, start: SectionKey, radius: i32, key: SectionKey) -> bool {
+pub fn culls(visible: &impl SectionSet, start: SectionKey, radius: i32, key: SectionKey) -> bool {
     (0..16).contains(&key.1) && (key.0 as i64 - start.0 as i64).abs() <= radius as i64 &&
         (key.2 as i64 - start.2 as i64).abs() <= radius as i64 && !visible.contains(&key)
 }
@@ -119,7 +174,7 @@ pub fn culls(visible: &std::collections::HashSet<SectionKey>, start: SectionKey,
 /// Conservative cache. Dirty/missing sections are open until fresh geometry arrives.
 pub struct CaveCull {
     masks: std::collections::HashMap<(i32, i32, i32), u64>,
-    cached: Option<(SectionKey, i32, std::sync::Arc<std::collections::HashSet<SectionKey>>)>,
+    cached: Option<(SectionKey, i32, std::sync::Arc<VisibleSections>)>,
     walk: Option<Walk>,
     changed: std::time::Instant,
 }
@@ -142,7 +197,7 @@ impl CaveCull {
     }
 
     /// While visibility is changing, draw everything instead of blocking the render thread.
-    pub fn visible(&mut self, start: (i32, i32, i32), radius: i32) -> Option<std::sync::Arc<std::collections::HashSet<(i32, i32, i32)>>> {
+    pub fn visible(&mut self, start: (i32, i32, i32), radius: i32) -> Option<std::sync::Arc<VisibleSections>> {
         if self.masks.is_empty() || !(0..16).contains(&start.1) || !(1..=32).contains(&radius) ||
             self.changed.elapsed() < std::time::Duration::from_millis(100) { return None; }
         if let Some((s, r, visible)) = &self.cached {
@@ -153,7 +208,7 @@ impl CaveCull {
         }
         if self.walk.as_mut().unwrap().advance(&self.masks, 2048) {
             let walk = self.walk.take().unwrap();
-            let visible = std::sync::Arc::new(walk.seen.into_keys().collect());
+            let visible = std::sync::Arc::new(VisibleSections { start, radius, width: walk.width, seen: walk.seen });
             self.cached = Some((start, radius, visible));
         }
         self.cached.as_ref().filter(|(s, r, _)| *s == start && *r == radius).map(|(_, _, visible)| visible.clone())
@@ -163,6 +218,20 @@ impl CaveCull {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dense_membership_matches_reachable_keys_at_negative_coordinates() {
+        let start = (-3, 5, 7);
+        let masks = std::collections::HashMap::from([((-2, 5, 7), 0), ((-3, 6, 7), 0)]);
+        let expected = reachable(start, 2, &masks);
+        let mut walk = Walk::new(start, 2);
+        while !walk.advance(&masks, 3) {}
+        let visible = VisibleSections { start, radius: 2, width: walk.width, seen: walk.seen };
+        for x in -6..=0 { for y in -1..=16 { for z in 4..=10 {
+            assert_eq!(visible.contains(&(x, y, z)), expected.contains(&(x, y, z)), "{x},{y},{z}");
+        }}}
+        assert!(!visible.contains(&(i32::MIN, 5, i32::MAX)));
+    }
 
     /// Run with `cargo test --release -p mc-render visibility_headless_bench -- --ignored --nocapture`.
     #[test]
@@ -180,8 +249,8 @@ mod tests {
             }
             let all = ((radius * 2 + 1).pow(2) * 16) as usize;
             eprintln!("cave traversal radius {radius}: reached {}/{} sections, {} steps, {:.2} ms total, {:.2} ms worst step (CPU only)",
-                walk.seen.len(), all, passes, started.elapsed().as_secs_f64()*1000., worst.as_secs_f64()*1000.);
-            assert!(walk.seen.len() < all);
+                walk.seen.iter().filter(|&&v| v != 0).count(), all, passes, started.elapsed().as_secs_f64()*1000., worst.as_secs_f64()*1000.);
+            assert!(walk.seen.iter().filter(|&&v| v != 0).count() < all);
         }
     }
 

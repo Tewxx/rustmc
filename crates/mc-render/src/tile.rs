@@ -15,6 +15,7 @@ use glam::{Mat4, Vec3};
 pub const TEXTURES: &[&str] = &[
     "sign",
     "steve",
+    "alex",
     "chest/normal",
     "chest/trapped",
     "chest/ender",
@@ -115,7 +116,9 @@ pub struct SignGlyph { pub pos: [[f32; 2]; 4], pub uv: [[f32; 2]; 4], pub color:
 #[derive(Clone, Debug)]
 pub enum TileFrame {
     Sign { pos: Vec3, standing: bool, meta: u8, light: [f32; 3], glyphs: Vec<SignGlyph> },
-    Skull { pos: Vec3, facing: u8, rotation: u8, kind: u8, light: [f32; 3] },
+    /// `skin`: the owner's downloaded skin cell; `alex`: `DefaultPlayerSkin.getDefaultSkin`
+    /// picked Alex for an owner without a (loaded) skin.
+    Skull { pos: Vec3, facing: u8, rotation: u8, kind: u8, light: [f32; 3], skin: Option<u32>, alex: bool },
     Banner { pos: Vec3, standing: bool, meta: u8, age: f32, patterns: Vec<(String, u8)>, light: [f32; 3] },
     /// `TileEntityChestRenderer.renderTileEntityAt`
     Chest {
@@ -158,7 +161,7 @@ pub fn render(f: &TileFrame, models: &ChestModels, out: &mut dyn FnMut(&Layer, M
     match f {
         TileFrame::Sign { pos, standing, meta, .. } => {
             let m = sign_transform(*pos, *standing, *meta) * Mat4::from_scale(Vec3::new(2. / 3., -2. / 3., -2. / 3.));
-            let layer = Layer { tex: Tex::Mob("sign"), tint: [1.; 3], overlay: None, additive: false, glint: false };
+            let layer = Layer { tex: Tex::Mob("sign"), tint: [1.; 3], overlay: None, additive: false, normalize: false, glint: false };
             models.sign_board.render(m, &mut |pm, q| out(&layer, pm, q));
             if *standing { models.sign_stick.render(m, &mut |pm, q| out(&layer, pm, q)); }
         }
@@ -168,12 +171,12 @@ pub fn render(f: &TileFrame, models: &ChestModels, out: &mut dyn FnMut(&Layer, M
             m *= Mat4::from_scale(Vec3::new(2. / 3., -2. / 3., -2. / 3.));
             let phase = (pos.x as i32).wrapping_mul(7).wrapping_add((pos.y as i32).wrapping_mul(9)).wrapping_add((pos.z as i32).wrapping_mul(13)) as f32 + age;
             let slate = Part { rot: Vec3::new((-0.0125 + 0.01 * mc_core::math::cos(phase * std::f32::consts::PI * 0.02)) * std::f32::consts::PI, 0., 0.), ..models.banner_slate.clone() };
-            let layer = Layer { tex: Tex::Mob("banner"), tint: [1.;3], overlay: None, additive: false, glint: false };
+            let layer = Layer { tex: Tex::Mob("banner"), tint: [1.;3], overlay: None, additive: false, normalize: false, glint: false };
             slate.render(m, &mut |pm, q| out(&layer, pm, q));
             if *standing { models.banner_stand.render(m, &mut |pm, q| out(&layer, pm, q)); }
             models.banner_top.render(m, &mut |pm, q| out(&layer, pm, q));
         }
-        TileFrame::Skull { pos, facing, rotation, kind, .. } => {
+        TileFrame::Skull { pos, facing, rotation, kind, skin, alex, .. } => {
             let (offset, yaw) = match facing & 7 {
                 1 => (Vec3::new(0.5, 0., 0.5), *rotation as f32 * 360. / 16.),
                 2 => (Vec3::new(0.5, 0.25, 0.74), 0.),
@@ -182,8 +185,9 @@ pub fn render(f: &TileFrame, models: &ChestModels, out: &mut dyn FnMut(&Layer, M
                 _ => (Vec3::new(0.26, 0.25, 0.5), 90.),
             };
             let m = Mat4::from_translation(*pos + offset) * Mat4::from_scale(Vec3::new(-1., -1., 1.)) * Mat4::from_rotation_y(yaw.to_radians());
-            let key = match kind { 1 => "skeleton/wither_skeleton", 2 => "zombie/zombie", 3 => "steve", 4 => "creeper/creeper", _ => "skeleton/skeleton" };
-            let layer = Layer { tex: Tex::Mob(key), tint: [1.;3], overlay: None, additive: false, glint: false };
+            let key = match kind { 1 => "skeleton/wither_skeleton", 2 => "zombie/zombie", 3 if *alex => "alex", 3 => "steve", 4 => "creeper/creeper", _ => "skeleton/skeleton" };
+            let tex = match skin { Some(cell) if *kind == 3 => Tex::Skin(*cell), _ => Tex::Mob(key) };
+            let layer = Layer { tex, tint: [1.;3], overlay: None, additive: false, normalize: false, glint: false };
             let humanoid = *kind == 2 || *kind == 3;
             let model = if humanoid { &models.skull_64 } else { &models.skull_32 };
             model.render(m, &mut |pm, q| out(&layer, pm, q));
@@ -216,7 +220,7 @@ pub fn render(f: &TileFrame, models: &ChestModels, out: &mut dyn FnMut(&Layer, M
             let f = 1. - *lid;
             let f = 1. - f * f * f;
             let rot = -(f * std::f32::consts::PI / 2.);
-            let layer = Layer { tex: Tex::Mob(skin.key(*large)), tint: [1.; 3], overlay: None, additive: false, glint: false };
+            let layer = Layer { tex: Tex::Mob(skin.key(*large)), tint: [1.; 3], overlay: None, additive: false, normalize: false, glint: false };
             model.render_all(rot, &mut |pm, q| out(&layer, m * pm, q));
         }
     }
@@ -256,11 +260,11 @@ mod tests {
     #[test]
     fn skull_models_match_java_head_layers() {
         for (kind, expected) in [(0, 6), (1, 6), (2, 12), (3, 12), (4, 6)] {
-            let frame = TileFrame::Skull { pos: Vec3::ZERO, facing: 1, rotation: 4, kind, light: [1.;3] };
+            let frame = TileFrame::Skull { pos: Vec3::ZERO, facing: 1, rotation: 4, kind, light: [1.;3], skin: None, alex: false };
             let mut count = 0; render(&frame, &ChestModels::default(), &mut |_, _, _| count += 1);
             assert_eq!(count, expected);
         }
-        let frame = TileFrame::Skull { pos: Vec3::ZERO, facing: 1, rotation: 0, kind: 0, light: [1.;3] };
+        let frame = TileFrame::Skull { pos: Vec3::ZERO, facing: 1, rotation: 0, kind: 0, light: [1.;3], skin: None, alex: false };
         let mut lo = Vec3::splat(f32::INFINITY); let mut hi = Vec3::splat(f32::NEG_INFINITY);
         render(&frame, &ChestModels::default(), &mut |_, m, q| for p in q.pos { let p = (m * p.extend(1.)).truncate(); lo = lo.min(p); hi = hi.max(p); });
         assert_eq!(lo, Vec3::new(0.25, 0., 0.25));

@@ -167,12 +167,43 @@ pub const LIGHT0: Vec3 = Vec3::new(0.2, 1.0, -0.7);
 pub const LIGHT1: Vec3 = Vec3::new(-0.2, 1.0, 0.7);
 
 /// GL fixed-function result for those two lights: ambient 0.4, diffuse 0.6 each, clamped.
+/// `normal` is the eye-space normal exactly as GL's fixed-function pipeline uses it (see
+/// [`gl_normal`]); it is not normalised here because `GL_RESCALE_NORMAL` leaves non-uniform
+/// model scales unnormalised.
+///
+/// `enableStandardItemLighting` also selects `GL_FLAT` (`shadeModel(7424)`), but every
+/// `TexturedQuad`/`BakedQuad` supplies one normal and one colour for all four vertices, so the
+/// shading model does not change the fragment colour.
 pub fn standard_lighting(normal: Vec3, lights: [Vec3; 2]) -> f32 {
-    let n = normal.normalize_or_zero();
-    (0.4 + 0.6 * n.dot(lights[0]).max(0.) + 0.6 * n.dot(lights[1]).max(0.)).min(1.)
+    (0.4 + 0.6 * normal.dot(lights[0]).max(0.) + 0.6 * normal.dot(lights[1]).max(0.)).min(1.)
+}
+
+/// GL's fixed-function normal transform for one object-space normal, given `normal_matrix` =
+/// `(M^-1)^T` of the current modelview.
+///
+/// `RenderHelper.enableStandardItemLighting` never enables `GL_NORMALIZE`; models rely on
+/// `GL_RESCALE_NORMAL` (enabled by `RendererLivingEntity`, `RenderItem`, `RenderEntityItem`,
+/// `RenderArrow`, `RenderPainting` and the tile renderers), which rescales the transformed
+/// normal by `f = 1 / |row 3 of M^-1|` (`EXT_rescale_normal`). For a uniform scale that yields a
+/// unit normal again; for a non-uniform one (`ModelSlime`'s squish, `RenderArrow`'s
+/// `glNormal3f(f8, 0, 0)`) it deliberately does not, and lighting uses the non-unit vector. The
+/// third column of `normal_matrix` is row 3 of `M^-1`.
+pub fn gl_normal(normal_matrix: Mat3, normal: Vec3, normalize: bool) -> Vec3 {
+    let len = normal_matrix.z_axis.length();
+    let n = normal_matrix * normal;
+    let n = if len > 0. { n / len } else { n };
+    if normalize { n.normalize_or_zero() } else { n }
 }
 
 /// Light directions after transforming by `m` (glLight positions use the current modelview).
+///
+/// `EntityRenderer.renderWorldPass` and `RenderGlobal.renderEntities` enable the standard lights
+/// with the camera modelview current, and every model is then drawn under that same camera
+/// matrix, so the camera rotation cancels out of the light/normal dot products: world-space
+/// entity callers pass `Mat3::IDENTITY`. Only the first-person hand
+/// (`ItemRenderer.rotateArroundXAndY`) and the GUI lighting (`enableGUIStandardItemLighting`)
+/// pass a non-identity matrix, because they set the lights under a rotation that is popped
+/// before drawing.
 pub fn lights_in(m: Mat3) -> [Vec3; 2] {
     [(m * LIGHT0.normalize()).normalize(), (m * LIGHT1.normalize()).normalize()]
 }
@@ -369,14 +400,12 @@ impl PlayerModel {
             self.right_arm.rot.x += sin(p.age * 0.067) * 0.05;
             self.left_arm.rot.x -= sin(p.age * 0.067) * 0.05;
         }
-        let head = self.head.clone();
-        self.headwear.copy_angles(&head);
-        let (ll, rl, la, ra, b) = (self.left_leg.clone(), self.right_leg.clone(), self.left_arm.clone(), self.right_arm.clone(), self.body.clone());
-        self.left_leg_wear.copy_angles(&ll);
-        self.right_leg_wear.copy_angles(&rl);
-        self.left_arm_wear.copy_angles(&la);
-        self.right_arm_wear.copy_angles(&ra);
-        self.body_wear.copy_angles(&b);
+        self.headwear.copy_angles(&self.head);
+        self.left_leg_wear.copy_angles(&self.left_leg);
+        self.right_leg_wear.copy_angles(&self.right_leg);
+        self.left_arm_wear.copy_angles(&self.left_arm);
+        self.right_arm_wear.copy_angles(&self.right_arm);
+        self.body_wear.copy_angles(&self.body);
     }
 
     /// `ModelPlayer.render`: biped parts, then the overlay layer.
@@ -416,5 +445,62 @@ mod tests {
             let e = if e.x != 0. { -e } else { e };
             assert!((q.normal - e).length() < 1e-5, "mirror {:?} vs {e:?}", q.normal);
         }
+    }
+
+    /// The two `RenderHelper.enableStandardItemLighting` lights: an upward face is fully lit and
+    /// side faces get `0.4 + 0.6 * max(dot, 0)`; LIGHT0/LIGHT1 are mirror images in x, so the
+    /// east and west faces agree while south (0.74) is brighter than east (0.50).
+    #[test]
+    fn world_lighting_shades_up_and_side_faces_like_gl() {
+        let lights = lights_in(Mat3::IDENTITY);
+        let shade = |n: Vec3| standard_lighting(gl_normal(Mat3::IDENTITY, n, false), lights);
+        assert!((shade(Vec3::Y) - 1.0).abs() < 1e-6);
+        assert!((shade(Vec3::Z) - 0.7396).abs() < 1e-3, "south {}", shade(Vec3::Z));
+        assert!((shade(-Vec3::Z) - 0.7396).abs() < 1e-3, "north {}", shade(-Vec3::Z));
+        assert!((shade(Vec3::X) - 0.4970).abs() < 1e-3, "east {}", shade(Vec3::X));
+        assert!((shade(-Vec3::X) - 0.4970).abs() < 1e-3, "west {}", shade(-Vec3::X));
+        assert!((shade(-Vec3::Y) - 0.4).abs() < 1e-6, "bottom {}", shade(-Vec3::Y));
+    }
+
+    /// `RenderHelper.enableGUIStandardItemLighting` enables the lights under `Ry(-30) . Rx(165)`
+    /// and then pops that matrix, so the rotation stays in the light directions: an item's GUI
+    /// "up" face only sees the ambient 0.4 while its south (front) face is brightly lit.
+    #[test]
+    fn gui_lighting_is_rotated_by_minus_30_y_then_165_x() {
+        let lights = lights_in(Mat3::from_rotation_y((-30f32).to_radians()) * Mat3::from_rotation_x(165f32.to_radians()));
+        let shade = |n: Vec3| standard_lighting(gl_normal(Mat3::IDENTITY, n, false), lights);
+        assert!((shade(Vec3::Y) - 0.4).abs() < 1e-4, "up {}", shade(Vec3::Y));
+        assert!((shade(Vec3::Z) - 0.8413).abs() < 1e-3, "south {}", shade(Vec3::Z));
+    }
+
+    /// `EntityRenderer.renderWorldPass` sets the lights after `setupCameraTransform`; the same
+    /// camera rotation also transforms every model normal, so it cancels out of the dot products
+    /// and world-space lighting can be evaluated with identity lights.
+    #[test]
+    fn camera_rotation_cancels_out_of_world_entity_lighting() {
+        let camera = Mat3::from_rotation_y(0.9) * Mat3::from_rotation_x(-0.4) * Mat3::from_rotation_z(0.2);
+        let (world, rotated) = (lights_in(Mat3::IDENTITY), lights_in(camera));
+        for n in [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, Vec3::Z + Vec3::X, Vec3::new(0.3, -0.8, 0.5)] {
+            let a = standard_lighting(gl_normal(Mat3::IDENTITY, n, false), world);
+            let b = standard_lighting(gl_normal(camera, n, false), rotated);
+            assert!((a - b).abs() < 1e-5, "{n:?}: {a} vs {b}");
+        }
+    }
+
+    /// `EXT_rescale_normal`: `f * (M^-1)^T n` with `f = 1 / |row 3 of M^-1|`; `GL_NORMALIZE`
+    /// (only `LayerSlimeGel`) normalises the result afterwards.
+    #[test]
+    fn gl_normal_rescales_like_rescale_normal_ext() {
+        // Squashed like `RenderSlime.preRenderCallback`: x/z half size, y stretched 4x.
+        let m = Mat3::from_diagonal(Vec3::new(0.5, 2.0, 0.5));
+        let nm = m.inverse().transpose();
+        let n = gl_normal(nm, Vec3::Y, false);
+        assert!((n - Vec3::new(0., 0.25, 0.)).length() < 1e-6, "{n:?}");
+        assert!((gl_normal(nm, Vec3::Y, true) - Vec3::Y).length() < 1e-6);
+        // Uniform scales (every 1/16-scaled model part, the 0.5 item draw) keep normals unit, so
+        // normalising changes nothing there.
+        let uniform = Mat3::from_diagonal(Vec3::splat(0.0625));
+        let n = gl_normal(uniform.inverse().transpose(), Vec3::new(0.3, -0.8, 0.5).normalize(), false);
+        assert!((n.length() - 1.0).abs() < 1e-6, "{}", n.length());
     }
 }

@@ -2,7 +2,8 @@ struct Globals {
     view_proj: mat4x4<f32>,
     camera: vec4<f32>,
     fog_color: vec4<f32>,
-    // x = fog start, y = fog end, z = 1 when the render target is sRGB
+    // x = fog start, y = fog end, z = 1 when the render target is sRGB,
+    // w = GL_EXP density (water/lava), 0 for the linear start/end fog.
     fog: vec4<f32>,
 };
 
@@ -66,7 +67,14 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let light = textureSample(lightmap, lightmap_sampler, in.light_uv).rgb;
     // All in vanilla's raw color space, like the fixed-function pipeline.
     let base = tex.rgb * in.color.rgb * light;
-    let f = clamp((in.dist - globals.fog.x) / (globals.fog.y - globals.fog.x), 0.0, 1.0);
+    // EntityRenderer.setupFog: GL_EXP when in water/lava, GL_LINEAR otherwise.
+    var f: f32;
+    if (globals.fog.w != 0.0) {
+        let d = in.dist * globals.fog.w;
+        f = 1.0 - exp(-d);
+    } else {
+        f = clamp((in.dist - globals.fog.x) / (globals.fog.y - globals.fog.x), 0.0, 1.0);
+    }
     var rgb = mix(base, globals.fog_color.rgb, f);
     if (globals.fog.z > 0.5) {
         // The target re-encodes to sRGB on write; pre-decode so the stored value is the raw one.

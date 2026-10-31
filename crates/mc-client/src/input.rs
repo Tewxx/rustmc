@@ -62,6 +62,15 @@ impl ApplicationHandler for App {
             .with_window_icon(icon::window_icon())
             .with_inner_size({ let (w, h) = WINDOW_SIZE.get().copied().unwrap_or((1280, 720)); winit::dpi::PhysicalSize::new(w, h) })
             .with_visible(self.screenshot.is_none());
+        // The installed Slinky launcher discovers Minecraft by its native LWJGL window
+        // class. This opt-in affects discovery only; rendering still belongs to wgpu.
+        #[cfg(target_os = "windows")]
+        let attrs = {
+            use winit::platform::windows::WindowAttributesExtWindows;
+            if std::env::var("RUSTMC_WINDOW_CLASS").as_deref() == Ok("LWJGL") {
+                attrs.with_class_name("LWJGL")
+            } else { attrs }
+        };
         let window = Arc::new(el.create_window(attrs).expect("create window"));
         let renderer = pollster::block_on(Renderer::new(window.clone(), &self.models, &self.assets));
         self.window = Some(window);
@@ -128,6 +137,10 @@ impl ApplicationHandler for App {
                 let (mx, my) = self.mouse_gui();
                 #[cfg(feature = "wasm-mods")]
                 self.mod_mouse_event(mx, my, match button { MouseButton::Left => 0, MouseButton::Right => 1, MouseButton::Middle => 2, _ => -1 }, state == ElementState::Pressed, 0);
+                let lwjgl_button = match button { MouseButton::Left => 0, MouseButton::Right => 1, MouseButton::Middle => 2, _ => -1 };
+                if self.grabbed && self.forge_mouse(lwjgl_button, state == ElementState::Pressed, 0) {
+                    return;
+                }
                 match state {
                     ElementState::Pressed => {
                         if button == MouseButton::Left && self.screen.as_ref().is_some_and(|s| s.is_chat()) {
@@ -179,7 +192,7 @@ impl ApplicationHandler for App {
                     }
                 } else if let Some(s) = &mut self.screen {
                     s.scroll(d);
-                } else if self.in_game && d != 0 {
+                } else if self.in_game && d != 0 && !self.forge_mouse(-1, false, d * 120) {
                     // Scrolling down moves right, like vanilla.
                     self.pending_selected_slot = Some((self.pending_selected_slot.unwrap_or(self.player.selected_slot) as i32 - d).rem_euclid(9) as usize);
                 }
@@ -194,6 +207,7 @@ impl ApplicationHandler for App {
                 let PhysicalKey::Code(code) = event.physical_key else { return };
                 #[cfg(feature = "wasm-mods")]
                 self.mod_key_event(code, event.state == ElementState::Pressed, event.repeat, event.text.as_ref().and_then(|t| t.chars().next()));
+                self.forge_key(keymap::lwjgl(code), event.state == ElementState::Pressed, event.repeat, event.text.as_ref().and_then(|t| t.chars().next()));
                 if event.state == ElementState::Released {
                     self.keys.remove(&code);
                     self.ui.shift_down = self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
@@ -211,6 +225,9 @@ impl ApplicationHandler for App {
                     self.ui.ctrl_down = true;
                 }
                 self.ui.key_code = keymap::lwjgl(code);
+                if !event.repeat && keymap::lwjgl(code) != 0 && keymap::lwjgl(code) == self.ui.settings.key("key.screenshot") {
+                    self.save_screenshot(None);
+                }
                 let mapped = map_key(code, &self.ui.settings, self.ui.ctrl_down);
                 if let Some(s) = &mut self.screen {
                     let a = s.key(&mut self.ui, mapped);
@@ -282,8 +299,7 @@ impl ApplicationHandler for App {
                     let p = b.pose(now);
                     (self.camera.pos, self.camera.yaw, self.camera.pitch) = (p.pos, p.yaw, p.pitch);
                 }
-                self.update(dt);
-                self.draw_frame();
+                self.forge_frame(|app| { app.update(dt); app.draw_frame(); });
                 self.frames += 1;
                 if let Some(b) = &mut self.bench {
                     if b.frame(now, now.elapsed().as_secs_f64() * 1e3) {
@@ -316,6 +332,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        if self.forge_quit { return el.exit(); }
         if let Some(w) = &self.window {
             let deadline = frame_deadline(self.last_frame, self.ui.settings.limit_framerate, self.ui.settings.vsync, self.bench.is_some());
             if let Some(deadline) = deadline.filter(|deadline| *deadline > Instant::now()) {

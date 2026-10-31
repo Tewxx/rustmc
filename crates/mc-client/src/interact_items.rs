@@ -3,7 +3,12 @@
 use crate::*;
 
 impl App {
+    /// `Minecraft.clickMouse` / `rightClickMouse` / `middleClickMouse`: mods' Mixin hooks may cancel it.
     pub(crate) fn interact(&mut self, button: MouseButton) {
+        self.forge_click_hook(button, |app| app.interact_body(button));
+    }
+
+    fn interact_body(&mut self, button: MouseButton) {
         if self.entity.dead {
             return;
         }

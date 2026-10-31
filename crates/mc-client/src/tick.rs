@@ -13,6 +13,7 @@ impl App {
     }
 
     pub(crate) fn update(&mut self, dt: f32) {
+        let _z = crate::bench::zone(crate::bench::Phase::Update);
         {
             let _z = crate::bench::zone(crate::bench::Phase::Net);
             self.process_net();
@@ -21,9 +22,12 @@ impl App {
         self.poll_asset_download();
         self.poll_disconnect();
         self.flush_window();
-        for (cell, rgba) in self.skins.poll() {
-            if let Some(r) = &self.renderer {
+        self.skins.request_wanted();
+        for (uuid, cell, rgba) in self.skins.poll() {
+            if let Some(r) = &mut self.renderer {
                 r.upload_skin(cell, &rgba);
+                r.register_gui_texture(&skins::gui_path(uuid), 64, 64, &rgba);
+                skins::mark_gui_skin(uuid);
             }
         }
         self.sync_creative();
@@ -36,22 +40,33 @@ impl App {
         self.tick_accum += dt * 20.0;
         while self.tick_accum >= 1.0 {
             self.tick_accum -= 1.0;
+            self.forge_run_client_tick(paused);
+        }
+        self.poll_meshes();
+        self.ui.ticks = self.hud.update_counter as f32 + self.tick_accum;
+        if self.in_game {
+            self.sync_view();
+        }
+    }
+
+    pub(crate) fn client_tick_body(&mut self, paused: bool) {
+            self.forge_tick_begin();
             self.hud_tick();
-            if let Some(sc) = &mut self.screen {
+            let tick_action = if let Some(sc) = &mut self.screen {
                 sc.tick();
+                sc.tick_action()
+            } else {
+                Action::None
+            };
+            if matches!(tick_action, Action::Respawn) {
+                self.respawn();
             }
             // Minecraft.runTick fires ClientTickEvent and the screen's updateScreen in menus too (a mod's login screen
             // polls its sign-in progress there).
-            self.forge_tick();
             // Minecraft.runTick: the music ticker runs in menus and in game.
             if let Some(s) = &mut self.sound {
-                let kind = if !self.in_game {
-                    music::MusicType::Menu
-                } else if self.entity.creative && self.entity.allow_flying {
-                    music::MusicType::Creative
-                } else {
-                    music::MusicType::Game
-                };
+                // `Minecraft.getAmbientMusicType`; `BossStatus` is not ported, so no dragon music.
+                let kind = music::MusicType::ambient(self.in_game, self.forge_dimension, self.entity.creative, self.entity.allow_flying, false);
                 for c in mc_sound::Category::ALL {
                     s.volumes.insert(c, self.ui.settings.sound_volume(c.key()));
                 }
@@ -59,18 +74,14 @@ impl App {
                 s.update_stream_volumes();
             }
             if let Some(r) = &self.renderer {
+                let _z = crate::bench::zone(crate::bench::Phase::Animation);
                 let uploads = self.models.atlas.tick();
                 r.upload_atlas(&uploads);
             }
-            if self.in_game && self.bench.is_none() && !paused {
+            if self.in_game && !paused {
                 self.run_tick();
             }
-        }
-        self.poll_meshes();
-        self.ui.ticks = self.hud.update_counter as f32 + self.tick_accum;
-        if self.in_game && self.bench.is_none() {
-            self.sync_view();
-        }
+            self.forge_tick_end();
     }
 
     /// The in-game part of `Minecraft.runTick`: input, then `updateEquippedItem`, then entities.
@@ -159,7 +170,7 @@ impl App {
                 matches!(e.kind, entities::Kind::Mob(100)) && matches!(e.meta.get(&16), Some(mc_protocol::MetaValue::Int(flags)) if flags & 4 != 0)
             });
             if riding.is_some() { self.entity.motion = mc_core::Vec3::new(0., 0., 0.); }
-            self.entity.tick(&self.world, &mut self.geometry, keys);
+            self.forge_player_update(|app| app.entity.tick(&app.world, &mut app.geometry, keys));
             let player = Vec3::new(self.entity.pos.x as f32, self.entity.pos.y as f32, self.entity.pos.z as f32);
             self.particles.tick(&self.world, &mut self.geometry, &mut self.rand, player, &self.remote.map, &self.models);
             // EntityLivingBase.heal from regeneration (the server corrects it with S06).
@@ -191,9 +202,10 @@ impl App {
                 let e = &self.entity;
                 if self.attached.contains_key(&n.entity_id) {
                     n.update_riding(e.yaw, e.pitch, e.on_ground, e.move_strafe_e, e.move_forward_e, e.jump_key, e.sneak_key);
-                } else {
-                    n.update_walking(e.sprinting, e.is_sneaking(), self.camera_entity.is_none(), None, e.pos.x, e.bb.min_y, e.pos.z, e.yaw, e.pitch, e.on_ground);
                 }
+            }
+            if self.net.as_ref().is_some_and(|n|!self.attached.contains_key(&n.entity_id)) {
+                self.send_walking_update();
             }
             // Entity.updateRidden repositions the passenger after its onUpdate packet emission.
             if let Some(vehicle) = riding.and_then(|id| self.remote.map.get(&id)) {
@@ -223,7 +235,11 @@ impl App {
             let (x, y, z) = (r.pos.x.floor() as i32, (r.pos.y + r.height * 0.5).floor() as i32, r.pos.z.floor() as i32);
             r.in_water = self.world.state_at(x, y, z).block().material == mc_data::Material::Water;
         }
-        self.remote.tick();
+        let mut players: Vec<(mc_core::Vec3, f64)> = self.remote.map.values().filter(|r| r.kind == entities::Kind::Player).map(|r| (r.pos, 1.62)).collect();
+        if self.entity.game_type != level::GameType::Spectator {
+            players.push((self.entity.pos, self.entity.eye_height() as f64));
+        }
+        self.remote.tick(&mut player::ObjectPhys { phys: player::PhysWorld { world: &self.world, geometry: &mut self.geometry }, players });
         // EntityOtherPlayerMP.onUpdate: EntityPlayer counts the use down, then the eating flag
         // starts or clears it.
         for r in self.remote.map.values_mut().filter(|r| r.kind == entities::Kind::Player) {

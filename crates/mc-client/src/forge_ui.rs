@@ -9,31 +9,54 @@ use mc_gui::{batch::GuiBatch, screens::{Action, Key, Screen}, Ui};
 fn java<R>(f: impl FnOnce(&mut mc_forge::jni::JNIEnv<'_>) -> mc_forge::jni::errors::Result<R>) -> Option<R> {
     match runtime::with_env(f)? {
         Ok(v) => Some(v),
-        Err(e) => { eprintln!("forge: {e}"); None }
+        Err(e) => {
+            eprintln!("forge: {e}");
+            runtime::with_env(|env| { let _ = env.exception_describe(); let _ = env.exception_clear(); });
+            None
+        }
     }
 }
 
-/// Replays what mod code drew (text and tessellator quads) into the client's GUI batch.
+/// Framebuffer pixels per GUI unit, for converting `glLineWidth`.
+static PIXELS_PER_UNIT: std::sync::Mutex<f32> = std::sync::Mutex::new(2.);
+
+/// The item catalogue `Draw::Item` replays through; `replay` also runs for mod screens, which have no `App`.
+static CATALOGUE: std::sync::Mutex<Option<std::sync::Arc<inventory::Catalogue>>> = std::sync::Mutex::new(None);
+
+/// Replays what mod code drew (text, tessellator quads and lines) into the client's GUI batch.
 fn replay(ui: &mut Ui, b: &mut GuiBatch) {
     let cmds = impls::take_draw();
-    // A mod's status text ("Login failed! Reason: ...") is the only trace of what its code did: log it when it changes.
-    static LAST: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
-    let texts: Vec<&str> = cmds.iter().filter_map(|d| if let Draw::Text { text, .. } = d { Some(text.as_str()) } else { None }).collect();
-    if !texts.is_empty() {
-        // Text fields can hold secrets (pasted tokens, passwords): mask anything that looks like one before logging.
-        let line = texts.join(" | ").split(' ').map(|w| if w.len() >= 20 && w.chars().all(|c| c.is_ascii_alphanumeric() || "._-!:$".contains(c)) { "<masked>" } else { w })
-            .collect::<Vec<_>>().join(" ");
-        let mut last = LAST.lock().unwrap();
-        if *last != line { eprintln!("[forge] screen: {line}"); *last = line; }
-    }
+    let ppu = *PIXELS_PER_UNIT.lock().unwrap();
+    // Editable fields may contain credentials. Never copy rendered text into logs.
     for cmd in cmds {
         match cmd {
-            Draw::Text { text, x, y, color, shadow } => {
+            Draw::Text { text, x, y, scale, color, shadow } => {
                 // FontRenderer.renderString: a colour with no alpha bits is opaque.
                 let c = if color as u32 & 0xfc00_0000 == 0 { color as u32 | 0xff00_0000 } else { color as u32 };
+                if scale < 1e-3 { continue; }
+                let scaled = (scale - 1.).abs() > 1e-3;
+                let (x, y) = if scaled { b.transform = Some((scale, [x, y])); (0., 0.) } else { (x, y) };
                 if shadow { ui.font.draw_shadow(b, &text, x, y, c); } else { ui.font.draw(b, &text, x, y, c); }
+                if scaled { b.transform = None; }
             }
-            Draw::Vertices { mode: 7, texture, verts } => {
+            Draw::Lines { width, verts } => {
+                let half = (width / ppu).max(0.5) / 2.;
+                let rgba = |v: &impls::Vertex| v.rgba.map(|c| (c.clamp(0., 1.) * 255.).round() as u8);
+                for s in verts.chunks_exact(2) {
+                    let (a, z) = ([s[0].pos[0] as f32, s[0].pos[1] as f32], [s[1].pos[0] as f32, s[1].pos[1] as f32]);
+                    let (dx, dy) = (z[0] - a[0], z[1] - a[1]);
+                    let len = dx.hypot(dy);
+                    if len < 1e-4 { continue; }
+                    let (nx, ny) = (-dy / len * half, dx / len * half);
+                    let (ca, cz) = (rgba(&s[0]), rgba(&s[1]));
+                    b.quad(None, false, [[a[0] + nx, a[1] + ny], [a[0] - nx, a[1] - ny], [z[0] - nx, z[1] - ny], [z[0] + nx, z[1] + ny]],
+                        [[0.; 2]; 4], [ca, ca, cz, cz]);
+                }
+            }
+            Draw::Vertices { mode: 7, texture, verts, blend } => {
+                // The GUI batch blends with alpha by default; (ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_COLOR) is its Invert.
+                let saved = b.blend;
+                if blend == Some((0x0307, 0x0301)) { b.blend = mc_gui::batch::Blend::Invert; }
                 for q in verts.chunks_exact(4) {
                     let rgba = |v: &impls::Vertex| v.rgba.map(|c| (c.clamp(0., 1.) * 255.).round() as u8);
                     b.quad(texture.as_deref(), texture.is_some(),
@@ -41,8 +64,43 @@ fn replay(ui: &mut Ui, b: &mut GuiBatch) {
                         std::array::from_fn(|i| [q[i].uv[0] as f32, q[i].uv[1] as f32]),
                         std::array::from_fn(|i| rgba(&q[i])));
                 }
+                b.blend = saved;
             }
             Draw::Vertices { .. } => {} // only quads (GL_QUADS) are replayed so far
+            // renderSkybox's copied, blurred panorama: the client's own (one per frame is enough).
+            Draw::Backdrop => if !b.items.iter().any(|i| matches!(i, mc_gui::batch::Item::Special(mc_gui::batch::Special::Panorama { .. }))) {
+                b.special(mc_gui::batch::Special::Panorama { ticks: ui.ticks });
+            },
+            Draw::Item { id, meta, x, y, scale, glint, .. } => {
+                // RenderItem: id/meta become atlas quads through the client's catalogue; nothing else has the UVs.
+                if scale < 1e-3 { continue; }
+                let cat = CATALOGUE.lock().unwrap().clone();
+                let Some(cat) = cat else { continue };
+                let Some(index) = cat.index_of(id, meta) else { continue };
+                let stack = mc_gui::ItemStack::new(index, 1, meta as i16);
+                let item = cat.render_def(&stack);
+                // Item.getColorFromItemStack: potion damage values tint the icon that carries tint index 0.
+                let tint = (item.id == 373 && stack.damage as u16 != item.meta).then(|| mc_render::items::potion_color(meta));
+                let tinted = |q: &inventory::IconQuad| match (tint, q.tint0) {
+                    (Some(c), Some(shade)) => {
+                        let ch = |v: u32| ((v & 255) as f32 * shade) as u8;
+                        [[ch(c >> 16), ch(c >> 8), ch(c), 255]; 4]
+                    }
+                    _ => q.color,
+                };
+                for q in &item.icon {
+                    b.quad(Some(&q.texture), true, q.pos.map(|p| [x + p[0] * scale, y + p[1] * scale]), q.uv, tinted(q));
+                }
+                // RenderItem.renderEffect: the glint pass runs over the icon's texels in color -8372020.
+                if glint {
+                    let saved = b.blend;
+                    b.blend = mc_gui::batch::Blend::Glint;
+                    for q in &item.icon {
+                        b.quad(Some(&q.texture), true, q.pos.map(|p| [x + p[0] * scale, y + p[1] * scale]), q.uv, [[0x80, 0x40, 0xcc, 255]; 4]);
+                    }
+                    b.blend = saved;
+                }
+            }
         }
     }
 }
@@ -93,12 +151,27 @@ impl Screen for ModScreen {
     }
 }
 
+/// The client's own screen for a [`game::vanilla_screen`] kind.
+fn native_screen(kind: &str) -> Option<Box<dyn Screen>> {
+    use mc_gui::screens;
+    Some(match kind {
+        "multiplayer" => Box::new(screens::MultiplayerScreen::new()),
+        "main_menu" => Box::new(screens::MainMenu::default()),
+        "ingame_menu" => Box::new(screens::PauseMenu::default()),
+        "options" => Box::new(screens::Options::default()),
+        "video" => Box::new(screens::VideoSettings::default()),
+        "controls" => Box::new(screens::Controls::default()),
+        "resource_packs" => Box::new(mc_gui::resource_packs::ResourcePacks::default()),
+        _ => return None,
+    })
+}
+
 impl App {
     /// Sizes, pointer and modifier keys as LWJGL reports them; call before any Java call that may read them.
     fn forge_prepare(&self) {
-        let sr = self.scaled();
-        let fb = self.renderer.as_ref().map_or((1280, 720), |r| (r.config.width as i32, r.config.height as i32));
+        let sr = self.scaled();        let fb = self.renderer.as_ref().map_or((1280, 720), |r| (r.config.width as i32, r.config.height as i32));
         impls::set_display((sr.width, sr.height), fb);
+        *CATALOGUE.lock().unwrap() = Some(self.catalogue.clone());
         impls::set_mouse(self.mouse_px.0 as i32, self.mouse_px.1 as i32);
         impls::set_modifiers(self.ui.ctrl_down, self.ui.shift_down, false);
     }
@@ -118,12 +191,48 @@ impl App {
         if !self.forge_on { return; }
         let Some(focus) = java(game::focus) else { return };
         match (focus == Focus::Mod, self.forge_mod_screen) {
-            (true, false) => { self.forge_mod_screen = true; self.open(Box::new(ModScreen(0, 0)), true); }
+            (true, false) => {
+                // A vanilla screen class the client draws itself: open the native one (its stub draws nothing).
+                if self.forge_open_vanilla(false) { return; }
+                self.forge_mod_screen = true;
+                self.open(Box::new(ModScreen(0, 0)), true);
+            }
+            // A mod screen opened a vanilla one (Lunar's home -> GuiMultiplayer).
+            (true, true) => { self.forge_open_vanilla(true); }
             (false, true) => {
                 self.forge_mod_screen = false;
                 self.close_screen(); // rebuilds the native screen's twin
             }
             _ => {}
+        }
+    }
+
+    /// Shows the native screen for a vanilla Java screen. Over a mod screen, that screen is replaced and closing the
+    /// native one returns to the parent the mod gave it (`forge_return`), as the vanilla screen's Done would.
+    fn forge_open_vanilla(&mut self, over_mod: bool) -> bool {
+        let Some(native) = java(game::vanilla_screen).flatten().and_then(native_screen) else { return false };
+        let parent = java(game::vanilla_parent).flatten();
+        if over_mod {
+            self.forge_mod_screen = false;
+            self.open(native, false);
+            self.forge_return = parent.map(|p| (p, self.parents.len()));
+        } else {
+            self.open(native, true);
+        }
+        true
+    }
+
+    /// Closing the native twin of a mod-opened vanilla screen: Java shows the mod's parent screen again.
+    pub(crate) fn forge_close_vanilla(&mut self) -> bool {
+        match self.forge_return.take() {
+            Some((parent, depth)) if depth == self.parents.len() => {
+                if let Some(s) = &mut self.screen { let _ = s.close_action(); }
+                self.screen = None;
+                java(|env| game::show_screen(env, parent.as_obj()));
+                self.forge_sync();
+                true
+            }
+            other => { self.forge_return = other; false }
         }
     }
 
@@ -150,14 +259,111 @@ impl App {
         self.session = (token != "0" && !token.is_empty()).then(|| crate::auth::Session { name, uuid: uuid.replace('-', ""), access_token: token });
     }
 
-    /// Once per client tick: `ClientTickEvent` START and END around the screen's `updateScreen`.
-    pub(crate) fn forge_tick(&mut self) {
+    /// START precedes Rust simulation; END follows it. Java hooks enclose both.
+    pub(crate) fn forge_tick_begin(&mut self) {
         if !self.forge_on { return; }
         self.forge_prepare();
         java(|env| game::client_tick(env, true));
+        self.forge_apply();
+    }
+
+    pub(crate) fn forge_tick_end(&mut self) {
+        if !self.forge_on { return; }
+        self.forge_publish();
         java(|env| game::client_tick(env, false));
+        self.forge_apply();
         self.forge_sync();
         self.forge_sync_session();
+    }
+
+    /// `RenderWorldLastEvent` at the end of the world pass. The camera is vanilla's: a model-view of
+    /// `orientCamera` with the world placed relative to the interpolated feet (`RenderManager.renderPos`), so
+    /// mods' `pos - renderPos` geometry lands where it would in Java. Draws are projected and replayed now,
+    /// before the HUD, without depth testing.
+    pub(crate) fn forge_world_last(&mut self, sr: Scaled) {
+        if !self.forge_on || !self.in_game { return; }
+        self.forge_prepare();
+        let fb = self.renderer.as_ref().map_or((1280., 720.), |r| (r.config.width as f32, r.config.height as f32));
+        *PIXELS_PER_UNIT.lock().unwrap() = fb.0 / sr.width.max(1) as f32;
+        let pt = self.tick_accum;
+        let e = &self.entity;
+        let lerp = |a: f64, b: f64| a + (b - a) * pt as f64;
+        let feet = glam::Vec3::new(lerp(e.last_tick_pos.x, e.pos.x) as f32, lerp(e.last_tick_pos.y, e.pos.y) as f32, lerp(e.last_tick_pos.z, e.pos.z) as f32);
+        let far = self.ui.settings.render_distance as f32 * 16. * std::f32::consts::SQRT_2;
+        let projection = self.camera.proj(fb.0 / fb.1.max(1.), far.max(32.));
+        let modelview = self.camera.view() * glam::Mat4::from_translation(feet - self.camera.pos);
+        let f64s = |m: glam::Mat4| m.to_cols_array().map(|v| v as f64);
+        let (p, m, gui) = (f64s(projection), f64s(modelview), (sr.width_f, sr.height_f));
+        java(|env| game::world_last(env, pt, p, m, gui));
+        replay(&mut self.ui, &mut self.batch);
+        self.forge_apply();
+    }
+
+    /// `GuiIngameForge.renderGameOverlay` begins: `RenderGameOverlayEvent.Pre(ALL)`; true if a mod hid the HUD.
+    pub(crate) fn forge_hud_pre(&mut self) -> bool {
+        if !self.forge_on { return false; }
+        self.forge_prepare();
+        let pt = self.tick_accum;
+        let cancelled = java(|env| game::overlay(env, pt, true, "ALL")).unwrap_or(false);
+        replay(&mut self.ui, &mut self.batch);
+        cancelled
+    }
+
+    /// The end of the HUD: `RenderGameOverlayEvent.Text` (lines mods add are drawn like `renderHUDText`), then
+    /// `Post(ALL)`; mod draws replay here, under any open screen.
+    pub(crate) fn forge_hud_post(&mut self, sr: Scaled) {
+        if !self.forge_on { return; }
+        let pt = self.tick_accum;
+        if let Some((left, right)) = java(|env| game::overlay_text(env, pt, &[], &[])).flatten() {
+            for (i, line) in left.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
+                let (w, top) = (self.ui.font.width(line), 2 + i as i32 * 9);
+                self.batch.rect(1, top - 1, 2 + w + 1, top + 8, 0x9050_5050);
+                self.ui.font.draw(&mut self.batch, line, 2., top as f32, 0xffe0_e0e0);
+            }
+            for (i, line) in right.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
+                let (w, top) = (self.ui.font.width(line), 2 + i as i32 * 9);
+                let left = sr.width - 2 - w;
+                self.batch.rect(left - 1, top - 1, left + w + 1, top + 8, 0x9050_5050);
+                self.ui.font.draw(&mut self.batch, line, left as f32, top as f32, 0xffe0_e0e0);
+            }
+        }
+        java(|env| game::overlay(env, pt, false, "ALL"));
+        replay(&mut self.ui, &mut self.batch);
+        self.forge_apply();
+    }
+
+    /// `ClientChatReceivedEvent`: `None` if a mod cancelled the message, else its (possibly replaced) JSON.
+    pub(crate) fn forge_chat(&mut self, position: i8, json: &str) -> Option<String> {
+        if !self.forge_on { return Some(json.to_string()); }
+        match java(|env| game::chat_received(env, position, json)) { Some(v) => v, None => Some(json.to_string()) }
+    }
+
+    /// A keyboard event: `Keyboard` state always; while playing with no screen open, key bindings and
+    /// `KeyInputEvent` as `Minecraft.runTick` does.
+    pub(crate) fn forge_key(&mut self, code: i32, down: bool, repeat: bool, ch: Option<char>) {
+        if !self.forge_on { return; }
+        impls::set_key(code, down, ch, repeat);
+        if !self.in_game || self.screen.is_some() { return; }
+        self.forge_prepare();
+        java(|env| { if !repeat { impls::key_bindings(env, code, down)?; } game::key_input(env) });
+        self.forge_apply();
+    }
+
+    /// An in-game mouse button or wheel event: Forge's `MouseEvent`, then key bindings on `button - 100`. True if a mod
+    /// cancelled it, so the client must not act on it.
+    pub(crate) fn forge_mouse(&mut self, button: i32, down: bool, wheel: i32) -> bool {
+        if !self.forge_on || !self.in_game || self.screen.is_some() { return false; }
+        self.forge_prepare();
+        impls::set_mouse_button(button, down, wheel);
+        let cancelled = java(game::mouse_input).unwrap_or(false);
+        if !cancelled && button >= 0 { java(|env| impls::key_bindings(env, button - 100, down)); }
+        self.forge_apply();
+        cancelled
+    }
+
+    /// `KeyBinding.unPressAllKeys` when a screen opens.
+    pub(crate) fn forge_unpress(&mut self) {
+        if self.forge_on { java(impls::unpress_key_bindings); }
     }
 
     /// Just before the screen draws: sync and `RenderTickEvent.START`.
@@ -166,6 +372,7 @@ impl App {
         self.forge_prepare();
         self.forge_sync();
         java(|env| game::render_tick(env, true, partial_ticks));
+        self.forge_apply();
     }
 
     /// Just after the screen draws: the twin's mod buttons over a native screen, then `RenderTickEvent.END`.
@@ -173,6 +380,7 @@ impl App {
         if !self.forge_on { return; }
         if !self.forge_mod_screen && java(game::focus) == Some(Focus::Shadow) { draw_java(&mut self.ui, &mut self.batch, mx, my); }
         java(|env| game::render_tick(env, false, partial_ticks));
+        self.forge_apply();
         replay(&mut self.ui, &mut self.batch); // anything mods drew in RenderTickEvent
     }
 }

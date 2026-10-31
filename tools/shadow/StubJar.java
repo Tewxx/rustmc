@@ -156,7 +156,8 @@ public class StubJar {
                     }
                 };
             }
-        }, ClassReader.SKIP_DEBUG);
+        // A real class keeps its debug info: Mixin's local-capturing injectors read the LocalVariableTable.
+        }, onlyForced ? 0 : ClassReader.SKIP_DEBUG);
         out.putNextEntry(new JarEntry(r.getClassName() + ".class"));
         out.write(w.toByteArray());
         out.closeEntry();
