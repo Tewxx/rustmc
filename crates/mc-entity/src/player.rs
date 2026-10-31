@@ -42,6 +42,7 @@ pub struct PlayerEntity {
     pub in_water: bool,
     in_web: bool,
     pub no_clip: bool,
+    pub mod_no_clip: Option<bool>,
     pub ticks_existed: i32,
     pub step_height: f32,
     pub distance_walked: f32,
@@ -57,12 +58,13 @@ pub struct PlayerEntity {
     pub move_strafe: f32,
     pub jump_key: bool,
     pub sneak_key: bool,
+    /// One-tick MovementInput override supplied by the Java mod bridge, after sneak scaling.
+    pub movement_override: Option<(f32, f32, bool, bool)>,
     // EntityLivingBase
     pub move_forward_e: f32,
     pub move_strafe_e: f32,
     pub is_jumping: bool,
     jump_ticks: i32,
-    ai_move_speed: f32,
     jump_movement_factor: f32,
     pub sprinting: bool,
     sprint_toggle_timer: i32,
@@ -70,6 +72,12 @@ pub struct PlayerEntity {
     pub food_level: i32,
     // PlayerCapabilities
     pub flying: bool,
+    pub riding: bool,
+    pub saddled_horse: bool,
+    horse_jump_counter: i32,
+    horse_jump_power: f32,
+    pub pending_horse_jump: Option<i32>,
+    pub disable_damage: bool,
     pub allow_flying: bool,
     pub creative: bool,
     pub fly_speed: f32,
@@ -137,6 +145,7 @@ impl PlayerEntity {
             in_water: false,
             in_web: false,
             no_clip: false,
+            mod_no_clip: None,
             ticks_existed: 0,
             step_height: 0.6,
             distance_walked: 0.,
@@ -149,17 +158,23 @@ impl PlayerEntity {
             move_strafe: 0.,
             jump_key: false,
             sneak_key: false,
+            movement_override: None,
             move_forward_e: 0.,
             move_strafe_e: 0.,
             is_jumping: false,
             jump_ticks: 0,
-            ai_move_speed: 0.1,
             jump_movement_factor: 0.02,
             sprinting: false,
             sprint_toggle_timer: 0,
             fly_toggle_timer: 0,
             food_level: 20,
             flying: false,
+            riding: false,
+            saddled_horse: false,
+            horse_jump_counter: 0,
+            horse_jump_power: 0.,
+            pending_horse_jump: None,
+            disable_damage: false,
             allow_flying: false,
             creative: false,
             fly_speed: 0.05,
@@ -284,6 +299,9 @@ impl PlayerEntity {
         self.prev_pitch = self.pitch;
         self.prev_yaw = self.yaw;
         self.handle_water_movement(w);
+        if self.is_in_lava(w) {
+            self.fall_distance *= 0.5;
+        }
         // EntityLivingBase.onEntityUpdate
         self.prev_swing_progress = self.swing_progress;
         self.prev_render_yaw_offset = self.render_yaw_offset;
@@ -361,7 +379,13 @@ impl PlayerEntity {
             self.move_strafe = (self.move_strafe as f64 * 0.3) as f32;
             self.move_forward = (self.move_forward as f64 * 0.3) as f32;
         }
-        if keys.using_item {
+        if let Some((strafe, forward, jump, sneak)) = self.movement_override.take() {
+            self.move_strafe = strafe;
+            self.move_forward = forward;
+            self.jump_key = jump;
+            self.sneak_key = sneak;
+        }
+        if keys.using_item && !self.riding {
             self.move_strafe *= 0.2;
             self.move_forward *= 0.2;
             self.sprint_toggle_timer = 0;
@@ -411,6 +435,24 @@ impl PlayerEntity {
                 self.motion.y += (self.fly_speed * 3.0) as f64;
             }
         }
+        // EntityPlayerSP's horse jump charge and release run before riding packets.
+        if self.saddled_horse {
+            if self.horse_jump_counter < 0 {
+                self.horse_jump_counter += 1;
+                if self.horse_jump_counter == 0 { self.horse_jump_power = 0.; }
+            }
+            if flag && !self.jump_key {
+                self.horse_jump_counter = -10;
+                self.pending_horse_jump = Some((self.horse_jump_power * 100.) as i32);
+            } else if !flag && self.jump_key {
+                self.horse_jump_counter = 0;
+                self.horse_jump_power = 0.;
+            } else if flag {
+                self.horse_jump_counter += 1;
+                self.horse_jump_power = if self.horse_jump_counter < 10 { self.horse_jump_counter as f32 * 0.1 }
+                    else { 0.8 + 2.0 / (self.horse_jump_counter - 9) as f32 * 0.1 };
+            }
+        } else { self.horse_jump_power = 0.; }
         self.on_living_update_player(w);
         if self.on_ground && self.flying && !self.no_clip {
             self.flying = false;
@@ -430,7 +472,6 @@ impl PlayerEntity {
         if self.sprinting {
             self.jump_movement_factor = (self.jump_movement_factor as f64 + 0.02 * 0.3) as f32;
         }
-        self.ai_move_speed = self.movement_speed_attr() as f32;
         let mut f = math::sqrt_double(self.motion.x * self.motion.x + self.motion.z * self.motion.z);
         let mut f1 = ((-self.motion.y * 0.20000000298023224).atan() * 15.0) as f32;
         if f > 0.1 {
@@ -583,7 +624,8 @@ impl PlayerEntity {
         } else {
             let f4 = self.ground_slipperiness(w);
             let f = 0.16277136 / (f4 * f4 * f4);
-            let f5 = if self.on_ground { self.ai_move_speed * f } else { self.jump_movement_factor };
+            // EntityPlayer.getAIMoveSpeed reads the live attribute, not landMovementFactor.
+            let f5 = if self.on_ground { self.movement_speed_attr() as f32 * f } else { self.jump_movement_factor };
             self.move_flying(strafe, forward, f5);
             let f4 = self.ground_slipperiness(w);
             if self.is_on_ladder(w) {
@@ -757,7 +799,10 @@ impl PlayerEntity {
                 pos = pos.down();
             }
         }
-        // updateFallState (damage is the server's)
+        // EntityLivingBase.updateFallState (damage is the server's)
+        if !self.in_water {
+            self.handle_water_movement(w);
+        }
         if self.on_ground {
             self.fall_distance = 0.0;
         } else if y < 0.0 {

@@ -130,7 +130,103 @@ pub fn convert(img: &image::RgbaImage) -> Option<Vec<u8>> {
     Some(out.into_raw())
 }
 
+/// `NBTUtil.readGameProfileFromNBT` as far as the skull renderers need it: the profile id
+/// (`EntityPlayer.getUUID`: the offline id when only a name is stored) and the `textures`
+/// property value.
+pub fn skull_profile(c: &mc_core::nbt::Compound) -> Option<(Uuid, Option<String>)> {
+    use mc_core::nbt::Tag;
+    let name = c.get("Name").and_then(Tag::as_str).unwrap_or("");
+    let id = c.get("Id").and_then(Tag::as_str).and_then(Uuid::parse);
+    if id.is_none() && name.is_empty() {
+        return None;
+    }
+    let uuid = id.unwrap_or_else(|| Uuid::offline_player(name));
+    let textures = c
+        .get("Properties")
+        .and_then(Tag::as_compound)
+        .and_then(|p| p.get("textures"))
+        .and_then(Tag::as_list)
+        .and_then(|l| l.first())
+        .and_then(Tag::as_compound)
+        .and_then(|t| t.get("Value"))
+        .and_then(Tag::as_str)
+        .map(str::to_owned);
+    Some((uuid, textures))
+}
+
+/// `TileEntityItemStackRenderer`'s profile for a skull stack: a `SkullOwner` compound, or a
+/// bare name (resolved through the session server in vanilla; here only its offline id).
+pub fn item_skull_profile(tag: &mc_core::nbt::Compound) -> Option<(Uuid, Option<String>)> {
+    use mc_core::nbt::Tag;
+    match tag.get("SkullOwner")? {
+        Tag::Compound(c) => skull_profile(c),
+        Tag::String(name) if !name.is_empty() => Some((Uuid::offline_player(name), None)),
+        _ => None,
+    }
+}
+
+/// Profiles whose skins a renderer asked for since the last tick (renderers only borrow the
+/// client immutably, so they queue here and `Skins::request_wanted` starts the downloads).
+static WANTED: std::sync::Mutex<Vec<(Uuid, String)>> = std::sync::Mutex::new(Vec::new());
+/// Skins also registered as GUI textures (`rustmc:skin/<uuid>`), for skull item icons.
+static GUI_SKINS: std::sync::Mutex<Vec<Uuid>> = std::sync::Mutex::new(Vec::new());
+
+pub fn want(uuid: Uuid, textures: &str) {
+    let mut w = WANTED.lock().unwrap();
+    if !w.iter().any(|(u, _)| *u == uuid) {
+        w.push((uuid, textures.to_owned()));
+    }
+}
+
+pub fn gui_path(uuid: Uuid) -> String {
+    format!("rustmc:skin/{uuid}")
+}
+
+/// The GUI texture for a skull item's owner, once the skin has arrived (Steve until then,
+/// like the `ThreadDownloadImageData` fallback).
+pub fn gui_skin(profile: &(Uuid, Option<String>)) -> Option<String> {
+    let (uuid, textures) = profile;
+    let t = textures.as_deref()?;
+    if GUI_SKINS.lock().unwrap().contains(uuid) {
+        return Some(gui_path(*uuid));
+    }
+    want(*uuid, t);
+    None
+}
+
+pub fn mark_gui_skin(uuid: Uuid) {
+    let mut g = GUI_SKINS.lock().unwrap();
+    if !g.contains(&uuid) {
+        g.push(uuid);
+    }
+}
+
 impl Skins {
+    /// Starts the downloads renderers queued with [`want`].
+    pub fn request_wanted(&mut self) {
+        let wanted = std::mem::take(&mut *WANTED.lock().unwrap());
+        for (uuid, textures) in wanted {
+            self.request(uuid, &textures);
+        }
+    }
+
+    /// `TileEntitySkullRenderer`'s texture for a player skull: the downloaded skin cell, or
+    /// whether the default skin is Alex (`DefaultPlayerSkin.getDefaultSkin(uuid)` when the
+    /// profile has no skin; Steve while one is still downloading).
+    pub fn skull_skin(&self, profile: Option<&(Uuid, Option<String>)>) -> (Option<u32>, bool) {
+        let Some((uuid, textures)) = profile else { return (None, false) };
+        match textures {
+            Some(t) => {
+                if let Some(&(cell, _)) = self.loaded.get(uuid) {
+                    return (Some(cell), false);
+                }
+                want(*uuid, t);
+                (None, false)
+            }
+            None => (None, default_slim(*uuid)),
+        }
+    }
+
     /// Starts a download for a profile's `textures` property (once per UUID and URL).
     pub fn request(&mut self, uuid: Uuid, textures: &str) {
         let Some((url, slim)) = parse_textures(textures) else { return };
@@ -155,7 +251,7 @@ impl Skins {
     }
 
     /// Finished downloads: assigns atlas cells and returns what to upload.
-    pub fn poll(&mut self) -> Vec<(u32, Vec<u8>)> {
+    pub fn poll(&mut self) -> Vec<(Uuid, u32, Vec<u8>)> {
         let mut up = Vec::new();
         for s in self.rx.try_iter() {
             let cell = match self.loaded.get(&s.uuid) {
@@ -168,16 +264,16 @@ impl Skins {
             };
             self.loaded.insert(s.uuid, (cell, s.slim));
             self.rgba.insert(s.uuid, s.rgba.clone());
-            up.push((cell, s.rgba));
+            up.push((s.uuid, cell, s.rgba));
         }
         up
     }
 
     /// Every decoded skin, for re-upload after the renderer is recreated.
-    pub fn cells(&self) -> Vec<(u32, Vec<u8>)> {
+    pub fn cells(&self) -> Vec<(Uuid, u32, Vec<u8>)> {
         self.loaded
             .iter()
-            .filter_map(|(uuid, (cell, _))| self.rgba.get(uuid).map(|rgba| (*cell, rgba.clone())))
+            .filter_map(|(uuid, (cell, _))| self.rgba.get(uuid).map(|rgba| (*uuid, *cell, rgba.clone())))
             .collect()
     }
 }

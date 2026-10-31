@@ -1,0 +1,13 @@
+[{
+  "modid": "ftlifecycle",
+  "name": "FT Lifecycle (from mcmod.info)",
+  "description": "Lifecycle order, IMC, proxies and metadata test.",
+  "version": "1.2.3",
+  "mcversion": "1.8.9",
+  "url": "https://example.invalid/ftlifecycle",
+  "authorList": ["rustmc", "second author"],
+  "credits": "Original test code",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}]

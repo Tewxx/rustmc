@@ -1,0 +1,10 @@
+[package]
+name = "mc-forge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jni = { version = "0.21.1", features = ["invocation"] }
+mc-core = { path = "../mc-core" }
+mc-data = { path = "../mc-data" }
+serde_json = "1"

@@ -2,7 +2,7 @@
 //! `Chunk.fillChunk` conversion, and `EntityPlayerSP.onUpdateWalkingPlayer`'s movement packets.
 use mc_core::Vec3;
 use mc_protocol::chunk::WireChunk;
-use mc_protocol::net::{login, Writer};
+use mc_protocol::net::{login_with_handshake_address, Writer};
 use mc_protocol::packets::*;
 use mc_world::chunk::{Chunk, Section};
 use std::sync::mpsc::{self, Receiver};
@@ -10,12 +10,49 @@ use std::sync::mpsc::{self, Receiver};
 /// What the reader thread hands the game loop.
 pub enum Incoming {
     Packet(Box<PlayClientbound>),
+    Chunks(Vec<ChunkUpdate>),
     /// The connection ended; the reason as chat JSON or plain text.
     Closed(String),
 }
 
+pub enum ChunkUpdate {
+    Full { chunk: Chunk, remove_old: bool },
+    Partial { x: i32, z: i32, wire: WireChunk },
+}
+
+fn prepare_incoming(packet: PlayClientbound, sky_light: &mut bool, forge: bool) -> Incoming {
+    // Forge may replace the JoinGame dimension through its handshake; that state belongs to the game thread.
+    if forge { return Incoming::Packet(Box::new(packet)); }
+    match packet {
+        PlayClientbound::JoinGame(j) => {
+            *sky_light = j.dimension == 0;
+            Incoming::Packet(Box::new(PlayClientbound::JoinGame(j)))
+        }
+        PlayClientbound::Respawn(r) => {
+            *sky_light = r.dimension == 0;
+            Incoming::Packet(Box::new(PlayClientbound::Respawn(r)))
+        }
+        PlayClientbound::ChunkData(c) if !(c.full && c.bitmask == 0) && (-1_875_000..=1_875_000).contains(&c.x) && (-1_875_000..=1_875_000).contains(&c.z) => {
+            let updates = mc_protocol::chunk::decode(c.bitmask, &c.data, *sky_light, c.full).ok().map(|wire| {
+                if c.full { ChunkUpdate::Full { chunk: fill_chunk(None, c.x, c.z, wire, true), remove_old: true } }
+                else { ChunkUpdate::Partial { x: c.x, z: c.z, wire } }
+            }).into_iter().collect();
+            Incoming::Chunks(updates)
+        }
+        PlayClientbound::MapChunkBulk(b) => Incoming::Chunks(b.chunks.into_iter().filter_map(|(x, z, mask, data)| {
+            if !(-1_875_000..=1_875_000).contains(&x) || !(-1_875_000..=1_875_000).contains(&z) { return None; }
+            mc_protocol::chunk::decode(mask, &data, b.sky_light, true).ok()
+                .map(|wire| ChunkUpdate::Full { chunk: fill_chunk(None, x, z, wire, true), remove_old: false })
+        }).collect()),
+        packet => Incoming::Packet(Box::new(packet)),
+    }
+}
+
 pub struct Net {
     writer: Writer,
+    forge: Option<mc_protocol::forge::ClientHandshake>,
+    multipart: Option<mc_protocol::forge::Multipart>,
+    pub channels: std::collections::HashSet<String>,
     rx: Receiver<Incoming>,
     pub entity_id: i32,
     /// Our profile UUID from `LoginSuccess`.
@@ -36,25 +73,52 @@ pub struct Net {
     done_loading_terrain: bool,
 }
 
+/// Closing the socket also ends the reader thread, so a dropped connection leaks nothing.
+impl Drop for Net {
+    fn drop(&mut self) {
+        self.writer.shutdown();
+    }
+}
+
 impl Net {
     /// `GuiConnecting`: blocks until login succeeds, then reads packets on a thread.
-    pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>) -> Result<Net, String> {
-        let mut join = |hash: &str| match session {
+    /// `stage` flips to "Logging in..." once the server asks for authentication.
+    pub fn connect(host: &str, port: u16, name: &str, session: Option<&crate::auth::Session>, stage: &std::sync::atomic::AtomicU8, socket: &std::sync::Mutex<Option<std::net::TcpStream>>, cancel: &std::sync::atomic::AtomicBool, forge: bool) -> Result<Net, String> {
+        let mut join = |hash: &str| {
+            stage.store(mc_gui::screens::STAGE_LOGGING_IN, std::sync::atomic::Ordering::Relaxed);
+            match session {
             Some(s) => crate::auth::join_server(s, hash),
             None => Err("This server is online-mode. Sign in with --online (Microsoft account), or join an offline-mode server with --name <name>.".into()),
+            }
         };
-        let (mut reader, writer, ok) = login(host, port, name, Some(&mut join)).map_err(|e| match e {
+        let handshake_host = if forge { format!("{host}\0FML\0") } else { host.to_string() };
+        let (mut reader, writer, ok) = login_with_handshake_address(host, port, &handshake_host, name, Some(&mut join), |stream| {
+            let mut slot = socket.lock().unwrap();
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "connection cancelled"));
+            }
+            *slot = Some(stream.try_clone()?);
+            stage.store(mc_gui::screens::STAGE_LOGGING_IN, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }).map_err(|e| match e {
             mc_protocol::net::LoginError::Kicked(json) => json,
+            mc_protocol::net::LoginError::Io(e) if e.to_string().contains("lookup address") || e.to_string().contains("not known") => "Unknown host".into(),
             mc_protocol::net::LoginError::Io(e) => format!("Could not connect to {host}:{port}: {e}"),
+            // `UnknownHostException`
+            mc_protocol::net::LoginError::Protocol(s) if s.starts_with("Unknown host") => "Unknown host".into(),
             mc_protocol::net::LoginError::Auth(s) | mc_protocol::net::LoginError::Protocol(s) => s,
         })?;
         let (tx, rx) = mpsc::channel();
+        let mut sky_light = true;
         std::thread::Builder::new()
             .name("Netty Client IO".into())
             .spawn(move || loop {
-                match reader.recv_play() {
+                // A panic here would drop the channel and leave the game waiting forever.
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.recv_play().map(|packet| prepare_incoming(packet, &mut sky_light, forge))))
+                    .unwrap_or_else(|_| Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Internal Exception: packet handling panicked")));
+                match r {
                     Ok(p) => {
-                        if tx.send(Incoming::Packet(Box::new(p))).is_err() {
+                        if tx.send(p).is_err() {
                             return;
                         }
                     }
@@ -68,6 +132,9 @@ impl Net {
             .map_err(|e| e.to_string())?;
         Ok(Net {
             writer,
+            forge: forge.then(|| mc_protocol::forge::ClientHandshake::new(crate::forge::client_mods())),
+            channels: Default::default(),
+            multipart: None,
             rx,
             entity_id: 0,
             uuid: parse_uuid(&ok.uuid),
@@ -83,6 +150,77 @@ impl Net {
             closed: None,
             done_loading_terrain: false,
         })
+    }
+
+    /// Handle FML negotiation only when the connection opted into Forge.
+    pub fn forge_message(&mut self, data: &[u8]) {
+        let Some(handshake) = &mut self.forge else { return };
+        let result = handshake.accept(data, crate::forge::validate).and_then(|responses| {
+            if data.first() == Some(&2) {
+                match handshake.server_mods.get("Forge") {
+                    Some(version) if version.starts_with("11.15.1.") => {},
+                    _ => return Err("Unsupported or missing Forge 1.8.9 server version".into()),
+                }
+                if let Some(id) = handshake.server_mods.keys().find(|id| !matches!(id.as_str(), "mcp" | "FML" | "Forge")) {
+                    return Err(format!("Forge mod {id} requires a mod runtime, which is not yet available"));
+                }
+            }
+            if handshake.dimension.is_some_and(|d| !matches!(d, -1 | 0 | 1)) {
+                return Err("Forge custom dimensions are not yet supported".into());
+            }
+            Ok(responses)
+        });
+        match result {
+            Ok(responses) => for (channel, data) in responses {
+                self.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: channel.into(), data }));
+            },
+            Err(reason) => { self.closed = Some(format!("Forge handshake failed: {reason}")); self.disconnect(); }
+        }
+    }
+
+    pub fn join_dimension(&self, vanilla_dimension: i8) -> i32 {
+        self.forge.as_ref().and_then(|f| f.dimension).filter(|d| *d != 0).unwrap_or(vanilla_dimension as i32)
+    }
+
+    pub fn update_channels(&mut self, register: bool, data: &[u8]) {
+        let Ok(names) = std::str::from_utf8(data) else { return };
+        for name in names.split('\0').filter(|s| !s.is_empty() && s.len() <= 20) {
+            if register {
+                if self.channels.len() < 1024 { self.channels.insert(name.to_string()); }
+            } else { self.channels.remove(name); }
+        }
+    }
+
+    pub fn forge_multipart(&mut self, data: &[u8]) -> Option<(String, Vec<u8>)> {
+        self.forge.as_ref()?;
+        if self.multipart.is_none() {
+            match mc_protocol::forge::Multipart::new(data) {
+                Ok(m) => self.multipart = Some(m),
+                Err(e) => { self.closed = Some(format!("Forge multipart failed: {e}")); self.disconnect(); }
+            }
+            return None;
+        }
+        match self.multipart.as_mut().unwrap().push(data) {
+            Ok(Some(message)) => { self.multipart = None; Some(message) }
+            Ok(None) => None,
+            Err(e) => { self.multipart = None; self.closed = Some(format!("Forge multipart failed: {e}")); self.disconnect(); None }
+        }
+    }
+
+    pub fn forge_internal(&mut self) {
+        if self.forge.is_some() {
+            self.closed = Some("Forge mod messages require the unavailable mod runtime".into());
+            self.disconnect();
+        }
+    }
+
+    pub fn forge_runtime(&mut self, data: &[u8]) {
+        if self.forge.is_some() {
+            if let Err(reason) = crate::forge::validate_runtime(data) {
+                self.closed = Some(format!("Forge runtime packet failed: {reason}"));
+                self.disconnect();
+            }
+        }
     }
 
     pub fn send(&mut self, p: PlayServerbound) {
@@ -108,8 +246,8 @@ impl Net {
         let b = b"vanilla";
         brand.push(b.len() as u8);
         brand.extend_from_slice(b);
-        self.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: "MC|Brand".into(), data: brand }));
         self.send_settings(locale, view_distance, chat_mode, chat_colors, skin_parts);
+        self.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: "MC|Brand".into(), data: brand }));
     }
 
     /// `GameSettings.sendSettingsToServer` (C15).
@@ -140,6 +278,12 @@ impl Net {
         }
         let pt = if p.flags & 16 != 0 { *pitch + p.pitch } else { p.pitch };
         let yw = if p.flags & 8 != 0 { *yaw + p.yaw } else { p.yaw };
+        // A hostile server can send NaN/infinite/astronomical values; the player's yaw-wrapping
+        // loops never finish for those (a freeze), so keep everything in a sane range.
+        let coord = |v: f64, old: f64| if v.is_finite() { v.clamp(-3.0e7, 3.0e7) } else { old };
+        let (x, y, z) = (coord(x, pos.x), coord(y, pos.y), coord(z, pos.z));
+        let pt = if pt.is_finite() { pt.clamp(-90.0, 90.0) } else { *pitch };
+        let yw = if !yw.is_finite() { *yaw } else if yw.abs() > 36000.0 { yw % 360.0 } else { yw };
         *pos = Vec3::new(x, y, z);
         *yaw = yw;
         *pitch = pt;
@@ -212,6 +356,29 @@ impl Net {
             self.last_yaw = yaw;
             self.last_pitch = pitch;
         }
+    }
+
+    /// `EntityPlayerSP.onUpdate` uses this path while riding instead of onUpdateWalkingPlayer.
+    pub fn update_riding(
+        &mut self,
+        yaw: f32,
+        pitch: f32,
+        on_ground: bool,
+        strafe: f32,
+        forward: f32,
+        jump: bool,
+        sneak: bool,
+    ) {
+        self.send(PlayServerbound::PlayerLook(PlayerLook {
+            yaw,
+            pitch,
+            on_ground,
+        }));
+        self.send(PlayServerbound::SteerVehicle(SteerVehicle {
+            strafe,
+            forward,
+            flags: (jump as u8) | ((sneak as u8) << 1),
+        }));
     }
 
     /// `PlayerControllerMP.syncCurrentPlayItem`
@@ -293,6 +460,26 @@ mod tests {
     use mc_protocol::chunk::{encode, WireSection};
 
     #[test]
+    fn reader_prepares_chunks_in_dimension_order_and_keeps_forge_on_the_game_thread() {
+        let mut sky = true;
+        for dimension in [-1, 0, 1] {
+            let respawn = PlayClientbound::Respawn(Respawn { dimension, difficulty: 1, game_mode: 0, level_type: "default".into() });
+            assert!(matches!(prepare_incoming(respawn, &mut sky, false), Incoming::Packet(_)));
+            let mut sections = std::array::from_fn(|_| None);
+            let mut section = WireSection::empty(dimension == 0);
+            section.blocks[0] = 16;
+            sections[2] = Some(section);
+            let (bitmask, data) = encode(&sections, Some(&[1; 256]), dimension == 0);
+            let packet = || PlayClientbound::ChunkData(ChunkData { x: 3, z: -2, full: true, bitmask, data: data.clone() });
+            let Incoming::Chunks(mut chunks) = prepare_incoming(packet(), &mut sky, false) else { panic!("chunk stayed on game thread") };
+            let ChunkUpdate::Full { chunk, remove_old } = chunks.remove(0) else { panic!("full update became partial") };
+            assert!(remove_old);
+            assert_eq!(chunk.get(0, 32, 0), (1, 0));
+            assert!(matches!(prepare_incoming(packet(), &mut sky, true), Incoming::Packet(_)));
+        }
+    }
+
+    #[test]
     fn fill_chunk_reads_blocks_and_light() {
         let mut ws = WireSection::empty(true);
         ws.blocks[0] = 1 << 4; // stone at (0,0,0) of section 2
@@ -340,10 +527,427 @@ mod tests {
                     }
                 }
                 let n = s.read(&mut buf).unwrap();
+                if n == 0 { return got; }
                 d.feed(&buf[..n]);
             }
         });
-        (Net::connect("127.0.0.1", port, "a", None).unwrap(), srv)
+        (Net::connect("127.0.0.1", port, "a", None, &Default::default(), &Default::default(), &Default::default(), false).unwrap(), srv)
+    }
+
+    #[test]
+    fn multipart_hello_reaches_the_handshake_and_channels_unregister() {
+        let (mut n, srv) = loopback(3);
+        n.forge = Some(mc_protocol::forge::ClientHandshake::new(crate::forge::client_mods()));
+        n.update_channels(true, b"FML|HS\0FORGE\0example");
+        n.update_channels(false, b"example");
+        assert!(n.channels.contains("FORGE") && !n.channels.contains("example"));
+        let mut preamble = mc_protocol::Writer::new();
+        preamble.string("FML|HS"); preamble.u8(2); preamble.i32(6);
+        assert!(n.forge_multipart(&preamble.buf).is_none());
+        assert!(n.forge_multipart(&[0,0,2]).is_none());
+        let (channel, data) = n.forge_multipart(&[1,0,0,0,0]).unwrap();
+        assert_eq!(channel, "FML|HS");
+        n.forge_message(&data);
+        let messages = srv.join().unwrap();
+        assert!(matches!(&messages[0], PlayServerbound::PluginMessageC(p) if p.channel == "REGISTER"));
+        assert!(matches!(&messages[1], PlayServerbound::PluginMessageC(p) if p.channel == "FML|HS" && p.data == [1,2]));
+        assert!(matches!(&messages[2], PlayServerbound::PluginMessageC(p) if p.channel == "FML|HS" && p.data[0] == 2));
+    }
+
+    // Test-only barrier frames preserve tick boundaries on the real loopback stream.
+    fn mark_tick(net: &mut Net) {
+        net.send(PlayServerbound::PluginMessageC(PluginMessageC { channel: "rustmc:test-tick".into(), data: vec![] }));
+    }
+
+    fn compare_tick_stream(name: &str, packets: Vec<PlayServerbound>, rows: &[serde_json::Value]) {
+        let mut tick = 0usize;
+        let mut actual = Vec::new();
+        for packet in packets {
+            if matches!(&packet, PlayServerbound::PluginMessageC(p) if p.channel == "rustmc:test-tick" && p.data.is_empty()) {
+                let want = rows.get(tick).unwrap_or_else(|| panic!("{name}: unexpected tick {tick}"));
+                let expected: Vec<&str> = want.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+                assert_eq!(actual, expected, "{name}: tick {tick}");
+                actual.clear();
+                tick += 1;
+            } else {
+                actual.push(packet.to_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>());
+            }
+        }
+        assert!(actual.is_empty(), "{name}: packets after final tick");
+        assert_eq!(tick, rows.len(), "{name}: missing tick markers");
+    }
+
+    /// Replays Java's actual EntityPlayerSP packet stream through the client movement path.
+    #[test]
+    fn walking_stream_matches_java() {
+        use mc_core::{Aabb, BlockPos};
+        use mc_data::geometry::{BlockGeometry, CollisionEntity};
+        use mc_data::{BlockAccess, StateId};
+        use mc_entity::{EntityWorld, Keys, PlayerEntity};
+        use std::collections::HashMap;
+        struct Scene {
+            states: HashMap<BlockPos, StateId>,
+            geometry: BlockGeometry,
+        }
+        struct Blocks<'a>(&'a HashMap<BlockPos, StateId>);
+        impl BlockAccess for Blocks<'_> {
+            fn state(&self, p: BlockPos) -> StateId {
+                self.0.get(&p).copied().unwrap_or(StateId::AIR)
+            }
+        }
+        impl EntityWorld for Scene {
+            fn state(&self, p: BlockPos) -> StateId {
+                self.states.get(&p).copied().unwrap_or(StateId::AIR)
+            }
+            fn is_chunk_loaded(&self, _: i32, _: i32) -> bool {
+                true
+            }
+            fn add_collision_boxes(
+                &mut self,
+                s: StateId,
+                p: BlockPos,
+                mask: &Aabb,
+                out: &mut Vec<Aabb>,
+            ) {
+                self.geometry.add_collision_boxes(
+                    s,
+                    &Blocks(&self.states),
+                    p,
+                    mask,
+                    out,
+                    CollisionEntity::Other,
+                );
+            }
+        }
+        fn num(v: &serde_json::Value) -> i64 {
+            v.as_i64().unwrap_or_else(|| v.as_f64().unwrap() as i64)
+        }
+        let Some(path) = mc_testutil::golden("packets.json") else {
+            return;
+        };
+        let scenes: Vec<serde_json::Value> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        for sc in scenes.iter().filter(|s| {
+            [
+                "walk_turn_stop",
+                "sprint_toggles",
+                "jump_sprint_jump",
+                "sneak_walk",
+            ]
+            .contains(&s["name"].as_str().unwrap())
+        }) {
+            let name = sc["name"].as_str().unwrap();
+            let mut world = Scene {
+                states: HashMap::new(),
+                geometry: BlockGeometry::new(),
+            };
+            for b in sc["blocks"].as_array().unwrap() {
+                let n: Vec<i64> = b.as_array().unwrap().iter().map(num).collect();
+                for x in n[0]..=n[3] {
+                    for y in n[1]..=n[4] {
+                        for z in n[2]..=n[5] {
+                            world.states.insert(
+                                BlockPos::new(x as i32, y as i32, z as i32),
+                                StateId(n[6] as u16),
+                            );
+                        }
+                    }
+                }
+            }
+            let start = &sc["start"];
+            let bits = |v: &serde_json::Value| f64::from_bits(num(v) as u64);
+            let mut e =
+                PlayerEntity::new(Vec3::new(bits(&start[0]), bits(&start[1]), bits(&start[2])));
+            e.yaw = f32::from_bits(num(&sc["yaw"]) as u32);
+            e.pitch = f32::from_bits(num(&sc["pitch"]) as u32);
+            let rows = sc["out"].as_array().unwrap();
+            let (mut net, srv) = loopback(usize::MAX);
+            net.entity_id = 1;
+            for tick in sc["script"].as_array().unwrap() {
+                let k = num(&tick["k"]);
+                let has = |b| k & b != 0;
+                if !tick["y"].is_null() {
+                    e.yaw = f32::from_bits(num(&tick["y"]) as u32);
+                }
+                if !tick["p"].is_null() {
+                    e.pitch = f32::from_bits(num(&tick["p"]) as u32);
+                }
+                e.tick(
+                    &mut world,
+                    Keys {
+                        forward: has(1),
+                        back: has(2),
+                        left: has(4),
+                        right: has(8),
+                        jump: has(16),
+                        sneak: has(32),
+                        sprint: has(64),
+                        using_item: false,
+                    },
+                );
+                net.update_walking(
+                    e.sprinting,
+                    e.is_sneaking(),
+                    true,
+                    None,
+                    e.pos.x,
+                    e.bb.min_y,
+                    e.pos.z,
+                    e.yaw,
+                    e.pitch,
+                    e.on_ground,
+                );
+                mark_tick(&mut net);
+            }
+            net.disconnect();
+            compare_tick_stream(name, srv.join().unwrap(), rows);
+        }
+    }
+
+    #[test]
+    fn mining_stream_matches_java() {
+        use crate::*;
+        let Some(path) = mc_testutil::golden("packets.json") else {
+            return;
+        };
+        let Some(jar) = mc_testutil::jar() else {
+            return;
+        };
+        let scenes: Vec<serde_json::Value> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut assets = AssetSource::new();
+        assets.push(&jar).unwrap();
+        let mut models = BlockModels::load(&assets);
+        let catalogue = Arc::new(inventory::Catalogue::load(&assets, &models));
+        for name in [
+            "join_replies",
+            "place_blocked_by_entity",
+            "place_through_item",
+            "creative_actions",
+            "horse_input",
+            "boat_input",
+            "vehicle_using_item",
+            "vehicle_input",
+            "server_replies",
+            "respawn",
+            "inventory_clicks",
+            "creative_fly_toggle",
+            "attack_entities",
+            "mine_to_completion",
+            "mine_cancel_and_retarget",
+            "mine_instant_stone_creative",
+            "swing_air_left_click_counter",
+            "place_blocks_faces",
+            "place_side_face_vectors",
+            "sword_block",
+            "eat_apple",
+            "bow_draw_release",
+            "hotbar_swap",
+        ] {
+            let sc = scenes.iter().find(|s| s["name"] == name).unwrap();
+            let mut world = World::default();
+            for x in -2..=1 {
+                for z in -2..=1 {
+                    world.insert(mc_world::chunk::Chunk::new(x, z));
+                }
+            }
+            let num =
+                |v: &serde_json::Value| v.as_i64().unwrap_or_else(|| v.as_f64().unwrap() as i64);
+            for b in sc["blocks"].as_array().unwrap() {
+                let n: Vec<i64> = b.as_array().unwrap().iter().map(num).collect();
+                for x in n[0]..=n[3] {
+                    for y in n[1]..=n[4] {
+                        for z in n[2]..=n[5] {
+                            let chunk = world.chunks.get_mut(&((x as i32) >> 4, (z as i32) >> 4)).unwrap();
+                            chunk.set_state_raw((x as usize) & 15, y as i32, (z as usize) & 15, mc_data::StateId(n[6] as u16));
+                        }
+                    }
+                }
+            }
+            for chunk in world.chunks.values_mut() { chunk.generate_skylight_map(); }
+            let mut settings = Settings::default();
+            settings.language = sc["language"].as_str().unwrap().into();
+            let mut app = App::with_catalogue(assets, models, world, (0, 0), settings, catalogue.clone());
+            for entity in sc["entities"].as_array().unwrap() {
+                let kind = match entity[0].as_str().unwrap() {
+                    "armor_stand" => crate::entities::Kind::Object(78),
+                    "zombie" => crate::entities::Kind::Mob(54),
+                    "item" => crate::entities::Kind::Object(2),
+                    other => panic!("unknown entity {other}"),
+                };
+                let coord = |v: &serde_json::Value| (f64::from_bits(num(v) as u64) * 32.0) as i32;
+                let id = num(&entity[1]) as i32;
+                app.remote.map.insert(id, crate::entities::Remote::new(id, kind, coord(&entity[2]), coord(&entity[3]), coord(&entity[4]), 0, 0));
+            }
+            app.entity.set_game_type(if sc["mode"] == "creative" {
+                crate::level::GameType::Creative
+            } else {
+                crate::level::GameType::Survival
+            });
+            app.entity.food_level = num(&sc["food"]) as i32;
+            app.player.food = num(&sc["food"]) as i32;
+            for item in sc["inventory"].as_array().unwrap() {
+                let slot = num(&item[0]) as usize;
+                let index = app
+                    .catalogue
+                    .find(item[1].as_str().unwrap(), num(&item[3]) as u16)
+                    .unwrap();
+                app.ui.inventory[slot] = Some(app.catalogue.stack(index, num(&item[2]) as u8));
+            }
+            app.entity.set_position(mc_core::Vec3::new(0.5, 64., 0.5));
+            app.entity.yaw = 0.;
+            app.entity.prev_yaw = 0.;
+            app.entity.pitch = 0.;
+            app.entity.prev_pitch = 0.;
+            app.entity.on_ground = false;
+            app.entity.abilities_dirty = false;
+            app.grabbed = true;
+            app.in_game = true;
+            let rows = sc["out"].as_array().unwrap();
+            let script = sc["script"].as_array().unwrap();
+            let (rows, script) = (&rows[..], &script[..]);
+            let (mut net, srv) = loopback(usize::MAX);
+            net.entity_id = 1;
+            app.net = Some(net);
+            if name == "creative_actions" { app.sync_creative(); }
+            let mut inventory_screen = None;
+            for tk in script {
+                match tk["op"].as_str() {
+                    Some("creative-set") => {
+                        let a = tk["a"].as_array().unwrap();
+                        let slot = num(&a[0]) as usize; let id = num(&a[1]);
+                        app.ui.inventory[slot] = if id < 0 { None } else {
+                            let index = app.catalogue.index_of(id as u16, num(&a[3]) as u16).unwrap();
+                            Some(app.catalogue.stack(index, num(&a[2]) as u8))
+                        };
+                        app.sync_creative();
+                    }
+                    Some("creative-armor") => {
+                        let a = tk["a"].as_array().unwrap();
+                        let slot = num(&a[0]) as usize; let id = num(&a[1]);
+                        app.ui.armor[slot] = if id < 0 { None } else {
+                            let index = app.catalogue.index_of(id as u16, num(&a[3]) as u16).unwrap();
+                            Some(app.catalogue.stack(index, num(&a[2]) as u8))
+                        };
+                        app.sync_creative();
+                    }
+                    Some("creative-drop") => {
+                        let a = tk["a"].as_array().unwrap();
+                        let index = app.catalogue.index_of(num(&a[0]) as u16, num(&a[2]) as u16).unwrap();
+                        let stack = app.catalogue.stack(index, num(&a[1]) as u8);
+                        app.throw_stack(stack);
+                    }
+                    Some("settings") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.ui.settings.language = if num(&a[4]) == 1 { "de_DE" } else { "fr_FR" }.into();
+                        app.ui.settings.render_distance = num(&a[0]) as i32;
+                        app.ui.settings.chat_visibility = num(&a[1]) as i32;
+                        app.ui.settings.chat_colors = num(&a[2]) != 0;
+                        app.ui.settings.model_parts = num(&a[3]) as u8;
+                        app.apply_settings();
+                    }
+                    Some("join") => {
+                        app.handle_packet(PlayClientbound::JoinGame(JoinGame { entity_id: 1, game_mode: 0, hardcore: false, dimension: 0, difficulty: 2, max_players: 20, level_type: "default".into(), reduced_debug_info: false }), &mut Vec::new());
+                    }
+                    Some("mounthorse") => {
+                        let mut horse = crate::entities::Remote::new(77, crate::entities::Kind::Mob(100), 16, 2048, 16, 0, 0);
+                        horse.meta.insert(16, mc_protocol::MetaValue::Int(if num(&tk["a"][0]) != 0 { 4 } else { 0 }));
+                        app.remote.map.insert(77, horse);
+                        app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());
+                    }
+                    Some("mountboat") => {
+                        app.remote.map.insert(77, crate::entities::Remote::new(77, crate::entities::Kind::Object(1), 16, 2048, 16, ((num(&tk["a"][0]) * 256 / 360) as u8) as i8, 0));
+                        app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());
+                    }
+                    Some("mount") => {
+                        app.remote.map.insert(77, crate::entities::Remote::new(77, crate::entities::Kind::Object(10), 16, 2048, 16, 0, 0));
+                        app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: 77, leash: 0 }), &mut Vec::new());
+                    }
+                    Some("dismount") => { app.handle_packet(PlayClientbound::AttachEntity(AttachEntity { entity_id: 1, vehicle_id: -1, leash: 0 }), &mut Vec::new()); }
+                    Some("keepalive") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.handle_packet(PlayClientbound::KeepAliveS(KeepAliveS { key: num(&a[0]) as i32 }), &mut Vec::new());
+                    }
+                    Some("confirm") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.handle_packet(PlayClientbound::ConfirmTransactionS(ConfirmTransactionS { window_id: num(&a[0]) as u8, action: num(&a[1]) as i16, accepted: num(&a[2]) != 0 }), &mut Vec::new());
+                    }
+                    Some("openwindow") => {
+                        let a = tk["a"].as_array().unwrap();
+                        app.open_window = Some(std::sync::Arc::new(std::sync::Mutex::new(crate::container::Window::new(num(&a[0]) as u8, "minecraft:chest", String::new(), 27))));
+                    }
+                    Some("respawn") => app.request_respawn(),
+                    Some("inventory") => {
+                        app.pending_open_inventory = true;
+                        if !app.riding_horse() {
+                            let w = std::sync::Arc::new(std::sync::Mutex::new(crate::container::Window::new(0, "player", String::new(), 5)));
+                            inventory_screen = Some(crate::container::ContainerScreen::new(w.clone(), app.catalogue.clone()));
+                            app.open_window = Some(w);
+                        }
+                    }
+                    Some("click") => {
+                        let a = tk["a"].as_array().unwrap();
+                        inventory_screen.as_mut().unwrap().replay_click(&mut app.ui, num(&a[1]) as i16, num(&a[2]) as i8, num(&a[3]) as i8);
+                        app.flush_window();
+                    }
+                    Some("close") => { app.open_window.as_ref().unwrap().lock().unwrap().closed = true; app.flush_window(); }
+                    Some("drop") => app.drop_presses.push(num(&tk["a"][0]) != 0),
+                    _ => {}
+                }
+                if !tk["y"].is_null() {
+                    app.entity.yaw = f32::from_bits(num(&tk["y"]) as u32);
+                }
+                if !tk["p"].is_null() {
+                    app.entity.pitch = f32::from_bits(num(&tk["p"]) as u32);
+                }
+                if !tk["s"].is_null() {
+                    app.pending_selected_slot = Some(num(&tk["s"]) as usize);
+                }
+                app.keys.clear();
+                let k = num(&tk["k"]);
+                for (bit, key) in [
+                    (1, KeyCode::KeyW),
+                    (2, KeyCode::KeyS),
+                    (4, KeyCode::KeyA),
+                    (8, KeyCode::KeyD),
+                    (16, KeyCode::Space),
+                    (32, KeyCode::ShiftLeft),
+                    (64, KeyCode::ControlLeft),
+                ] {
+                    if k & bit != 0 {
+                        app.keys.insert(key);
+                    }
+                }
+                app.buttons.clear();
+                if tk["ad"].as_bool().unwrap() {
+                    app.buttons.insert(MouseButton::Left);
+                }
+                if tk["ud"].as_bool().unwrap() {
+                    app.buttons.insert(MouseButton::Right);
+                }
+                for _ in 0..num(&tk["ap"]) {
+                    app.clicks.push(MouseButton::Left);
+                }
+                for _ in 0..num(&tk["up"]) {
+                    app.clicks.push(MouseButton::Right);
+                }
+                app.run_tick();
+                mark_tick(app.net.as_mut().unwrap());
+            }
+            app.net.as_mut().unwrap().disconnect();
+            compare_tick_stream(name, srv.join().unwrap(), rows);
+            assets = app.assets;
+            models = app.models;
+        }
+    }
+
+    #[test]
+    fn join_replies_send_settings_before_brand() {
+        let (mut n, srv) = loopback(2);
+        n.send_join_replies("en_US", 8, 0, true, 127);
+        let got = srv.join().unwrap();
+        assert!(matches!(&got[0], PlayServerbound::ClientSettings(_)));
+        assert!(matches!(&got[1], PlayServerbound::PluginMessageC(p) if p.channel == "MC|Brand" && p.data == b"\x07vanilla"));
     }
 
     #[test]
@@ -357,6 +961,29 @@ mod tests {
         assert!(matches!(got[1], PlayServerbound::PlayerPosition(PlayerPosition { y, .. }) if y == 64.0));
         assert!(matches!(got[2], PlayServerbound::PlayerGround(PlayerGround { on_ground: true })));
         assert!(matches!(got[3], PlayServerbound::PlayerLook(PlayerLook { yaw, on_ground: false, .. }) if yaw == 5.0));
+    }
+
+    #[test]
+    fn riding_tick_sends_look_then_input() {
+        let (mut n, srv) = loopback(2);
+        n.update_riding(30.0, 10.0, true, -0.5, 0.75, true, true);
+        let got = srv.join().unwrap();
+        assert!(matches!(
+            got[0],
+            PlayServerbound::PlayerLook(PlayerLook {
+                yaw: 30.0,
+                pitch: 10.0,
+                on_ground: true
+            })
+        ));
+        assert!(matches!(
+            got[1],
+            PlayServerbound::SteerVehicle(SteerVehicle {
+                strafe: -0.5,
+                forward: 0.75,
+                flags: 3
+            })
+        ));
     }
 
     /// `ridingEntity != null`: `C06PacketPlayerPosLook(motionX, -999, motionZ, yaw, pitch,
@@ -393,7 +1020,7 @@ mod tests {
     /// `onGround` is hard-coded false, and snaps `prevPos` on the first teleport only.
     #[test]
     fn pos_look_zeroes_absolute_axes_and_snaps_prev_pos() {
-        let (mut n, srv) = loopback(3);
+        let (mut n, srv) = loopback(2);
         let mut pos = Vec3::new(10., 64., 10.);
         let mut prev = Vec3::new(9., 63., 9.);
         let mut motion = Vec3::new(0.5, -0.25, 0.75);
@@ -418,4 +1045,38 @@ mod tests {
         }
         assert!(matches!(got[0], PlayServerbound::PlayerPosLook(PlayerPosLook { x: 11.0, y: 70.0, z: 12.0, .. })));
     }
+    /// Run with a local Forge 1.8.9 server; never opens a client window.
+    #[test]
+    #[ignore = "requires a local Forge 1.8.9 server (RUSTMC_FORGE_TEST_PORT)"]
+    fn real_forge_server_handshake() {
+        let port: u16 = std::env::var("RUSTMC_FORGE_TEST_PORT").unwrap().parse().unwrap();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let addr = mc_protocol::status::Address { host: "127.0.0.1".into(), port };
+        let status = mc_protocol::status::query(&addr, &cancel, std::time::Duration::from_secs(5)).unwrap();
+        let status: serde_json::Value = serde_json::from_str(&status).unwrap();
+        assert_eq!(status["modinfo"]["type"], "FML");
+        let mut n = Net::connect("127.0.0.1", port, "Probe", None, &Default::default(), &Default::default(), &cancel, true).unwrap();
+        let start = std::time::Instant::now();
+        let mut joined = false;
+        while start.elapsed() < std::time::Duration::from_secs(20) && !joined {
+            for p in n.poll() {
+                match p {
+                    Incoming::Packet(p) => match *p {
+                        PlayClientbound::PluginMessageS(p) if p.channel == "FML|HS" => n.forge_message(&p.data),
+                        PlayClientbound::PluginMessageS(p) if p.channel == "FORGE" => n.forge_runtime(&p.data),
+                        PlayClientbound::JoinGame(_) => joined = true,
+                        PlayClientbound::Disconnect(d) => panic!("server disconnected: {}", d.reason),
+                        _ => {}
+                    },
+                    Incoming::Closed(e) => panic!("connection closed: {e}"),
+                    Incoming::Chunks(_) => {},
+                }
+                assert!(n.closed.is_none(), "{:?}", n.closed);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(n.forge.as_ref().unwrap().is_complete(), "Forge handshake incomplete");
+        assert!(joined, "server did not send JoinGame");
+    }
+
 }

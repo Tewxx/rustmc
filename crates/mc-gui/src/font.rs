@@ -9,13 +9,21 @@ const ASCII: &str = "\u{00c0}\u{00c1}\u{00c2}\u{00c8}\u{00ca}\u{00cb}\u{00cd}\u{
 const ASCII_TEX: &str = "textures/font/ascii.png";
 pub const FONT_HEIGHT: i32 = 9;
 
+/// No index in [`ASCII`] is this large; it marks characters vanilla's `indexOf` misses.
+const NO_INDEX: u16 = u16::MAX;
+
+#[derive(Clone)]
 pub struct FontRenderer {
     char_width: [i32; 256],
     glyph_width: Vec<u8>,
     color_code: [u32; 32],
-    /// `ASCII` as UTF-16 units, for vanilla's `indexOf`.
+    /// `ASCII` as UTF-16 units, for vanilla's random `§k` glyph selection.
     table: Vec<u16>,
+    /// `ASCII.indexOf(c)` for every UTF-16 code unit, so the per-character lookup is O(1).
+    index: Box<[u16; 65536]>,
     rng: u64,
+    /// Reused UTF-16 buffer so drawing does not allocate once per string.
+    scratch: Vec<u16>,
 }
 
 struct State {
@@ -33,21 +41,7 @@ struct State {
 
 impl FontRenderer {
     pub fn load(assets: &AssetSource) -> Self {
-        let color_code = std::array::from_fn(|i| {
-            let j = ((i >> 3) & 1) as u32 * 85;
-            let mut k = ((i >> 2) & 1) as u32 * 170 + j;
-            let mut l = ((i >> 1) & 1) as u32 * 170 + j;
-            let mut i1 = (i & 1) as u32 * 170 + j;
-            if i == 6 {
-                k += 85;
-            }
-            if i >= 16 {
-                k /= 4;
-                l /= 4;
-                i1 /= 4;
-            }
-            ((k & 255) << 16) | ((l & 255) << 8) | (i1 & 255)
-        });
+        let color_code = color_code_table();
         let mut char_width = [0; 256];
         if let Some(img) = assets.read(ASCII_TEX).and_then(|b| image::load_from_memory(&b).ok()).map(|i| i.to_rgba8()) {
             // readFontTexture
@@ -71,18 +65,27 @@ impl FontRenderer {
             char_width[32] = 4;
         }
         let glyph_width = assets.read("font/glyph_sizes.bin").unwrap_or_else(|| vec![0; 65536]);
-        Self { char_width, glyph_width, color_code, table: ASCII.encode_utf16().collect(), rng: 0x5DEECE66D }
+        let table: Vec<u16> = ASCII.encode_utf16().collect();
+        let index = build_ascii_index(&table);
+        Self { char_width, glyph_width, color_code, table, index, rng: 0x5DEECE66D, scratch: Vec::new() }
     }
 
+    /// `"…".indexOf(c)`: the index of the first occurrence in [`ASCII`].
+    #[inline]
     fn ascii_index(&self, c: u16) -> Option<usize> {
-        self.table.iter().position(|&t| t == c)
+        match self.index[c as usize] {
+            NO_INDEX => None,
+            i => Some(i as usize),
+        }
     }
 
+    #[inline]
     fn glyph(&self, c: u16) -> u8 {
         self.glyph_width.get(c as usize).copied().unwrap_or(0)
     }
 
     /// `getCharWidth`
+    #[inline]
     pub fn char_width(&self, c: u16) -> i32 {
         if c == 167 {
             return -1;
@@ -90,8 +93,10 @@ impl FontRenderer {
         if c == 32 {
             return 4;
         }
-        if let Some(i) = self.ascii_index(c).filter(|_| c > 0) {
-            return self.char_width[i];
+        if c > 0 {
+            if let Some(i) = self.ascii_index(c) {
+                return self.char_width[i];
+            }
         }
         let g = self.glyph(c);
         if g != 0 {
@@ -109,25 +114,24 @@ impl FontRenderer {
 
     /// `getStringWidth`
     pub fn width(&self, text: &str) -> i32 {
-        let s: Vec<u16> = text.encode_utf16().collect();
+        let mut s = text.encode_utf16();
         let (mut w, mut bold) = (0, false);
-        let mut j = 0;
-        while j < s.len() {
-            let mut k = self.char_width(s[j]);
-            if k < 0 && j < s.len() - 1 {
-                j += 1;
-                match s[j] {
-                    108 | 76 => bold = true,
-                    114 | 82 => bold = false,
-                    _ => {}
+        while let Some(c) = s.next() {
+            let mut k = self.char_width(c);
+            if k < 0 {
+                if let Some(format) = s.next() {
+                    match format {
+                        108 | 76 => bold = true,
+                        114 | 82 => bold = false,
+                        _ => {}
+                    }
+                    k = 0;
                 }
-                k = 0;
             }
             w += k;
             if bold && k > 0 {
                 w += 1;
             }
-            j += 1;
         }
         w
     }
@@ -255,8 +259,15 @@ impl FontRenderer {
     }
 
     pub fn draw_shadow(&mut self, b: &mut GuiBatch, text: &str, x: f32, y: f32, color: u32) -> i32 {
-        let i = self.render_string(b, text, x + 1.0, y + 1.0, color, true);
-        i.max(self.render_string(b, text, x, y, color, false))
+        // `drawStringWithShadow` renders the same string twice; encode it once and reuse the
+        // buffer for both passes (the shadow pass still consumes its own random `§k` glyphs).
+        let mut units = std::mem::take(&mut self.scratch);
+        units.clear();
+        units.extend(text.encode_utf16());
+        let i = self.render_units(b, &units, x + 1.0, y + 1.0, color, true);
+        let j = self.render_units(b, &units, x, y, color, false);
+        self.scratch = units;
+        i.max(j)
     }
 
     /// `Gui.drawCenteredString` (always shadowed).
@@ -265,7 +276,17 @@ impl FontRenderer {
         self.draw_shadow(b, text, (x - w / 2) as f32, y as f32, color);
     }
 
-    fn render_string(&mut self, b: &mut GuiBatch, text: &str, x: f32, y: f32, mut color: u32, shadow: bool) -> i32 {
+    fn render_string(&mut self, b: &mut GuiBatch, text: &str, x: f32, y: f32, color: u32, shadow: bool) -> i32 {
+        let mut units = std::mem::take(&mut self.scratch);
+        units.clear();
+        units.extend(text.encode_utf16());
+        let result = self.render_units(b, &units, x, y, color, shadow);
+        self.scratch = units;
+        result
+    }
+
+    /// `renderString`: set the base colour and walk the UTF-16 units once.
+    fn render_units(&mut self, b: &mut GuiBatch, s: &[u16], x: f32, y: f32, mut color: u32, shadow: bool) -> i32 {
         if color & 0xFC00_0000 == 0 {
             color |= 0xFF00_0000;
         }
@@ -279,7 +300,7 @@ impl FontRenderer {
             ((color >> 24) & 255) as f32 / 255.0,
         ];
         let mut st = State { x, y, color: c, base: c, random: false, bold: false, italic: false, underline: false, strike: false };
-        self.render_at_pos(b, text, shadow, &mut st);
+        self.render_at_pos(b, s, shadow, &mut st);
         st.x as i32
     }
 
@@ -289,14 +310,20 @@ impl FontRenderer {
         ((self.rng >> 17) as usize) % bound
     }
 
-    fn render_at_pos(&mut self, b: &mut GuiBatch, text: &str, shadow: bool, st: &mut State) {
-        let s: Vec<u16> = text.encode_utf16().collect();
+    fn render_at_pos(&mut self, b: &mut GuiBatch, s: &[u16], shadow: bool, st: &mut State) {
         let mut i = 0;
         while i < s.len() {
             let mut c0 = s[i];
             if c0 == 167 && i + 1 < s.len() {
                 let code = (s[i + 1] as u8 as char).to_ascii_lowercase();
-                let i1 = "0123456789abcdefklmnor".find(code).map_or(-1, |p| p as i32);
+                // `"0123456789abcdefklmnor".indexOf(code)`
+                let i1 = match code {
+                    '0'..='9' => code as i32 - '0' as i32,
+                    'a'..='f' => code as i32 - 'a' as i32 + 10,
+                    'k'..='o' => code as i32 - 'k' as i32 + 16,
+                    'r' => 21,
+                    _ => -1,
+                };
                 if i1 < 16 {
                     st.random = false;
                     st.bold = false;
@@ -332,14 +359,16 @@ impl FontRenderer {
 
             let mut j = self.ascii_index(c0);
             if st.random {
-                if let Some(_) = j {
+                if j.is_some() {
                     let k = self.char_width(c0);
                     loop {
                         let r = self.next_random(self.table.len());
                         let c1 = self.table[r];
                         if k == self.char_width(c1) {
                             c0 = c1;
-                            j = Some(r);
+                            // `renderChar` looks the chosen glyph up with `indexOf` again; the
+                            // table's duplicate NUL slots must resolve to the first one.
+                            j = self.ascii_index(c1);
                             break;
                         }
                     }
@@ -352,7 +381,7 @@ impl FontRenderer {
                 st.x -= f1;
                 st.y -= f1;
             }
-            let mut f = self.render_char(b, c0, st);
+            let mut f = self.render_char(b, c0, j, st);
             if flag {
                 st.x += f1;
                 st.y += f1;
@@ -363,7 +392,7 @@ impl FontRenderer {
                     st.x -= f1;
                     st.y -= f1;
                 }
-                self.render_char(b, c0, st);
+                self.render_char(b, c0, j, st);
                 st.x -= f1;
                 if flag {
                     st.x += f1;
@@ -384,12 +413,12 @@ impl FontRenderer {
         }
     }
 
-    /// `renderChar`: returns the advance.
-    fn render_char(&self, b: &mut GuiBatch, c: u16, st: &State) -> f32 {
+    /// `renderChar`: returns the advance. `index` is the already-resolved `ASCII.indexOf(c)`.
+    fn render_char(&self, b: &mut GuiBatch, c: u16, index: Option<usize>, st: &State) -> f32 {
         if c == 32 {
             return 4.0;
         }
-        match self.ascii_index(c) {
+        match index {
             Some(i) => self.render_default_char(b, i, st),
             None => self.render_unicode_char(b, c, st),
         }
@@ -449,6 +478,37 @@ impl FontRenderer {
     }
 }
 
+/// `FontRenderer`'s constructor colour loop (the anaglyph setting is not ported).
+fn color_code_table() -> [u32; 32] {
+    std::array::from_fn(|i| {
+        let j = ((i >> 3) & 1) as u32 * 85;
+        let mut k = ((i >> 2) & 1) as u32 * 170 + j;
+        let mut l = ((i >> 1) & 1) as u32 * 170 + j;
+        let mut i1 = (i & 1) as u32 * 170 + j;
+        if i == 6 {
+            k += 85;
+        }
+        if i >= 16 {
+            k /= 4;
+            l /= 4;
+            i1 /= 4;
+        }
+        ((k & 255) << 16) | ((l & 255) << 8) | (i1 & 255)
+    })
+}
+
+/// `ASCII.indexOf(c)` for every UTF-16 code unit, computed once instead of once per glyph.
+fn build_ascii_index(table: &[u16]) -> Box<[u16; 65536]> {
+    let mut index = Box::new([NO_INDEX; 65536]);
+    for (i, &c) in table.iter().enumerate() {
+        // `indexOf` returns the first occurrence (the table contains several NUL slots).
+        if index[c as usize] == NO_INDEX {
+            index[c as usize] = i as u16;
+        }
+    }
+    index
+}
+
 fn is_format_color(c: u16) -> bool {
     (48..=57).contains(&c) || (97..=102).contains(&c) || (65..=70).contains(&c)
 }
@@ -471,4 +531,124 @@ pub fn format_from_string(text: &[u16]) -> Vec<u16> {
         }
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::batch::{GuiBatch, GuiVertex, Item};
+
+    /// A font with known widths (`5` for every ASCII glyph, `4` for space) and one unicode
+    /// glyph, so formatting-driven geometry can be asserted exactly without game assets.
+    fn test_font() -> FontRenderer {
+        let mut char_width = [5; 256];
+        char_width[32] = 4;
+        let mut glyph_width = vec![0; 65536];
+        glyph_width[0x4e2d] = 0x56; // '中' spans columns 5..=6 on page 4e
+        let table: Vec<u16> = ASCII.encode_utf16().collect();
+        let index = build_ascii_index(&table);
+        FontRenderer { char_width, glyph_width, color_code: color_code_table(), table, index, rng: 0x5DEECE66D, scratch: Vec::new() }
+    }
+
+    fn assert_close(actual: f32, expected: f32) {
+        assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
+    }
+
+    /// Quad vertices in emission order, independent of how `GuiBatch` merges draw commands.
+    fn verts(b: &GuiBatch) -> Vec<GuiVertex> {
+        b.items.iter().filter_map(|item| match item { Item::Draw(draw) => Some(draw), _ => None }).flat_map(|draw| draw.vertices.iter().copied()).collect()
+    }
+
+    /// The direct table must agree with vanilla's `ASCII.indexOf` for every possible code unit,
+    /// including the duplicate NUL slots (`indexOf` picks the first one).
+    #[test]
+    fn direct_ascii_index_matches_index_of() {
+        let font = test_font();
+        for c in 0..=u16::MAX {
+            assert_eq!(font.ascii_index(c), font.table.iter().position(|&t| t == c), "U+{c:04X}");
+        }
+    }
+
+    /// Widths and emitted quads for colour, bold, reset, underline and unicode fallback are the
+    /// same values the linear-search/two-allocation implementation produced.
+    #[test]
+    fn formatting_widths_and_quads_are_unchanged() {
+        let mut font = test_font();
+        let text = "§cA§lB§r§nC中";
+        assert_eq!(font.width(text), 18);
+
+        let mut b = GuiBatch::new();
+        assert_eq!(font.draw(&mut b, text, 0.0, 0.0, 0xFFFF_FFFF), 18);
+
+        let v = verts(&b);
+        assert_eq!(v.len(), 28);
+        assert!(b.items.iter().any(|item| matches!(item, Item::Draw(draw)
+            if draw.texture.as_deref() == Some("textures/font/unicode_page_4e.png") && draw.vertices.len() == 4)));
+
+        // §c A; §l draws B twice (5 and 6); §r/§n leave C underlined at 11.
+        let f = 5.0f32 - 0.01;
+        let right = f - 1.0;
+        for (base, x) in [(0, 0.0), (4, 5.0), (8, 6.0), (12, 11.0)] {
+            assert_close(v[base].pos[0], x);
+            assert_close(v[base].pos[1], 0.0);
+            assert_close(v[base + 1].pos[0], x);
+            assert_close(v[base + 1].pos[1], 7.99);
+            assert_close(v[base + 2].pos[0], x + right);
+            assert_close(v[base + 2].pos[1], 7.99);
+            assert_close(v[base + 3].pos[0], x + right);
+            assert_close(v[base + 3].pos[1], 0.0);
+        }
+        assert_eq!(v[0].uv, [8.0 / 128.0, 32.0 / 128.0]);
+        assert_close(v[2].uv[0], 11.99 / 128.0);
+        assert_close(v[2].uv[1], 39.99 / 128.0);
+        for vert in &v[..12] {
+            assert_eq!(vert.color, [255, 85, 85, 255]);
+        }
+        for vert in &v[12..16] {
+            assert_eq!(vert.color, [255, 255, 255, 255]);
+        }
+
+        // The underline spans posX-1 .. posX+f on the bottom pixel row.
+        let u = &v[16..20];
+        assert_eq!(u[0].pos, [10.0, 9.0]);
+        assert_eq!(u[1].pos, [16.0, 9.0]);
+        assert_eq!(u[2].pos, [16.0, 8.0]);
+        assert_eq!(u[3].pos, [10.0, 8.0]);
+        assert_eq!(u[0].color, [255, 255, 255, 255]);
+
+        // Unicode fallback keeps its own page/atlas geometry and half-width advance.
+        let g = &v[20..24];
+        assert_eq!(g[0].pos, [16.0, 0.0]);
+        assert_eq!(g[1].pos, [16.0, 7.99]);
+        assert_close(g[2].pos[0], 16.0 + 0.99);
+        assert_close(g[2].pos[1], 7.99);
+        assert_close(g[3].pos[0], 16.0 + 0.99);
+        assert_eq!(g[0].uv, [213.0 / 256.0, 32.0 / 256.0]);
+        assert_close(g[1].uv[1], 47.98 / 256.0);
+        assert_close(g[2].uv[0], 214.98 / 256.0);
+        assert_eq!(g[0].color, [255, 255, 255, 255]);
+
+        // The active underline also runs under the unicode glyph: x-1 .. x+advance, 15..18.
+        let u = &v[24..28];
+        assert_eq!(u[0].pos, [15.0, 9.0]);
+        assert_eq!(u[1].pos, [18.0, 9.0]);
+        assert_eq!(u[2].pos, [18.0, 8.0]);
+        assert_eq!(u[3].pos, [15.0, 8.0]);
+    }
+
+    /// `drawStringWithShadow`: shadow pass first (offset by one and darkened), normal pass
+    /// second; the shared UTF-16 buffer must not change that order or geometry.
+    #[test]
+    fn shadow_keeps_two_passes_in_order() {
+        let mut font = test_font();
+        let mut b = GuiBatch::new();
+        assert_eq!(font.draw_shadow(&mut b, "A", 0.0, 0.0, 0xFFFF_FFFF), 6);
+
+        let v = verts(&b);
+        assert_eq!(v.len(), 8);
+        assert_eq!(v[0].pos, [1.0, 1.0]);
+        assert_eq!(v[0].color, [63, 63, 63, 255]);
+        assert_eq!(v[4].pos, [0.0, 0.0]);
+        assert_eq!(v[4].color, [255, 255, 255, 255]);
+    }
 }

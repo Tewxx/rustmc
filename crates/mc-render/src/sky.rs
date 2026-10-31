@@ -6,9 +6,13 @@ pub struct Sky {
     pub angle: f32,
     pub sky: [f32; 3],
     pub fog: [f32; 3],
+    /// `GlStateManager.setFogDensity` when `EntityRenderer.setupFog` used GL_EXP (water and
+    /// lava); 0 means the linear `fog start..fog end` pair applies instead.
+    pub fog_density: f32,
     pub cloud: [f32; 3],
     pub sunrise: Option<[f32; 4]>,
     pub stars: f32,
+    pub celestial_visibility: f32,
     pub moon: u8,
     pub ticks: f32,
     pub fancy_clouds: bool,
@@ -19,6 +23,8 @@ impl Sky {
     /// `World.getCloudColour`.
     pub fn apply_weather(&mut self, rain: f32, thunder: f32) {
         let lum = |c: &[f32; 3]| c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+        self.celestial_visibility = 1. - rain;
+        self.stars *= self.celestial_visibility;
         if rain > 0. {
             let g = lum(&self.sky) * 0.6;
             let k = 1. - rain * 0.75;
@@ -38,6 +44,31 @@ impl Sky {
             self.cloud = self.cloud.map(|c| c * k + g * (1. - k));
             let a = 1. - thunder * 0.5;
             self.fog = self.fog.map(|c| c * a);
+        }
+    }
+
+    /// `EntityRenderer.updateFogColor`'s water/lava branches and the matching densities of
+    /// `EntityRenderer.setupFog`. `respiration` is `EnchantmentHelper.getRespiration` and
+    /// `water_breathing` is `Potion.waterBreathing`. Vanilla applies these after the weather
+    /// darkening, so call this after [`Sky::apply_weather`].
+    pub fn apply_liquid(&mut self, material: mc_data::Material, respiration: i32, water_breathing: bool) {
+        match material {
+            mc_data::Material::Water => {
+                let respiration = respiration as f32;
+                let mut f = respiration * 0.2;
+                if water_breathing {
+                    f = f * 0.3 + 0.6;
+                }
+                self.fog = [0.02 + f, 0.02 + f, 0.2 + f];
+                // RenderGlobal.renderSky still draws the dome; the GL_EXP fog of setupFog
+                // covers it (density 0.1, or 0.01 with water breathing).
+                self.fog_density = if water_breathing { 0.01 } else { 0.1 - respiration * 0.03 };
+            }
+            mc_data::Material::Lava => {
+                self.fog = [0.6, 0.1, 0.0];
+                self.fog_density = 2.0;
+            }
+            _ => {}
         }
     }
 
@@ -82,13 +113,50 @@ impl Sky {
             angle,
             sky,
             fog,
+            fog_density: 0.,
             cloud: [daylight * 0.9 + 0.1, daylight * 0.9 + 0.1, daylight * 0.85 + 0.15],
             sunrise,
             stars: stars * stars * 0.5,
+            celestial_visibility: 1.,
             moon: ((time / 24000 % 8 + 8) % 8) as u8,
             ticks: time as f32 + partial,
             fancy_clouds: true,
             clouds: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Sky;
+
+    #[test]
+    fn rain_fades_celestial_objects() {
+        let mut sky = Sky::overworld(18000, 0., 0.8, 8);
+        let clear_stars = sky.stars;
+        assert!(clear_stars > 0.);
+        sky.apply_weather(0.5, 0.);
+        assert_eq!(sky.celestial_visibility, 0.5);
+        assert_eq!(sky.stars, clear_stars * 0.5);
+    }
+
+    #[test]
+    fn liquid_fog_matches_vanilla() {
+        let close = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-6);
+        let mut sky = Sky::overworld(0, 0., 0.8, 8);
+        sky.apply_liquid(mc_data::Material::Water, 0, false);
+        assert!(close(sky.fog, [0.02, 0.02, 0.2]));
+        assert!((sky.fog_density - 0.1).abs() < 1e-6);
+        // Respiration: +0.2 per level and -0.03 density per level.
+        sky.apply_liquid(mc_data::Material::Water, 3, false);
+        assert!(close(sky.fog, [0.62, 0.62, 0.8]));
+        assert!((sky.fog_density - 0.01).abs() < 1e-6);
+        // Water breathing overrides both: `f * 0.3 + 0.6` and density 0.01.
+        sky.apply_liquid(mc_data::Material::Water, 0, true);
+        assert!(close(sky.fog, [0.62, 0.62, 0.8]));
+        assert!((sky.fog_density - 0.01).abs() < 1e-6);
+        sky.apply_liquid(mc_data::Material::Lava, 0, false);
+        assert_eq!(sky.fog, [0.6, 0.1, 0.0]);
+        assert_eq!(sky.fog_density, 2.0);
     }
 }

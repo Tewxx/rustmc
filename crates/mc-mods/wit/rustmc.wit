@@ -1,0 +1,53 @@
+package rustmc:plugin@1.0.0;
+
+interface types {
+  record vec3 { x: f64, y: f64, z: f64 }
+  record frame-ctx {
+    partial-ticks: f32, fps: u32,
+    gui-width: u32, gui-height: u32, gui-scale: u32,
+    mouse-x: s32, mouse-y: s32,
+    cam: vec3, cam-yaw: f32, cam-pitch: f32, fov: f32,
+  }
+  enum log-level { trace, debug, info, warn, error }
+}
+
+interface lifecycle {
+  use types.{frame-ctx};
+  on-load: func(host-api: string, features: list<string>) -> result<_, string>;
+  on-unload: func();
+  on-tick: func();
+  on-frame: func(ctx: frame-ctx);
+}
+
+interface render {
+  use types.{frame-ctx};
+  render-hud: func(ctx: frame-ctx);
+}
+
+interface game {
+  use types.{vec3};
+  record player-state {
+    pos: vec3, prev-pos: vec3, motion: vec3, yaw: f32, pitch: f32, on-ground: bool,
+    health: f32, food: s32, saturation: f32, xp-level: s32, selected-slot: u8,
+    sprinting: bool, sneaking: bool, flying: bool, gamemode: u8,
+  }
+  player: func() -> player-state;
+  game-time: func() -> u64;
+}
+
+interface ui-draw {
+  submit: func(%stream: list<u8>);
+}
+
+interface log {
+  use types.{log-level};
+  log: func(level: log-level, msg: string);
+}
+
+world client-mod {
+  import game;
+  import ui-draw;
+  import log;
+  export lifecycle;
+  export render;
+}

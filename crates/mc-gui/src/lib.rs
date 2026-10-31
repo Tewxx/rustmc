@@ -3,14 +3,19 @@
 //! Everything draws into a [`batch::GuiBatch`] in scaled GUI units; `mc-render`
 //! turns that into GPU draws.
 
+pub mod achievement;
 pub mod batch;
 pub mod clipboard;
 pub mod component;
 pub mod font;
 pub mod hud;
 pub mod keys;
+pub mod lan;
 pub mod lang;
+pub mod resource_packs;
+pub mod multiplayer;
 pub mod screens;
+pub mod server_data;
 pub mod settings;
 pub mod text_field;
 pub mod widgets;
@@ -122,6 +127,8 @@ pub struct Ui {
     pub splash: String,
     /// True when a world is loaded (pause menu, world-tinted backgrounds).
     pub in_world: bool,
+    /// The world belongs to a server connection (the pause menu says Disconnect).
+    pub remote: bool,
     /// The local player's name, for screens that prefill it (`GuiMultiplayer`'s edit box).
     pub player_name: String,
     /// Client ticks (20/s) plus partial tick, for animations.
@@ -130,21 +137,33 @@ pub struct Ui {
     pub sounds: Vec<&'static str>,
     /// `thePlayer.getActivePotionEffects()` in iteration order.
     pub effects: Vec<EffectView>,
+    /// The default pack's `pack.png` (`DefaultResourcePack.getPackImage`).
+    pub pack_icon: Option<Vec<u8>>,
+    /// Set by `GuiScreenResourcePacks` when Done applies a changed selection: the client runs
+    /// `Minecraft.refreshResources`.
+    pub pack_reload: bool,
+    /// Set by the "Open resource pack folder" button.
+    pub open_folder: Option<std::path::PathBuf>,
 }
 
 impl Ui {
     pub fn new(assets: &AssetSource, settings: Settings) -> Self {
+        let lang = Lang::load(assets, &settings.language);
         Self {
             inventory: [None; 36], armor: [None; 4], crafting: [None; 4], drops: Vec::new(), sent_messages: Vec::new(), selected_slot: 0, shift_down: false, ctrl_down: false, key_code: 0,
             font: FontRenderer::load(assets),
-            lang: Lang::load(assets, "en_US"),
+            lang,
             settings,
             splash: random_splash(assets),
             in_world: false,
+            remote: false,
             player_name: "Player".into(),
             ticks: 0.0,
             sounds: Vec::new(),
             effects: Vec::new(),
+            pack_icon: assets.read_base("pack.png"),
+            pack_reload: false,
+            open_folder: None,
         }
     }
 
@@ -152,8 +171,9 @@ impl Ui {
     /// from the (possibly changed) resource pack stack while keeping player state and settings.
     pub fn reload(&mut self, assets: &AssetSource) {
         self.font = FontRenderer::load(assets);
-        self.lang = Lang::load(assets, "en_US");
+        self.lang = Lang::load(assets, &self.settings.language);
         self.splash = random_splash(assets);
+        self.pack_icon = assets.read_base("pack.png");
     }
 
     /// `InventoryEffectRenderer.updateActivePotionEffects`: the container moves right to make room.

@@ -1,0 +1,49 @@
+# owner/Class.method (any overload) stubbed to Rust even though the class itself is kept real (keep-real.txt).
+# Forge's EventSubscriptionTransformer would normally override these in each @Cancelable/@HasResult event at class-load time.
+net/minecraftforge/fml/common/eventhandler/Event.isCancelable
+net/minecraftforge/fml/common/eventhandler/Event.hasResult
+# Minecraft and FontRenderer are real (Meowtils mixins need their bodies) except the methods Rust implements.
+net/minecraft/client/Minecraft.func_71410_x
+net/minecraft/client/Minecraft.func_110432_I
+net/minecraft/client/Minecraft.func_147108_a
+net/minecraft/client/Minecraft.func_152344_a
+net/minecraft/client/Minecraft.func_152343_a
+net/minecraft/client/Minecraft.func_147118_V
+net/minecraft/client/Minecraft.func_110434_K
+net/minecraft/client/Minecraft.func_175599_af
+net/minecraft/client/Minecraft.func_147104_D
+net/minecraft/client/Minecraft.func_71387_A
+net/minecraft/client/Minecraft.func_71356_B
+net/minecraft/client/Minecraft.func_175600_c
+net/minecraft/client/Minecraft.func_71386_F
+# These methods are continuations: Java hooks surround the real Rust-owned body.
+net/minecraft/client/Minecraft.func_71407_l
+net/minecraft/client/Minecraft.func_71403_a
+net/minecraft/client/entity/EntityPlayerSP.func_175161_p
+net/minecraft/client/gui/FontRenderer.func_78256_a
+net/minecraft/client/gui/FontRenderer.func_78263_a
+net/minecraft/client/gui/FontRenderer.func_78269_a
+net/minecraft/client/gui/FontRenderer.func_78262_a
+net/minecraft/client/gui/FontRenderer.func_78276_b
+net/minecraft/client/gui/FontRenderer.func_175063_a
+net/minecraft/client/gui/FontRenderer.func_175065_a
+# Clipboard goes to the system clipboard through Rust (vanilla uses AWT, which runs headless here).
+net/minecraft/client/gui/GuiScreen.func_146277_j
+net/minecraft/client/gui/GuiScreen.func_146275_d
+# Client glue owned by Rust (impls/client.rs, minecraft.rs): resources, framebuffer, window, FPS, pause state.
+net/minecraft/client/Minecraft.func_110442_L
+net/minecraft/client/Minecraft.func_147110_a
+net/minecraft/client/Minecraft.func_147113_T
+net/minecraft/client/Minecraft.func_152342_ad
+net/minecraft/client/Minecraft.func_175610_ah
+net/minecraft/client/Minecraft.func_71352_k
+net/minecraft/client/Minecraft.func_71370_a
+net/minecraft/client/Minecraft.func_71372_G
+net/minecraft/client/Minecraft.func_71382_s
+net/minecraft/client/Minecraft.func_71400_g
+net/minecraft/client/gui/FontRenderer.func_175064_b
+# EntityRenderer stays real for mods' mixins; its post-shader entry points are Rust's (impls/shader.rs).
+net/minecraft/client/renderer/EntityRenderer.func_147702_a
+net/minecraft/client/renderer/EntityRenderer.func_147706_e
+net/minecraft/client/renderer/EntityRenderer.func_175069_a
+net/minecraft/client/renderer/EntityRenderer.func_181022_b

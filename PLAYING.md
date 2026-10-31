@@ -1,7 +1,9 @@
 # Playing the current local build
 
-Double-click `Play-RustMC.cmd`, or run `cargo run --release --offline --bin rustmc -- --play`.
-Without `--play`, choose Singleplayer on the title screen.
+Double-click `Play-RustMC.cmd` (or run `play.sh`) to open the title screen, then use Multiplayer.
+Singleplayer is out of scope: the integrated server, worldgen and local commands are behind the off-by-default
+`singleplayer` cargo feature (`cargo build --release -p mc-client --features singleplayer`, then `--play` / `--world`).
+In the default build the title screen shows the Singleplayer button disabled.
 
 Multiplayer: `rustmc --connect <host>[:port] --name <name>` joins an offline-mode 1.8.9 server
 (protocol 47). Add `--online` to sign in with a Microsoft account for online-mode servers
@@ -31,16 +33,11 @@ movement/anti-cheat audit. Server resource packs
 work: the first offer shows the vanilla Yes/No prompt, accepted packs download with SHA-1
 verification, apply immediately (models, atlases, font, GUI and a full world remesh), and are
 cached and re-applied on later joins. `--pack-mode enabled|disabled|prompt` overrides the
-remembered per-server choice. Pack sound overrides are not loaded yet (sounds come from
-`.minecraft/assets`).
+remembered per-server choice. Selected resource packs can override sounds. Standalone Microsoft sign-in also starts a background sync of missing 1.8 assets, verifies their hashes, and initializes sound when the sync finishes. Prism supplies its own assets.
 
 ## Joining real servers
 
-The title screen's **Multiplayer** button opens the direct-connect screen: type `host[:port]`,
-edit the username (prefilled from `--name`), then **Join Server** for offline-mode servers or
-**Join (Microsoft)** for online-mode servers. The client relaunches itself with the matching
-`--connect`/`--online` flags; the saved-server list and in-process server switching are not
-ported yet.
+The title screen's **Multiplayer** button opens the saved-server list, with direct connect and server editing. Joining and disconnecting happen in the same process. Prism supplies its authenticated session; standalone online connections use Microsoft sign-in.
 
 Offline-mode (cracked) servers accept any name:
 
@@ -73,7 +70,8 @@ player/item lighting are still missing. Water and lava now render through the fl
 overworld sky values have Java golden checks; rendered scenes have not passed a Java pixel
 comparison.
 
-Visual checks: `rustmc --radius 2 --screenshot shots/hand.png --screen hud`.
-Other screens: `body`, `body-back`, `creative`, `held`, `commands`.
+Visual checks: menu screens need no world (`rustmc --screenshot shots/title.png --screen title`); in-game screens
+(`hud`, `debug`, `chat`, `pause`, `body`, ...) need a server: start the mock server and add `--connect 127.0.0.1:25599`.
+Screens that run local commands (`death`, `breaking`, `drops`, `glass`) only work in a `--features singleplayer` build.
 Network checks: start the mock server (see `HANDOFF.md`), then
 `rustmc --connect 127.0.0.1:25599 --screenshot shots/net.png --screen net`.

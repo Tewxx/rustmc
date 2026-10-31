@@ -6,6 +6,7 @@ use mc_data::block::LightProps;
 use mc_world::World;
 
 /// `fillQuadBounds` output: 6 bounds, then `1 - bound` for each (the "flip" half).
+#[derive(Clone, Copy)]
 pub struct QuadBounds {
     pub bounds: [f32; 12],
     /// BitSet bit 0: the quad lies on the block face (or the block is a full cube),
@@ -137,8 +138,10 @@ fn props(w: &World, p: Pos) -> LightProps {
     w.state_at(p.0, p.1, p.2).light_props()
 }
 
+/// `Block.getAmbientOcclusionLightValue`: `0.2` for a normal cube, `1.0` otherwise. `BlockBarrier`
+/// overrides the derived value back to `1.0`, so use the dumped per-block value.
 fn ao_value(w: &World, p: Pos) -> f32 {
-    props(w, p).ao_value()
+    w.state_at(p.0, p.1, p.2).block().ao_light_value
 }
 
 fn brightness(w: &World, p: Pos) -> i32 {
@@ -238,18 +241,112 @@ pub fn vertex_brightness_for(w: &World, block: Pos, face: Facing, qb: &QuadBound
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mc_data::ids;
+    use mc_world::chunk::Chunk;
+
+    /// A lit 3×3 stone floor at y=64 (sky 15, block 0) plus a stone wall at `(9, 65, 8)`, so the
+    /// top face of `(8, 64, 8)` has exactly one `BlockStone` corner.
+    fn wall_scene() -> World {
+        let mut w = World::default();
+        let mut c = Chunk::new(0, 0);
+        for x in 7..=9 {
+            for z in 7..=9 {
+                c.set(x as usize, 64, z as usize, ids::STONE, 0);
+            }
+        }
+        c.set(9, 65, 8, ids::STONE, 0);
+        for v in c.sections[4].as_mut().unwrap().sky_light.iter_mut() {
+            *v = 15;
+        }
+        w.insert(c);
+        w
+    }
+
+    fn opaque(w: &World, p: Pos) -> bool {
+        w.state_at(p.0, p.1, p.2).block().is_opaque_cube(true)
+    }
+
+    /// The six full-cube quads, in `EnumFaceDirection` corner order.
+    const CUBE_FACES: [([[f32; 3]; 4], Facing); 6] = [
+        ([[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0]], Facing::Down),
+        ([[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]], Facing::Up),
+        ([[1.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]], Facing::North),
+        ([[0.0, 1.0, 1.0], [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]], Facing::South),
+        ([[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0]], Facing::West),
+        ([[1.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]], Facing::East),
+    ];
 
     #[test]
     fn ao_brightness_falls_back_to_center() {
         let full = 240 << 16;
         assert_eq!(ao_brightness(0, 0, 0, full), full);
         assert_eq!(ao_brightness(full, full, full, full), full);
+        // Only the two light bytes survive `& 16711935`; the shifted sum is the average.
+        assert_eq!(ao_brightness(0xF00090, 0xF00000, 0xF00000, 0xF00000), 0xF00024);
+        assert_eq!(ao_brightness(0xF00090, 0xF00050, 0, 0xF00000), 0xF00038);
     }
 
+    /// `fillQuadBounds`: a quad covering the whole cube face sets bit 0 (on face) and clears bit
+    /// 1 (partial); a quad inset from every edge clears bit 0 and sets bit 1.
     #[test]
-    fn full_cube_top_face_is_on_face_and_not_partial() {
-        let top = [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]];
-        let qb = fill_quad_bounds(&top, Facing::Up, true);
-        assert!(qb.on_face && !qb.partial);
+    fn fill_quad_bounds_flags_match_vanilla_for_every_face() {
+        for (pos, face) in CUBE_FACES {
+            let qb = fill_quad_bounds(&pos, face, true);
+            assert!(qb.on_face && !qb.partial, "full {face:?}");
+            assert!(fill_quad_bounds(&pos, face, false).on_face, "full cube flag {face:?}");
+
+            let inset: [[f32; 3]; 4] = std::array::from_fn(|i| pos[i].map(|v| 0.25 + 0.5 * v));
+            let qb = fill_quad_bounds(&inset, face, false);
+            assert!(!qb.on_face && qb.partial, "inset {face:?}");
+        }
+    }
+
+    /// The bounds table is `WEST, EAST, DOWN, UP, NORTH, SOUTH` followed by `1 - bound`.
+    #[test]
+    fn fill_quad_bounds_writes_vanilla_bound_order() {
+        let pos = [[0.25, 0.5, 0.75], [0.0, 1.0, 0.5], [0.75, 0.0, 1.0], [0.5, 0.25, 0.0]];
+        let qb = fill_quad_bounds(&pos, Facing::Up, false);
+        assert_eq!(qb.bounds[0..6], [0.0, 1.0, 0.0, 1.0, 0.0, 0.75]);
+        assert_eq!(qb.bounds[6..12], [1.0, 0.0, 1.0, 0.0, 1.0, 0.25]);
+    }
+
+    /// `Block.getAmbientOcclusionLightValue`: `BlockBarrier` is a full normal cube but overrides
+    /// the derived `0.2` back to `1.0`, so it must not darken its neighbours' corners.
+    #[test]
+    fn barrier_ambient_occlusion_value_is_one() {
+        let mut w = World::default();
+        let mut c = Chunk::new(0, 0);
+        c.set(8, 64, 8, ids::BARRIER, 0);
+        c.set(8, 65, 8, ids::STONE, 0);
+        w.insert(c);
+        assert_eq!(ao_value(&w, (8, 64, 8)), 1.0, "BlockBarrier.getAmbientOcclusionLightValue");
+        assert_eq!(ao_value(&w, (8, 65, 8)), 0.2, "Block.getAmbientOcclusionLightValue");
+        assert_eq!(ao_value(&w, (8, 66, 8)), 1.0, "air");
+    }
+
+    /// `updateVertexBrightness` on a full-cube top face: one `BlockStone` (0.2) corner gives
+    /// `(1 + 0.2 + 1 + 1) / 4 = 0.8` for two of the four vertices, stored through
+    /// `VertexTranslations.UP = (2, 3, 0, 1)`. Verified against the Java oracle.
+    #[test]
+    fn ao_colour_multipliers_match_vanilla_for_a_wall_corner() {
+        let w = wall_scene();
+        let qb = fill_quad_bounds(&CUBE_FACES[1].0, Facing::Up, true);
+        let a = vertex_brightness_for(&w, (8, 64, 8), Facing::Up, &qb, |p| opaque(&w, p));
+        assert_eq!(a.color, [1.0, 1.0, 0.8, 0.8]);
+        assert_eq!(a.brightness, [240 << 16; 4]);
+    }
+
+    /// A partial side quad takes the interpolated branch (`field_178289_i` is only false for
+    /// up/down): the weights are products of flipped bounds from `EnumNeighborInfo`. Verified
+    /// against the Java oracle.
+    #[test]
+    fn partial_side_quads_interpolate_the_corner_multipliers() {
+        let w = wall_scene();
+        let quad = [[0.0, 1.0, 0.25], [0.0, 0.0, 0.25], [0.5, 0.0, 0.75], [0.5, 1.0, 0.75]];
+        let qb = fill_quad_bounds(&quad, Facing::North, false);
+        assert!(qb.partial && !qb.on_face);
+        let a = vertex_brightness_for(&w, (9, 65, 8), Facing::North, &qb, |p| opaque(&w, p));
+        assert_eq!(a.color.map(f32::to_bits), [0x3f4c_cccd, 0x3f00_0000, 0x3ecc_ccce, 0x3f4c_cccd]);
+        assert_eq!(a.brightness, [240 << 16; 4]);
     }
 }

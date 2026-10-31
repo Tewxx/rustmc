@@ -9,6 +9,7 @@ use mc_core::nbt::Compound;
 use mc_core::random::JavaRandom;
 use mc_core::{BlockPos, Vec3};
 use mc_world::World;
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 /// `BlockChest.chestType` (0 normal, 1 trapped), or `BlockEnderChest`.
@@ -34,6 +35,10 @@ impl Kind {
     fn chest_type(self) -> i32 {
         i32::from(self == Kind::Trapped)
     }
+}
+
+fn is_rendered_tile(state: mc_data::StateId) -> bool {
+    Kind::of(state).is_some() || matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign" | "minecraft:skull" | "minecraft:standing_banner" | "minecraft:wall_banner")
 }
 
 /// `EnumFacing.getIndex()` for the chest's `facing` property (`BlockChest.getMetaFromState`).
@@ -79,10 +84,23 @@ pub struct Sound {
     pub pitch: f32,
 }
 
+/// `TileEntitySignRenderer`'s laid-out text for one sign. [`sign_line`] parses the chat JSON,
+/// wraps the line and lays out every glyph, so vanilla's per-frame cost is paid once per edit.
+struct SignLayout {
+    /// The raw lines (`TileEntitySign.signText`) the glyphs were built from.
+    text: [String; 4],
+    /// `Settings.chat_colors` at build time: `split_text` strips `§` codes when it is off.
+    chat_colors: bool,
+    /// All four lines in line order, in sign-local space.
+    glyphs: Vec<mc_render::tile::SignGlyph>,
+}
+
 #[derive(Default)]
 pub struct Tiles {
     map: HashMap<BlockPos, Chest>,
     order: Vec<BlockPos>,
+    /// [`Self::append_sign_glyphs`]' results, kept until the sign's text or column goes.
+    sign_layouts: RefCell<HashMap<BlockPos, SignLayout>>,
 }
 
 impl Tiles {
@@ -109,7 +127,7 @@ impl Tiles {
     pub fn seed_from_world(&mut self, world: &World) {
         for c in world.chunks.values() {
             for (pos, nbt) in &c.tile_entities {
-                if Kind::of(world.state_at(pos.x, pos.y, pos.z)).is_some() {
+                if is_rendered_tile(world.state_at(pos.x, pos.y, pos.z)) {
                     self.on_nbt(*pos, Some(nbt.clone()));
                 }
             }
@@ -118,7 +136,7 @@ impl Tiles {
 
     /// `World.setBlockState` + `BlockContainer`: a locally placed container block gets a tile.
     pub fn placed(&mut self, pos: BlockPos, state: mc_data::StateId) {
-        if Kind::of(state).is_some() {
+        if is_rendered_tile(state) {
             self.insert(pos);
         }
     }
@@ -128,6 +146,7 @@ impl Tiles {
         if self.map.remove(&pos).is_some() {
             self.order.retain(|p| *p != pos);
         }
+        self.sign_layouts.borrow_mut().remove(&pos);
     }
 
     /// Drops every tile in a column that just unloaded.
@@ -140,6 +159,7 @@ impl Tiles {
             }
             !inside
         });
+        self.sign_layouts.borrow_mut().retain(|p, _| !(p.x >= x0 && p.x < x0 + 16 && p.z >= z0 && p.z < z0 + 16));
     }
 
     /// `TileEntity.receiveClientEvent` for event 1 (`BlockContainer.onBlockEventReceived`).
@@ -226,7 +246,7 @@ impl Tiles {
     /// `TileEntityRendererDispatcher` skips tiles whose squared distance is 4096 or more
     /// (`TileEntity.getMaxRenderDistanceSquared`).
     #[allow(clippy::too_many_arguments)]
-    pub fn frames(&self, world: &World, partial: f32, cam: [f32; 3], christmas: bool, color: &dyn Fn(u8, u8) -> [f32; 3]) -> Vec<mc_render::tile::TileFrame> {
+    pub fn frames(&self, world: &World, partial: f32, cam: [f32; 3], christmas: bool, color: &dyn Fn(u8, u8) -> [f32; 3], skins: &crate::skins::Skins) -> Vec<mc_render::tile::TileFrame> {
         use mc_render::tile::{ChestSkin, TileFrame};
         let mut out = Vec::new();
         for &pos in &self.order {
@@ -237,6 +257,41 @@ impl Tiles {
                 continue;
             }
             let state = world.state_at(pos.x, pos.y, pos.z);
+            if matches!(state.block().name, "minecraft:standing_sign" | "minecraft:wall_sign") {
+                // `TileEntityRendererDispatcher.renderTileEntity`: `getCombinedLight(pos, 0)`.
+                let (sky, block) = world.brightness_for_render(pos);
+                out.push(TileFrame::Sign { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    standing: state.block().name == "minecraft:standing_sign", meta: state.meta(), light: color(sky as u8, block as u8), glyphs: Vec::new() });
+                continue;
+            }
+            if matches!(state.block().name, "minecraft:standing_banner" | "minecraft:wall_banner") {
+                let Some(nbt) = self.map.get(&pos).and_then(|te| te.nbt.as_ref()).or_else(|| world.tile_entity(pos)) else { continue };
+                let base = nbt.get("Base").and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                let mut patterns = vec![("b".to_string(), base)];
+                if let Some(list) = nbt.get("Patterns").and_then(mc_core::nbt::Tag::as_list) {
+                    for entry in list.iter().filter_map(mc_core::nbt::Tag::as_compound) {
+                        if let Some(id) = entry.get("Pattern").and_then(mc_core::nbt::Tag::as_str) {
+                            let color = entry.get("Color").and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                            patterns.push((id.to_owned(), color));
+                        }
+                    }
+                }
+                let (sky, block) = world.brightness_for_render(pos);
+                out.push(TileFrame::Banner { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    standing: state.block().name == "minecraft:standing_banner", meta: state.meta(), age: 0., patterns, light: color(sky as u8, block as u8) });
+                continue;
+            }
+            if state.block().name == "minecraft:skull" {
+                let nbt = self.map.get(&pos).and_then(|te| te.nbt.as_ref()).or_else(|| world.tile_entity(pos));
+                let byte = |key| nbt.and_then(|nbt| nbt.get(key)).and_then(mc_core::nbt::Tag::as_i64).unwrap_or(0) as u8;
+                let (sky, block) = world.brightness_for_render(pos);
+                // TileEntitySkull.playerProfile ("Owner"), only for player skulls.
+                let profile = nbt.filter(|_| byte("SkullType") == 3).and_then(|nbt| nbt.get("Owner")).and_then(mc_core::nbt::Tag::as_compound).and_then(crate::skins::skull_profile);
+                let (skin, alex) = skins.skull_skin(profile.as_ref());
+                out.push(TileFrame::Skull { pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                    facing: state.meta() & 7, rotation: byte("Rot"), kind: byte("SkullType"), light: color(sky as u8, block as u8), skin, alex });
+                continue;
+            }
             let Some(kind) = Kind::of(state) else { continue };
             let Some(te) = self.map.get(&pos) else { continue };
             let x_neg = is_chest_at(world, pos.west(), kind);
@@ -266,7 +321,7 @@ impl Tiles {
                 Kind::Chest => ChestSkin::Normal,
             };
             let meta = meta_of(state);
-            let (sky, block) = world.light(pos.x, pos.y, pos.z);
+            let (sky, block) = world.brightness_for_render(pos);
             out.push(TileFrame::Chest {
                 pos: glam::Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
                 meta,
@@ -275,12 +330,93 @@ impl Tiles {
                 x_shift: meta == 2 && x_pos,
                 z_shift: meta == 5 && z_pos,
                 lid,
-                light: color(sky, block),
+                light: color(sky as u8, block as u8),
             });
         }
         out
     }
+
+    /// The four raw sign lines: the `S33PacketUpdateSign` text first, else the tile entity's
+    /// `Text1..Text4`, else an empty JSON string (what `TileEntitySign.getSignText` starts with).
+    fn sign_text<'a>(signs: &'a HashMap<BlockPos, [String; 4]>, world: &'a World, pos: BlockPos) -> [&'a str; 4] {
+        if let Some(lines) = signs.get(&pos) {
+            return std::array::from_fn(|line| lines[line].as_str());
+        }
+        const KEYS: [&str; 4] = ["Text1", "Text2", "Text3", "Text4"];
+        let nbt = world.tile_entity(pos);
+        std::array::from_fn(|line| nbt.and_then(|nbt| nbt.get(KEYS[line])).and_then(mc_core::nbt::Tag::as_str).unwrap_or("\"\""))
+    }
+
+    /// One sign's glyphs, appended to `out` in line order. A sign's text only changes on
+    /// `S33PacketUpdateSign`/`Text1..Text4`, so the JSON parse, the wrap and the glyph layout are
+    /// only redone when [`Self::sign_text`] no longer matches the cached lines.
+    pub fn append_sign_glyphs(
+        &self,
+        pos: BlockPos,
+        out: &mut Vec<mc_render::tile::SignGlyph>,
+        world: &World,
+        signs: &HashMap<BlockPos, [String; 4]>,
+        font: &mut mc_gui::font::FontRenderer,
+        lang: &mc_gui::lang::Lang,
+        chat_colors: bool,
+    ) {
+        let raw = Self::sign_text(signs, world, pos);
+        let mut layouts = self.sign_layouts.borrow_mut();
+        let unchanged = layouts.get(&pos).is_some_and(|l| l.chat_colors == chat_colors && l.text.iter().zip(raw).all(|(a, b)| a.as_str() == b));
+        if unchanged {
+            let glyphs = &layouts[&pos].glyphs;
+            out.reserve(glyphs.len());
+            out.extend_from_slice(glyphs);
+            return;
+        }
+        let mut glyphs = Vec::new();
+        // `font.draw` picks `§k` glyphs from its RNG while drawing, so an obfuscated line has to
+        // be laid out (and re-randomized) every frame like vanilla; it is never cached.
+        let mut random = false;
+        for line in 0..4 {
+            let (mut line_glyphs, obfuscated) = sign_line(raw[line], line, font, lang, chat_colors);
+            random |= obfuscated;
+            glyphs.append(&mut line_glyphs);
+        }
+        if random {
+            layouts.remove(&pos);
+        }
+        out.reserve(glyphs.len());
+        out.extend_from_slice(&glyphs);
+        if !random {
+            layouts.insert(pos, SignLayout { text: raw.map(str::to_string), chat_colors, glyphs });
+        }
+    }
+
+    /// Drops every cached sign layout. `Minecraft.refreshResources` reloads the font and the
+    /// language, which the laid-out glyphs depend on; `reload_resources` calls this.
+    pub fn clear_sign_layouts(&mut self) {
+        self.sign_layouts.get_mut().clear();
+    }
 }
+
+/// `TileEntitySignRenderer`'s line: the chat component wrapped to 90 pixels, centred and drawn
+/// into glyph quads. The flag is `true` when the line is `§k`-obfuscated, whose glyph choice is
+/// random per draw.
+fn sign_line(raw: &str, line: usize, font: &mut mc_gui::font::FontRenderer, lang: &mc_gui::lang::Lang, chat_colors: bool) -> (Vec<mc_render::tile::SignGlyph>, bool) {
+    let component = crate::chat::parse(raw, lang);
+    let first = mc_gui::component::split_text(&component, 90, font, false, true, chat_colors)
+        .into_iter().next().map_or(String::new(), |line| line.formatted());
+    let random = first.contains("\u{a7}k") || first.contains("\u{a7}K");
+    let mut batch = mc_gui::batch::GuiBatch::new();
+    let x = -(font.width(&first) / 2) as f32;
+    font.draw(&mut batch, &first, x, (line as i32 * 10 - 20) as f32, 0);
+    let mut glyphs = Vec::new();
+    for item in batch.items {
+        let mc_gui::batch::Item::Draw(draw) = item else { continue };
+        for quad in draw.vertices.chunks_exact(4) {
+            glyphs.push(mc_render::tile::SignGlyph { pos: std::array::from_fn(|i| quad[i].pos),
+                uv: std::array::from_fn(|i| quad[i].uv), color: quad[0].color, texture: draw.texture.clone() });
+        }
+    }
+    (glyphs, random)
+}
+
 
 /// `TileEntityChestRenderer`'s calendar check: December 24th-26th.
 pub fn is_christmas(now: std::time::SystemTime) -> bool {
@@ -400,12 +536,12 @@ mod tests {
         for (x, y, z, _) in cells {
             tiles.on_nbt(BlockPos::new(x, y, z), None);
         }
-        let frames = tiles.frames(&world, 0., [4.5, 64.5, 1.5], false, &|_, _| [1.; 3]);
+        let frames = tiles.frames(&world, 0., [4.5, 64.5, 1.5], false, &|_, _| [1.; 3], &Default::default());
         let got: Vec<(i32, bool, mc_render::tile::ChestSkin, u8)> = frames
             .iter()
-            .map(|f| match f {
-                mc_render::tile::TileFrame::Chest { pos, large, skin, meta, .. } => (pos.x as i32, *large, *skin, *meta),
-                _ => unreachable!(),
+            .filter_map(|f| match f {
+                mc_render::tile::TileFrame::Chest { pos, large, skin, meta, .. } => Some((pos.x as i32, *large, *skin, *meta)),
+                _ => None,
             })
             .collect();
         use mc_render::tile::ChestSkin::*;
@@ -414,6 +550,64 @@ mod tests {
         assert_eq!(got, vec![(1, false, Normal, 3), (3, true, Normal, 2), (6, false, Trapped, 5), (8, false, Ender, 4)]);
         // `i == 2 && adjacentChestXPos != null` shifts the wide model by one block.
         assert!(frames.iter().any(|f| matches!(f, mc_render::tile::TileFrame::Chest { pos, x_shift: true, .. } if pos.x == 3.)));
+    }
+
+    #[test]
+    fn sign_text_formats_centers_and_limits_the_first_line() {
+        let Some(jar) = mc_testutil::jar() else { return };
+        let mut assets = mc_assets::AssetSource::new(); assets.push(&jar).unwrap();
+        let mut font = mc_gui::font::FontRenderer::load(&assets);
+        let lang = mc_gui::lang::Lang::default();
+        let glyphs = sign_line(r#"{"text":"A","color":"red"}"#, 1, &mut font, &lang, true).0;
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!(glyphs[0].color, [255, 85, 85, 255]);
+        assert!(glyphs[0].pos[0][0] < 0. && glyphs[0].pos[0][1] == -10.);
+        let long = sign_line(&format!("\"{}\"", "A".repeat(100)), 0, &mut font, &lang, true).0;
+        assert!(long.len() < 100 && !long.is_empty());
+        let unicode = sign_line(r#"{"text":"中"}"#, 0, &mut font, &lang, true).0;
+        assert_eq!(unicode[0].texture.as_deref(), Some("textures/font/unicode_page_4e.png"));
+        // `§k` is reported so the caller knows the glyphs are random per draw.
+        assert!(sign_line("\"\u{a7}k abc\"", 0, &mut font, &lang, true).1);
+        assert!(!sign_line(r#"{"text":"plain"}"#, 0, &mut font, &lang, true).1);
+    }
+
+    #[test]
+    fn banner_frame_keeps_server_patterns() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:standing_banner").unwrap().state_from_meta(7).unwrap();
+        world.set_block_state(p, state);
+        let pattern = mc_core::nbt::Tag::Compound([(String::from("Pattern"), mc_core::nbt::Tag::String("cr".into())),
+            (String::from("Color"), mc_core::nbt::Tag::Int(4))].into_iter().collect());
+        let mut tiles = Tiles::default(); tiles.on_nbt(p, Some([(String::from("Base"), mc_core::nbt::Tag::Int(2)),
+            (String::from("Patterns"), mc_core::nbt::Tag::List(10, vec![pattern]))].into_iter().collect()));
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3], &Default::default());
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Banner { meta: 7, patterns, .. }] if patterns == &vec![("b".to_string(), 2), ("cr".to_string(), 4)]));
+    }
+
+    #[test]
+    fn skull_frame_uses_server_nbt_and_block_facing() {
+        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:skull").unwrap().state_from_meta(1).unwrap();
+        world.set_block_state(p, state);
+        let mut tiles = Tiles::default();
+        tiles.on_nbt(p, Some([(String::from("SkullType"), mc_core::nbt::Tag::Byte(2)),
+            (String::from("Rot"), mc_core::nbt::Tag::Byte(7))].into_iter().collect()));
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3], &Default::default());
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Skull { facing: 1, rotation: 7, kind: 2, .. }]));
+    }
+
+    #[test]
+    fn sign_frames_follow_block_state_and_tile_removal() {        let mut world = World::default(); world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let state = mc_data::Block::by_name("minecraft:standing_sign").unwrap().state_from_meta(7).unwrap();
+        world.set_block_state(p, state);
+        let mut tiles = Tiles::default(); tiles.placed(p, state);
+        let frames = tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3], &Default::default());
+        assert!(matches!(&frames[..], [mc_render::tile::TileFrame::Sign { standing: true, meta: 7, .. }]));
+        tiles.remove(p);
+        assert!(tiles.frames(&world, 0., [1.5, 64.5, 1.5], false, &|_, _| [1.;3], &Default::default()).is_empty());
     }
 
     /// `TileEntityRendererDispatcher`: `getDistanceSq(...) < getMaxRenderDistanceSquared()`,
@@ -426,8 +620,102 @@ mod tests {
         let mut tiles = Tiles::default();
         tiles.on_nbt(BlockPos::new(1, 64, 1), None);
         // 63.5 blocks away in x: inside.
-        assert_eq!(tiles.frames(&world, 0., [-62.0, 64.5, 1.5], false, &|_, _| [1.; 3]).len(), 1);
+        assert_eq!(tiles.frames(&world, 0., [-62.0, 64.5, 1.5], false, &|_, _| [1.; 3], &Default::default()).len(), 1);
         // 64.5: outside (`>= 4096`).
-        assert!(tiles.frames(&world, 0., [-63.0, 64.5, 1.5], false, &|_, _| [1.; 3]).is_empty());
+        assert!(tiles.frames(&world, 0., [-63.0, 64.5, 1.5], false, &|_, _| [1.; 3], &Default::default()).is_empty());
+    }
+
+    /// `TileEntitySign.getSignText`: an absent line is the empty JSON string.
+    #[test]
+    fn missing_sign_lines_read_as_an_empty_json_string() {
+        let mut world = World::default();
+        world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let signs = HashMap::new();
+        assert_eq!(Tiles::sign_text(&signs, &world, BlockPos::new(1, 64, 1)), ["\"\"", "\"\"", "\"\"", "\"\""]);
+    }
+
+    /// A sign's glyphs are laid out once and copied out until its `S33` text or its
+    /// `Text1..Text4` NBT changes; the packet's lines win over the tile entity, like
+    /// `NetHandlerPlayClient.handleUpdateSign` replacing `signText`.
+    #[test]
+    fn sign_layout_is_cached_until_its_text_changes() {
+        let Some(jar) = mc_testutil::jar() else { return };
+        let mut assets = mc_assets::AssetSource::new(); assets.push(&jar).unwrap();
+        let mut font = mc_gui::font::FontRenderer::load(&assets);
+        let lang = mc_gui::lang::Lang::default();
+        let mut world = World::default();
+        world.insert(mc_world::chunk::Chunk::new(0, 0));
+        let p = BlockPos::new(1, 64, 1);
+        let snapshot = |glyphs: &[mc_render::tile::SignGlyph]| -> Vec<([[f32; 2]; 4], [[f32; 2]; 4], [u8; 4], Option<String>)> {
+            glyphs.iter().map(|g| (g.pos, g.uv, g.color, g.texture.clone())).collect()
+        };
+        let line = |text: &str| -> [String; 4] { std::array::from_fn(|i| if i == 0 { text.to_string() } else { "\"\"".to_string() }) };
+        let mut signs = HashMap::new();
+        signs.insert(p, line("\"abcd\""));
+
+        let mut tiles = Tiles::default();
+        let mut out = Vec::new();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        assert_eq!(out.len(), 4);
+        let first = snapshot(&out);
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        assert_eq!(snapshot(&out), first, "an unchanged sign copies its cached glyphs");
+        assert_eq!(tiles.sign_layouts.borrow().len(), 1);
+
+        // Without `S33` lines the tile entity's `Text1..Text4` are used, and changing them rebuilds.
+        signs.clear();
+        let nbt = |text: &str| -> Compound { [(String::from("Text1"), mc_core::nbt::Tag::String(text.into()))].into_iter().collect() };
+        world.chunks.get_mut(&(0, 0)).unwrap().tile_entities.insert(p, nbt("\"nbt\""));
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        let from_nbt = snapshot(&out);
+        assert_ne!(from_nbt, first);
+        world.chunks.get_mut(&(0, 0)).unwrap().tile_entities.insert(p, nbt("\"nbt longer\""));
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        assert_ne!(snapshot(&out), from_nbt, "changed NBT text rebuilds the layout");
+
+        // `S33` text wins over NBT, and its own change invalidates too.
+        signs.insert(p, line("\"s33\""));
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        let from_s33 = snapshot(&out);
+        assert_ne!(from_s33, from_nbt, "the packet's lines win over the tile entity");
+        signs.insert(p, line("\"s33 changed\""));
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        assert_ne!(snapshot(&out), from_s33);
+        assert_eq!(tiles.sign_layouts.borrow().len(), 1, "one layout per position");
+
+        // `chat_colors` is an input of `split_text`, so flipping it rebuilds too.
+        assert!(tiles.sign_layouts.borrow()[&p].chat_colors);
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, false);
+        assert!(!tiles.sign_layouts.borrow()[&p].chat_colors);
+
+        // A pack reload and an unloaded column both drop the layouts.
+        tiles.clear_sign_layouts();
+        assert!(tiles.sign_layouts.borrow().is_empty());
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        assert!(!tiles.sign_layouts.borrow().is_empty());
+        tiles.unload_chunk(0, 0);
+        assert!(tiles.sign_layouts.borrow().is_empty());
+
+        // `§k` glyphs are random per draw, so an obfuscated line must not be cached.
+        signs.insert(p, line("\"\\u00a7k abc\""));
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        assert!(!out.is_empty());
+        assert!(tiles.sign_layouts.borrow().get(&p).is_none(), "obfuscated text is laid out every frame");
+
+        // Removing the tile drops a plain sign's cached layout.
+        signs.insert(p, line("\"plain\""));
+        out.clear();
+        tiles.append_sign_glyphs(p, &mut out, &world, &signs, &mut font, &lang, true);
+        assert!(tiles.sign_layouts.borrow().contains_key(&p));
+        tiles.remove(p);
+        assert!(tiles.sign_layouts.borrow().is_empty());
     }
 }

@@ -1,5 +1,5 @@
 //! Creative catalogue extracted from CreativeTabs and RenderItem in the reference Java client.
-use glam::{Mat3, Vec3};
+use glam::{Mat3, Mat4, Vec3};
 use mc_assets::{
     model::ModelLoader,
     AssetSource,
@@ -114,16 +114,8 @@ impl Catalogue {
                     [255; 3],
                 ));
             } else if id == 397 {
-                let texture = match meta {
-                    0 => "skeleton/skeleton",
-                    1 => "skeleton/wither_skeleton",
-                    2 => "zombie/zombie",
-                    3 => "steve",
-                    _ => "creeper/creeper",
-                };
-                let texture = format!("textures/entity/{texture}.png");
-                let height = if matches!(meta, 2 | 3) { 64. } else { 32. };
-                icon = entity_cube(&texture, [4., 4., 4.], [8., 8., 8.], [0., 0.], [64., height], 1.1, [255; 3]);
+                let gui = models.items.get(id, meta).map_or(Mat4::from_rotation_y(180f32.to_radians()) * Mat4::from_scale(Vec3::splat(0.7)), |m| m.transform(mc_render::items::TransformType::Gui));
+                icon = skull_icon(meta as u8, gui);
             } else if id == 425 {
                 let colors: [u32; 16] = [
                     0x1e1b1b, 0xb3312c, 0x3b511a, 0x51301a, 0x253192, 0x7b2fbe, 0x287697, 0xababab, 0x434343, 0xd88198, 0x41cd34, 0xdecf2a,
@@ -206,7 +198,13 @@ impl Catalogue {
         } else {
             crate::tooltip::armor_dye(self, &stack)
         };
+        // A player skull's owner skin (TileEntityItemStackRenderer reads SkullOwner).
+        let skin = (item.id == 397 && stack.damage == 3)
+            .then(|| stack.tag.and_then(|t| crate::skins::item_skull_profile(&t.get())))
+            .flatten()
+            .and_then(|p| crate::skins::gui_skin(&p).or_else(|| (p.1.is_none() && crate::skins::default_slim(p.0)).then(|| "textures/entity/alex.png".to_owned())));
         for q in &item.icon {
+            let texture = skin.as_ref().unwrap_or(&q.texture);
             let color = match (tint, q.tint0) {
                 (Some(c), Some(shade)) => {
                     let ch = |v: u32| ((v & 255) as f32 * shade) as u8;
@@ -214,7 +212,7 @@ impl Catalogue {
                 }
                 _ => q.color,
             };
-            b.quad(Some(&q.texture), true, q.pos.map(|p| [p[0] + x as f32, p[1] + y as f32]), q.uv, color);
+            b.quad(Some(texture), true, q.pos.map(|p| [p[0] + x as f32, p[1] + y as f32]), q.uv, color);
         }
         // RenderItem.renderEffect: two glint passes in color -8372020 over the item's texels.
         if crate::tooltip::has_effect(self, &stack) {
@@ -259,6 +257,51 @@ const TITLES: [&str; 12] = [
     "Materials",
     "Survival Inventory",
 ];
+/// `RenderItem.renderItemIntoGUI` for a skull: the GUI transform, `renderItem`'s builtin
+/// branch, `TileEntityItemStackRenderer` (translate(-0.5, 0, -0.5), scale 2) and
+/// `renderSkull(0, 0, 0, UP, 0)`, shaded by the GUI item lighting.
+fn skull_icon(kind: u8, gui: Mat4) -> Vec<IconQuad> {
+    use mc_render::tile::{render, ChestModels, TileFrame};
+    let kind = if kind <= 4 { kind } else { 0 };
+    let texture = match kind {
+        1 => "skeleton/wither_skeleton",
+        2 => "zombie/zombie",
+        3 => "steve",
+        4 => "creeper/creeper",
+        _ => "skeleton/skeleton",
+    };
+    let texture = format!("textures/entity/{texture}.png");
+    let m = Mat4::from_translation(Vec3::new(8., 8., 0.))
+        * Mat4::from_scale(Vec3::new(1., 1., -1.))
+        * Mat4::from_scale(Vec3::splat(0.5 * 40.))
+        * Mat4::from_rotation_x(210f32.to_radians())
+        * Mat4::from_rotation_y(-135f32.to_radians())
+        * gui
+        * Mat4::from_scale(Vec3::splat(0.5))
+        * Mat4::from_rotation_y(180f32.to_radians())
+        * Mat4::from_translation(Vec3::splat(-0.5))
+        * Mat4::from_translation(Vec3::new(-0.5, 0., -0.5))
+        * Mat4::from_scale(Vec3::splat(2.));
+    let lights = mc_render::entity_model::lights_in(Mat3::from_rotation_y(-30f32.to_radians()) * Mat3::from_rotation_x(165f32.to_radians()));
+    let frame = TileFrame::Skull { pos: Vec3::ZERO, facing: 1, rotation: 0, kind, light: [1.; 3], skin: None, alex: false };
+    let mut quads: Vec<(f32, IconQuad)> = Vec::new();
+    render(&frame, &ChestModels::default(), &mut |_, pm, q| {
+        let pm = m * pm;
+        let p = q.pos.map(|v| pm.transform_point3(v));
+        let n = (Mat3::from_mat4(pm).inverse().transpose() * q.normal).normalize_or_zero();
+        // Faces turned away sit behind the opaque head.
+        if n.z <= 1e-3 {
+            return;
+        }
+        let shade = mc_render::entity_model::standard_lighting(n, lights);
+        let c = (255. * shade) as u8;
+        let depth = p.iter().map(|v| v.z).sum::<f32>();
+        quads.push((depth, IconQuad { texture: texture.clone(), pos: p.map(|v| [v.x, v.y]), uv: q.uv, color: [[c, c, c, 255]; 4], tint0: None }));
+    });
+    quads.sort_by(|a, b| a.0.total_cmp(&b.0));
+    quads.into_iter().map(|(_, q)| q).collect()
+}
+
 fn entity_cube(texture: &str, lo: [f32; 3], size: [f32; 3], uv: [f32; 2], sheet: [f32; 2], scale: f32, tint: [u8; 3]) -> Vec<IconQuad> {
     let [x, y, z] = lo;
     let [w, h, d] = size;

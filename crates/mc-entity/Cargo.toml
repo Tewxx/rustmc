@@ -6,3 +6,7 @@ edition.workspace = true
 [dependencies]
 mc-core = { path = "../mc-core" }
 mc-data = { path = "../mc-data" }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
+mc-testutil = { path = "../mc-testutil" }

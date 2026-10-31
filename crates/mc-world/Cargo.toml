@@ -10,3 +10,4 @@ flate2 = "1"
 
 [dev-dependencies]
 serde_json = "1"
+mc-testutil = { path = "../mc-testutil" }

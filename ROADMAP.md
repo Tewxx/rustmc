@@ -1,7 +1,7 @@
 # rustmc — roadmap to a 1:1 Minecraft 1.8.9 in Rust
 
 Goal: everything 1:1 with vanilla 1.8.9 (behaviour, visuals, protocol), multithreaded where vanilla's
-semantics allow it. Reference: `../MCP-919/src/minecraft/` (read-only, never copied in).
+semantics allow it. Reference: `MCP-919/src/minecraft/` (read-only, never copied in).
 
 ## Playability priority (latest user steering)
 
@@ -117,7 +117,7 @@ mod loaders.
 ### S0 — Ground rules & tooling  *(DONE 2026-10-21)*
 
 Delivered: git repo; `mc-core::random::JavaRandom` and `mc-core::strict_math::log` (fdlibm), bit-exact
-vs JDK 8; `tools/extract/extract.ps1` → `golden/blocks.json` (all 198 blocks, every state, meta↔state,
+vs JDK 8; `tools/extract/extract.sh` → `golden/blocks.json` (all 198 blocks, every state, meta↔state,
 static properties); `mc-world/tests/golden_blocks.rs`; `rustmc --bench <s>`.
 Baseline (RTX 3060, radius 8, 10 s): avg 3118 fps, 1% low 1293, 0.1% low 923, CPU 0.27 ms/frame.
 GPU timestamp queries and a tracy/puffin feature were left for S12, when GPU cost is being tuned.

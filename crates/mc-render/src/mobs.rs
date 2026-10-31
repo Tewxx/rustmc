@@ -84,6 +84,8 @@ pub enum Tex {
     Mob(&'static str),
     /// Armor atlas cell (as `LayerBipedArmor` lays them out).
     Armor(u32),
+    /// A downloaded player skin's cell in the skin atlas (player skulls).
+    Skin(u32),
 }
 
 /// How one model pass is drawn.
@@ -95,13 +97,15 @@ pub struct Layer {
     pub overlay: Option<[f32; 4]>,
     /// `blendFunc(ONE, ONE)` at full brightness (spider and enderman eyes).
     pub additive: bool,
+    /// `GlStateManager.enableNormalize` for this pass (`LayerSlimeGel`).
+    pub normalize: bool,
     /// `LayerArmorBase.renderGlint` over this pass's geometry.
     pub glint: bool,
 }
 
 impl Layer {
     fn tex(path: &'static str) -> Self {
-        Self { tex: Tex::Mob(path), tint: [1.; 3], overlay: None, additive: false, glint: false }
+        Self { tex: Tex::Mob(path), tint: [1.; 3], overlay: None, additive: false, normalize: false, glint: false }
     }
 }
 
@@ -322,8 +326,7 @@ fn enderman_angles(m: &mut PlayerModel, carrying: bool, attacking: bool) {
     m.left_leg.pivot.y = 9. + y;
     m.head.pivot.z = -0.;
     m.head.pivot.y = y + 1.;
-    let head = m.head.clone();
-    m.headwear.copy_angles(&head);
+    m.headwear.copy_angles(&m.head);
     if attacking {
         m.head.pivot.y -= 5.;
     }
@@ -882,7 +885,7 @@ impl MobModels {
                     zombie_arms(am, f.swing, f.age);
                     am.show_armor_slot(slot);
                     let layer = (slot == 2) as u32;
-                    let armor = |cell: u32, tint: [f32; 3]| Layer { tex: Tex::Armor(cell), tint, overlay: None, additive: false, glint: false };
+                    let armor = |cell: u32, tint: [f32; 3]| Layer { tex: Tex::Armor(cell), tint, overlay: None, additive: false, normalize: false, glint: false };
                     let last = if a.material == 0 {
                         let c = a.color;
                         let tint = [((c >> 16) & 255) as f32 / 255., ((c >> 8) & 255) as f32 / 255., (c & 255) as f32 / 255.];
@@ -978,7 +981,8 @@ impl MobModels {
             Mob::Slime { .. } => {
                 self.slime.render(m, child, &main("slime/slime"), out);
                 // LayerSlimeGel: the translucent outer cube, blended (SRC_ALPHA, 1 - SRC_ALPHA).
-                self.slime_gel.render(m, child, &main("slime/slime"), out);
+                // The layer enables `GL_NORMALIZE`, which the main pass does not.
+                self.slime_gel.render(m, child, &Layer { normalize: true, ..main("slime/slime") }, out);
             }
             Mob::MagmaCube { squish, .. } => {
                 let s = squish.max(0.);
@@ -1356,6 +1360,8 @@ fn ocelot_angles(p: &mut [Part], limb: f32, amount: f32, yaw: f32, pitch: f32, s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entity_model::{gl_normal, lights_in, standard_lighting};
+    use glam::Mat3;
 
     #[test]
     fn ghast_tentacles_follow_random_1660() {
@@ -1429,6 +1435,52 @@ mod tests {
                 n += 1;
             });
             assert!(n >= 6, "{mob:?}: {n}");
+        }
+    }
+
+    /// `RenderSlime.preRenderCallback` squashes the model non-uniformly. The renderer keeps
+    /// `GL_RESCALE_NORMAL` (so the frozen normals stay un-normalised), while only
+    /// `LayerSlimeGel` enables `GL_NORMALIZE`; the two passes therefore shade differently.
+    #[test]
+    fn squashed_slime_keeps_rescale_normal_but_the_gel_normalises() {
+        let mut m = MobModels::new();
+        let f = MobFrame {
+            mob: Mob::Slime { size: 1., squish: 0.9 },
+            id: 7,
+            pos: Vec3::ZERO,
+            body_yaw: 0.,
+            head_yaw: 0.,
+            pitch: 0.,
+            limb_swing: 0.,
+            limb_amount: 0.,
+            age: 0.,
+            ticks: 0,
+            swing: 0.,
+            child: false,
+            hurt: false,
+            death: 0.,
+            light: [1.; 3],
+            bright: [1.; 3],
+            held: None,
+            armor: [None; 4],
+        };
+        let lights = lights_in(Mat3::IDENTITY);
+        let mut main = Vec::new();
+        let mut gel = Vec::new();
+        m.render(&f, Mat4::IDENTITY, &mut |l, pm, q| {
+            let nm = Mat3::from_mat4(pm).inverse().transpose();
+            let shade = standard_lighting(gl_normal(nm, q.normal, l.normalize), lights);
+            if l.normalize { gel.push(shade) } else { main.push(shade) }
+        });
+        assert!(!main.is_empty() && !gel.is_empty());
+        let worst = main.iter().map(|a| gel.iter().map(|b| (a - b).abs()).fold(0f32, f32::max)).fold(0f32, f32::max);
+        assert!(worst > 0.05, "main and gel shades differ by at most {worst}");
+        // The main pass is the un-normalised `GL_RESCALE_NORMAL` result, the gel the normalised one.
+        for &s in &main {
+            assert!((0.4..=1.).contains(&s), "{s}");
+        }
+        for &s in &gel {
+            assert!((0.4..=1.).contains(&s), "{s}");
         }
     }
 }

@@ -19,7 +19,7 @@ fn main() {
 
     let read = |name: &str| -> Value {
         let p = golden.join(name);
-        let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e} (run tools/extract/extract.ps1)", p.display()));
+        let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e} (run tools/extract/extract.sh)", p.display()));
         serde_json::from_str(&text).unwrap()
     };
     let materials = read("materials.json");
@@ -352,7 +352,14 @@ fn gen_items(items: &Value) -> String {
             } else if let Some(t) = v.as_str() {
                 format!("FieldValue::Str({t:?})")
             } else if let Some(a) = v.as_array() {
-                format!("FieldValue::List(&[{}])", a.iter().map(|x| format!("{:?}", x.as_str().unwrap())).collect::<Vec<_>>().join(", "))
+                {
+                let mut names: Vec<&str> = a.iter().map(|x| x.as_str().unwrap()).collect();
+                // effectiveBlocks is a Java HashSet (identity-hash order); only membership matters, so sort for stable output.
+                if k == "effectiveBlocks" {
+                    names.sort_unstable();
+                }
+                format!("FieldValue::List(&[{}])", names.iter().map(|x| format!("{x:?}")).collect::<Vec<_>>().join(", "))
+            }
             } else {
                 panic!("field {k}: {v}")
             };

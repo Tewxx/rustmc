@@ -132,8 +132,9 @@ fn der(data: &[u8]) -> Option<(u8, &[u8], &[u8])> {
             i += 1;
         }
     }
-    let body = data.get(i..i + len)?;
-    Some((tag, body, &data[i + len..]))
+    let end = i.checked_add(len)?;
+    let body = data.get(i..end)?;
+    Some((tag, body, &data[end..]))
 }
 
 /// RSA modulus and exponent from an X.509 encoded public key.
@@ -151,7 +152,8 @@ pub fn parse_public_key(x509: &[u8]) -> Option<(BigUint, BigUint)> {
 pub fn rsa_encrypt(x509: &[u8], msg: &[u8], mut rand: impl FnMut() -> u8) -> Option<Vec<u8>> {
     let (n, e) = parse_public_key(x509)?;
     let k = (n.bits() as usize).div_ceil(8);
-    if msg.len() + 11 > k {
+    // A hostile server could send a huge modulus to stall the modpow; real keys are 1024 bits.
+    if msg.len() + 11 > k || n.bits() > 4096 {
         return None;
     }
     let mut em = vec![0u8, 2];

@@ -37,3 +37,18 @@ desktop.ini
 # Claude Code local files
 .claude/
 CLAUDE.local.md
+/.mc-tools
+__pycache__/
+/tests/forge/build
+
+/crates/mc-mods/tests/guest/target
+# Native WASM guest build output
+/mods/wasm/target/
+/mods/wasm/harness/target/
+
+# Local scratch, server list and review temp files
+/servers.dat
+/resourcepacks/
+/.review-tmp/
+/x
+/bench.csv

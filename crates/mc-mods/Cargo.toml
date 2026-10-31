@@ -1,0 +1,15 @@
+[package]
+name = "mc-mods"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+wasmtime = { version = "29.0.1", default-features = false, features = ["std", "runtime", "component-model", "cranelift", "pooling-allocator", "wat"] }
+
+[dev-dependencies]
+wit-component = "0.220.1"
+wasmparser = "0.221.3"

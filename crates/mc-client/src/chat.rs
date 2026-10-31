@@ -175,6 +175,15 @@ fn translate(key: &str, args: &[Value], st: Style, ctx: Ctx, out: &mut Vec<Piece
 
 /// Appends the tree's components in iteration order (`createDeepCopyIterator`).
 fn walk(v: &Value, ctx: Ctx, out: &mut Vec<Piece>) {
+    // `{"translate":"%1$s%1$s%1$s...","with":[<same again>]}` nested 20 deep expands to 50^20
+    // components: cap the work per parse so a hostile line cannot freeze or exhaust the client.
+    if WORK.with(|w| {
+        let n = w.get();
+        w.set(n.saturating_sub(1));
+        n == 0
+    }) {
+        return;
+    }
     let none = || (None, None, None);
     match v {
         Value::String(s) => push(out, s.clone(), Style::default(), ctx.parent, none()),
@@ -228,7 +237,12 @@ fn walk(v: &Value, ctx: Ctx, out: &mut Vec<Piece>) {
     }
 }
 
+thread_local! {
+    static WORK: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 fn parse_value(v: &Value, lang: &Lang) -> Component {
+    WORK.with(|w| w.set(20_000));
     let mut out = Vec::new();
     walk(v, Ctx { parent: Style::default(), lang }, &mut out);
     Component(out)
@@ -275,6 +289,20 @@ mod tests {
         assert_eq!(format(r#"{"text":"a","color":"red","extra":[{"text":"b","bold":true}]}"#, &lang), "\u{a7}ca\u{a7}r\u{a7}c\u{a7}lb\u{a7}r");
         assert_eq!(format(r#""plain""#, &lang), "plain\u{a7}r");
         assert_eq!(unformatted(r#"{"text":"x","extra":["y"]}"#, &lang), "xy");
+    }
+
+    #[test]
+    fn exponential_translation_trees_are_cut_off() {
+        let lang = Lang::default();
+        let pat = "%1$s".repeat(50);
+        let mut json = r#""x""#.to_string();
+        for _ in 0..30 {
+            json = format!(r#"{{"translate":"{pat}","with":[{json}]}}"#);
+        }
+        let t = std::time::Instant::now();
+        let c = parse(&json, &lang);
+        assert!(c.0.len() <= 20_000);
+        assert!(t.elapsed().as_secs() < 5);
     }
 
     #[test]

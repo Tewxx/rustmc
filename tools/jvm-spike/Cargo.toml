@@ -1,0 +1,9 @@
+[package]
+name = "jvm-spike"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+mc-forge = { path = "../../crates/mc-forge" }
+jni = { version = "0.21.1", features = ["invocation"] }

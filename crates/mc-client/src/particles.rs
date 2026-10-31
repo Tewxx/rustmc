@@ -65,6 +65,8 @@ enum Kind {
     Digging { dust: bool },
     Barrier,
     Drop { water: bool },
+    /// `EntityFootStepFX`: its own age/lifetime, no motion integration.
+    FootStep,
     /// Placeholder for types that are not ported (never spawned).
     Unsupported,
 }
@@ -110,13 +112,64 @@ struct Emitter {
 pub struct Particles {
     list: Vec<Particle>,
     emitters: Vec<Emitter>,
+    /// Local player's potion swirl state: the client-side stand-in for the data watcher values
+    /// `EntityLivingBase.updatePotionEffects` reads. The server never sends indices 7/8 to the
+    /// player itself (`EntityTrackerEntry.updatePlayerEntity` skips the tracked player), so the
+    /// client keeps the values `updatePotionMetadata` would have written.
+    local_color: i32,
+    local_ambient: bool,
+    local_invisible: bool,
+    /// `Entity` data watcher index 0, flag 0x20, for the local player.
+    local_flag_invisible: bool,
+}
+
+/// `EntityFX.setRBGColorF` / `EntityFX.multiplyVelocity`, applied after a factory built the
+/// particle (`RenderGlobal.playAuxSFX` 2002 recolours and slows its spell burst this way).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FxMods {
+    /// Base RGB and the per-particle brightness the caller drew after spawning.
+    pub tint: Option<([f32; 3], f32)>,
+    /// `multiplyVelocity` multiplier.
+    pub velocity: Option<f32>,
 }
 
 impl Particles {
     pub fn clear(&mut self) {
         self.list.clear();
         self.emitters.clear();
+        self.local_color = 0;
+        self.local_ambient = false;
+        self.local_invisible = false;
+        self.local_flag_invisible = false;
         SPAWNS.with(|s| s.borrow_mut().clear());
+    }
+
+    /// `Entity` data watcher index 0, flag 0x20, on the local player.
+    pub fn set_local_flag_invisible(&mut self, v: bool) {
+        self.local_flag_invisible = v;
+    }
+
+    pub fn local_flag_invisible(&self) -> bool {
+        self.local_flag_invisible
+    }
+
+    /// The values `EntityLivingBase.updatePotionMetadata` computes for the local player.
+    pub fn set_local_potion(&mut self, color: i32, ambient: bool, invisible: bool) {
+        self.local_color = color;
+        self.local_ambient = ambient;
+        self.local_invisible = invisible;
+    }
+
+    pub fn local_color(&self) -> i32 {
+        self.local_color
+    }
+
+    pub fn local_ambient(&self) -> bool {
+        self.local_ambient
+    }
+
+    pub fn local_invisible(&self) -> bool {
+        self.local_invisible
     }
 
     /// `EffectRenderer.emitParticleAtEntity`: spawns the constructor burst immediately and
@@ -167,72 +220,39 @@ impl Particles {
         rand: &mut JavaRandom,
         models: &mc_render::models::BlockModels,
     ) {
-        let _ = args;
-        let p = match id {
-            0 => explosion(x, y, z, vx, vy, vz, rand),
-            1 => large_explosion(x, y, z, vx, rand),
-            2 => huge_explosion(x, y, z, rand),
-            3 => firework(x, y, z, vx, vy, vz, rand),
-            4 => bubble(x, y, z, vx, vy, vz, rand),
-            5 => splash(x, y, z, vx, vy, vz, rand),
-            6 => wake(x, y, z, vx, vy, vz, rand),
-            7 => suspended(x, y, z, vx, vy, vz, rand),
-            8 => suspended_depth(x, y, z, vx, vy, vz, rand),
-            9 => crit(x, y, z, vx, vy, vz, rand, false),
-            10 => crit(x, y, z, vx, vy, vz, rand, true),
-            11 => smoke(x, y, z, vx, vy, vz, rand, 1.0),
-            12 => smoke(x, y, z, vx, vy, vz, rand, 2.5),
-            13 => spell(x, y, z, vx, vy, vz, rand, 128, None),
-            14 => spell(x, y, z, vx, vy, vz, rand, 144, None),
-            15 => spell(x, y, z, vx, vy, vz, rand, 128, Some([vx as f32, vy as f32, vz as f32])),
-            16 => {
-                let mut p = spell(x, y, z, vx, vy, vz, rand, 128, Some([vx as f32, vy as f32, vz as f32]));
-                p.alpha = 0.15;
-                p
+        self.spawn_fx(id, x, y, z, vx, vy, vz, args, FxMods::default(), rand, models);
+    }
+
+    /// `EffectRenderer.spawnEffectParticle` followed by `EntityFX.setRBGColorF` and
+    /// `EntityFX.multiplyVelocity` (`RenderGlobal.playAuxSFX` 2002).
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_fx(
+        &mut self,
+        id: i32,
+        x: f64,
+        y: f64,
+        z: f64,
+        vx: f64,
+        vy: f64,
+        vz: f64,
+        args: &[i32],
+        mods: FxMods,
+        rand: &mut JavaRandom,
+        models: &mc_render::models::BlockModels,
+    ) {
+        if let Some(mut p) = make_particle(id, x, y, z, vx, vy, vz, args, rand, models) {
+            if p.kind != Kind::Unsupported {
+                p.apply_fx(mods);
+                self.list.push(p);
             }
-            17 => {
-                let f = rand.next_float() * 0.5 + 0.35;
-                spell(x, y, z, vx, vy, vz, rand, 144, Some([f, 0., f]))
-            }
-            18 => drop(x, y, z, rand, true),
-            19 => drop(x, y, z, rand, false),
-            20 => heart(x, y + 0.5, z, rand, true),
-            21 => aura(x, y, z, vx, vy, vz, rand, true),
-            22 => aura(x, y, z, vx, vy, vz, rand, false),
-            23 => note(x, y, z, vx, rand),
-            24 => portal(x, y, z, vx, vy, vz, rand),
-            25 => enchant(x, y, z, vx, vy, vz, rand),
-            26 => flame(x, y, z, vx, vy, vz, rand),
-            27 => lava(x, y, z, rand),
-            29 => cloud(x, y, z, vx, vy, vz, rand),
-            30 => reddust(x, y, z, vx as f32, vy as f32, vz as f32, rand),
-            31 => breaking(x, y, z, rand, models, "items/snowball"),
-            32 => snow_shovel(x, y, z, vx, vy, vz, rand),
-            33 => breaking(x, y, z, rand, models, "items/slimeball"),
-            34 => heart(x, y, z, rand, false),
-            35 => barrier(x, y, z, rand, models),
-            37 => {
-                let Some(state) = args.first().copied().and_then(mc_data::StateId::try_from_network) else { return };
-                let Some(p) = block_crack(x, y, z, vx, vy, vz, rand, models, state, false) else { return };
-                p
-            }
-            38 => {
-                let Some(state) = args.first().copied().and_then(mc_data::StateId::try_from_network) else { return };
-                let Some(p) = block_crack(x, y, z, vx, vy, vz, rand, models, state, true) else { return };
-                p
-            }
-            39 => rain(x, y, z, rand),
-            // Deferred, see `Particle` docs: 28 footstep, 36 item crack, 40 item take (no
-            // factory in 1.8), 41 mob appearance.
-            _ => return,
-        };
-        if p.kind != Kind::Unsupported {
-            self.list.push(p);
         }
     }
 
     /// `EffectRenderer.updateEffects` (one client tick).
     pub fn tick(&mut self, world: &World, geometry: &mut mc_data::geometry::BlockGeometry, rand: &mut JavaRandom, player: Vec3, remotes: &HashMap<i32, crate::entities::Remote>, models: &mc_render::models::BlockModels) {
+        // `World.updateEntities` runs `EntityLivingBase.updatePotionEffects` before
+        // `EffectRenderer.updateEffects`, so those swirls age once in the same tick.
+        self.tick_potion_swirls(player, remotes, rand);
         let mut w = PhysWorld { world, geometry };
         let mut next: Vec<Particle> = Vec::with_capacity(self.list.len() + 8);
         for mut p in std::mem::take(&mut self.list) {
@@ -271,7 +291,11 @@ impl Particles {
             let center = Vec3::new(c.x as f32, c.y as f32, c.z as f32);
             let h = Vec3::splat(half);
             let pos = [center - (right + up) * h, center - right * h + up * h, center + (right + up) * h, center + right * h - up * h];
-            let (sky, block) = world.light(c.x.floor() as i32, c.y.floor() as i32, c.z.floor() as i32);
+            // `Entity.getBrightnessForRender`: combined light at `pos + getEyeHeight`
+            // (`EntityFX` is 0.2 tall).
+            let eye = 0.2 * 0.85;
+            let (sky, block) = world.brightness_for_render(mc_core::BlockPos::new(c.x.floor() as i32, (c.y + eye).floor() as i32, c.z.floor() as i32));
+            let (sky, block) = (sky as u8, block as u8);
             let lm = match p.bright() {
                 Bright::Full => light(15, 15),
                 Bright::Block15 => light(0, 15),
@@ -296,9 +320,167 @@ impl Particles {
         });
         out
     }
+
+    /// The swirl half of `EntityLivingBase.updatePotionEffects`: live entities read the potion
+    /// colour (data watcher 7) and ambience (8) and drop a `SPELL_MOB` / `SPELL_MOB_AMBIENT`
+    /// every so often. The local player's values are kept in this struct (see `local_color`).
+    fn tick_potion_swirls(&mut self, player: Vec3, remotes: &HashMap<i32, crate::entities::Remote>, rand: &mut JavaRandom) {
+        for r in remotes.values() {
+            if !r.is_living() {
+                continue;
+            }
+            self.potion_swirl(r.pos.x, r.pos.y, r.pos.z, r.width, r.height, r.invisible(), r.meta_int(7), r.meta_byte(8) > 0, player, rand);
+        }
+        self.potion_swirl(
+            player.x as f64,
+            player.y as f64,
+            player.z as f64,
+            mc_entity::player::WIDTH as f64,
+            mc_entity::player::HEIGHT as f64,
+            self.local_invisible,
+            self.local_color,
+            self.local_ambient,
+            player,
+            rand,
+        );
+    }
+
+    /// One `EntityLivingBase.updatePotionEffects` swirl draw, including the 16-block
+    /// `RenderGlobal.spawnEntityFX` cut-off that the non-ignore-range `SPELL_MOB` types obey.
+    #[allow(clippy::too_many_arguments)]
+    fn potion_swirl(&mut self, x: f64, y: f64, z: f64, width: f64, height: f64, invisible: bool, color: i32, ambient: bool, player: Vec3, rand: &mut JavaRandom) {
+        if color <= 0 {
+            return;
+        }
+        let mut flag = if !invisible { rand.next_boolean() } else { rand.next_int_bounded(15) == 0 };
+        if ambient {
+            flag &= rand.next_int_bounded(5) == 0;
+        }
+        if !flag {
+            return;
+        }
+        let d0 = (color >> 16 & 255) as f64 / 255.0;
+        let d1 = (color >> 8 & 255) as f64 / 255.0;
+        let d2 = (color & 255) as f64 / 255.0;
+        let px = x + (rand.next_double() - 0.5) * width;
+        let py = y + rand.next_double() * height;
+        let pz = z + (rand.next_double() - 0.5) * width;
+        let (dx, dy, dz) = (player.x as f64 - px, player.y as f64 - py, player.z as f64 - pz);
+        if dx * dx + dy * dy + dz * dz > 256.0 {
+            return;
+        }
+        if ambient {
+            let mut p = spell(px, py, pz, d0, d1, d2, rand, 128, Some([d0 as f32, d1 as f32, d2 as f32]));
+            p.alpha = 0.15;
+            self.list.push(p);
+        } else {
+            self.list.push(spell(px, py, pz, d0, d1, d2, rand, 128, Some([d0 as f32, d1 as f32, d2 as f32])));
+        }
+    }
+}
+
+/// `EffectRenderer.spawnEffectParticle`'s factory table: the particle a packet id constructs,
+/// before any `setRBGColorF` / `multiplyVelocity` calls.
+#[allow(clippy::too_many_arguments)]
+fn make_particle(
+    id: i32,
+    x: f64,
+    y: f64,
+    z: f64,
+    vx: f64,
+    vy: f64,
+    vz: f64,
+    args: &[i32],
+    rand: &mut JavaRandom,
+    models: &mc_render::models::BlockModels,
+) -> Option<Particle> {
+    let p = match id {
+        0 => explosion(x, y, z, vx, vy, vz, rand),
+        1 => large_explosion(x, y, z, vx, rand),
+        2 => huge_explosion(x, y, z, rand),
+        3 => firework(x, y, z, vx, vy, vz, rand),
+        4 => bubble(x, y, z, vx, vy, vz, rand),
+        5 => splash(x, y, z, vx, vy, vz, rand),
+        6 => wake(x, y, z, vx, vy, vz, rand),
+        7 => suspended(x, y, z, vx, vy, vz, rand),
+        8 => suspended_depth(x, y, z, vx, vy, vz, rand),
+        9 => crit(x, y, z, vx, vy, vz, rand, false),
+        10 => crit(x, y, z, vx, vy, vz, rand, true),
+        11 => smoke(x, y, z, vx, vy, vz, rand, 1.0),
+        12 => smoke(x, y, z, vx, vy, vz, rand, 2.5),
+        13 => spell(x, y, z, vx, vy, vz, rand, 128, None),
+        14 => spell(x, y, z, vx, vy, vz, rand, 144, None),
+        15 => spell(x, y, z, vx, vy, vz, rand, 128, Some([vx as f32, vy as f32, vz as f32])),
+        16 => {
+            let mut p = spell(x, y, z, vx, vy, vz, rand, 128, Some([vx as f32, vy as f32, vz as f32]));
+            p.alpha = 0.15;
+            p
+        }
+        17 => {
+            let f = rand.next_float() * 0.5 + 0.35;
+            spell(x, y, z, vx, vy, vz, rand, 144, Some([f, 0., f]))
+        }
+        18 => drop(x, y, z, rand, true),
+        19 => drop(x, y, z, rand, false),
+        20 => heart(x, y + 0.5, z, rand, true),
+        21 => aura(x, y, z, vx, vy, vz, rand, true),
+        22 => aura(x, y, z, vx, vy, vz, rand, false),
+        23 => note(x, y, z, vx, rand),
+        24 => portal(x, y, z, vx, vy, vz, rand),
+        25 => enchant(x, y, z, vx, vy, vz, rand),
+        26 => flame(x, y, z, vx, vy, vz, rand),
+        27 => lava(x, y, z, rand),
+        28 => footstep(x, y, z, rand),
+        29 => cloud(x, y, z, vx, vy, vz, rand),
+        30 => reddust(x, y, z, vx as f32, vy as f32, vz as f32, rand),
+        31 => breaking(x, y, z, rand, models, "items/snowball"),
+        32 => snow_shovel(x, y, z, vx, vy, vz, rand),
+        33 => breaking(x, y, z, rand, models, "items/slimeball"),
+        34 => heart(x, y, z, rand, false),
+        35 => barrier(x, y, z, rand, models),
+        36 => {
+            // `EntityBreakingFX.Factory`: args are the item id and an optional metadata. The
+            // eight-argument constructor keeps the packet's initial motion.
+            let id = args.first().copied().and_then(|i| u16::try_from(i).ok())?;
+            let meta = args.get(1).copied().and_then(|i| u16::try_from(i).ok()).unwrap_or(0);
+            let sprite = models.items.sprite_name(id, meta)?;
+            breaking_with_velocity(x, y, z, vx, vy, vz, rand, models, sprite)
+        }
+        37 => {
+            let state = args.first().copied().and_then(mc_data::StateId::try_from_network)?;
+            block_crack(x, y, z, vx, vy, vz, rand, models, state, false)?
+        }
+        38 => {
+            let state = args.first().copied().and_then(mc_data::StateId::try_from_network)?;
+            block_crack(x, y, z, vx, vy, vz, rand, models, state, true)?
+        }
+        39 => rain(x, y, z, rand),
+        // Deferred: 40 item take (no factory in 1.8) and 41 mob appearance, which needs a
+        // guardian model plus a mob texture lane in `mc-render` avatar.rs `ParticleTex`.
+        _ => return None,
+    };
+    Some(p)
 }
 
 impl Particle {
+    /// `EntityFX.setRBGColorF` and `EntityFX.multiplyVelocity`.
+    fn apply_fx(&mut self, mods: FxMods) {
+        if let Some((rgb, f)) = mods.tint {
+            self.color = [rgb[0] * f, rgb[1] * f, rgb[2] * f];
+        }
+        if let Some(v) = mods.velocity {
+            self.multiply_velocity(v);
+        }
+    }
+
+    /// `EntityFX.multiplyVelocity`
+    fn multiply_velocity(&mut self, multiplier: f32) {
+        let m = multiplier as f64;
+        self.motion.x *= m;
+        self.motion.y = (self.motion.y - 0.10000000149011612) * m + 0.10000000149011612;
+        self.motion.z *= m;
+    }
+
     fn bright(&self) -> Bright {
         match self.kind {
             Kind::LargeExplosion | Kind::Firework => Bright::Full,
@@ -668,6 +850,13 @@ impl Particle {
                 }
             }
             Kind::Splash => base(self),
+            Kind::FootStep => {
+                // `onUpdate` never calls super: no motion, no gravity, just its own clock.
+                self.age += 1;
+                if self.age == self.max_age {
+                    self.dead = true;
+                }
+            }
             Kind::Unsupported => self.dead = true,
         }
     }
@@ -706,6 +895,9 @@ impl Particle {
                 color = [self.color[0], self.color[1], self.color[2], 1.0];
             }
             Kind::HugeExplosion => return None,
+            // The footprint is `textures/particle/footprint.png` drawn as a ground-aligned quad;
+            // `quads` only builds camera-facing billboards from the three `ParticleTex` lanes.
+            Kind::FootStep => return None,
             _ => {
                 match self.kind {
                     Kind::Flame => self.scale = self.base_scale * (1.0 - t * t * 0.5),
@@ -1233,15 +1425,56 @@ impl Particles {
 }
 
 fn breaking(x: f64, y: f64, z: f64, rand: &mut JavaRandom, models: &mc_render::models::BlockModels, sprite: &str) -> Particle {
-    let mut p = base(rand, x, y, z, 0., 0., 0.);
+    breaking_with_velocity(x, y, z, 0., 0., 0., rand, models, sprite)
+}
+
+/// `EntityBreakingFX`'s eight-argument constructor: the base motion is damped by 0.1 and then
+/// the caller's speed is added (`ITEM_CRACK` from `playAuxSFX` 2002/2003 and `S2A`).
+#[allow(clippy::too_many_arguments)]
+fn breaking_with_velocity(x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, rand: &mut JavaRandom, models: &mc_render::models::BlockModels, sprite: &str) -> Particle {
     let s = models.atlas.sprite(sprite);
-    p.rect = Some([s.min_u, s.min_v, s.max_u, s.max_v]);
+    breaking_rect_with_velocity(x, y, z, vx, vy, vz, rand, [s.min_u, s.min_v, s.max_u, s.max_v])
+}
+
+fn breaking_rect_with_velocity(x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, rand: &mut JavaRandom, rect: [f32; 4]) -> Particle {
+    let mut p = breaking_rect(x, y, z, rand, rect);
+    p.motion = p.motion * 0.10000000149011612 + DVec3::new(vx, vy, vz);
+    p
+}
+
+/// `EntityBreakingFX`'s constructor shared by snowball, slime, item crack and barrier-style
+/// sprites: full sprite rect, gravity 1.0, half scale.
+fn breaking_rect(x: f64, y: f64, z: f64, rand: &mut JavaRandom, rect: [f32; 4]) -> Particle {
+    let mut p = base(rand, x, y, z, 0., 0., 0.);
+    p.rect = Some(rect);
     p.color = [1., 1., 1.];
     p.gravity = 1.0;
     p.scale /= 2.0;
     p.base_scale = p.scale;
     p.kind = Kind::Breaking;
     p
+}
+
+/// `EntityFootStepFX`: motionless and gravity-less, 200 ticks of life, drawn flat on the
+/// ground with its own fade (`footstep_alpha`).
+fn footstep(x: f64, y: f64, z: f64, rand: &mut JavaRandom) -> Particle {
+    let mut p = base(rand, x, y, z, 0., 0., 0.);
+    p.motion = DVec3::ZERO;
+    p.gravity = 0.0;
+    p.max_age = 200;
+    // `renderParticle` hard-codes a 0.125 half-width, which is `0.1 * scale`.
+    p.scale = 1.25;
+    p.base_scale = p.scale;
+    p.kind = Kind::FootStep;
+    p
+}
+
+/// `EntityFootStepFX.renderParticle`'s alpha: `min(2 - 2t², 1) * 0.2` with `t = age/maxAge`.
+#[allow(dead_code)] // the footprint quad is not drawn yet, see `render_data`
+fn footstep_alpha(age: i32, max_age: i32, pt: f32) -> f32 {
+    let f = (age as f32 + pt) / max_age.max(1) as f32;
+    let f = f * f;
+    (2.0 - f * 2.0).min(1.0) * 0.2
 }
 
 fn barrier(x: f64, y: f64, z: f64, rand: &mut JavaRandom, models: &mc_render::models::BlockModels) -> Particle {
@@ -1349,5 +1582,104 @@ mod tests {
         let q = ps.quads(Vec3::ZERO, 0., 0., 0.5, &World::default(), |_, _| [1., 1., 1.]);
         assert_eq!(q[0].tex, mc_render::avatar::ParticleTex::Explosion);
         assert!(q[0].uv[0][0] <= 0.25 && q[0].uv[0][1] <= 0.25);
+    }
+
+    #[test]
+    fn footstep_never_moves_and_expires_after_200_ticks() {
+        let mut rand = JavaRandom::new(11);
+        let mut p = footstep(0., 0.5, 0., &mut rand);
+        assert_eq!(p.motion, DVec3::ZERO);
+        assert_eq!(p.gravity, 0.0);
+        assert_eq!(p.max_age, 200);
+        let world = World::default();
+        let mut geometry = BlockGeometry::new();
+        let mut w = phys(&world, &mut geometry);
+        for _ in 0..199 {
+            p.tick(&mut w, &mut rand, Vec3::ZERO);
+        }
+        assert!(!p.dead);
+        assert_eq!(p.motion, DVec3::ZERO);
+        p.tick(&mut w, &mut rand, Vec3::ZERO);
+        assert!(p.dead);
+        // The quad fades out over its life.
+        assert!(footstep_alpha(0, 200, 0.) > footstep_alpha(199, 200, 0.));
+    }
+
+    #[test]
+    fn item_crack_is_a_breaking_particle_with_gravity() {
+        // `ItemModels::sprite_name` supplies the item's atlas sprite; the rest is
+        // `EntityBreakingFX`'s constructor.
+        let mut rand = JavaRandom::new(12);
+        let p = breaking_rect(0., 0.5, 0., &mut rand, [0.25, 0.25, 0.5, 0.5]);
+        assert_eq!(p.kind, Kind::Breaking);
+        assert_eq!(p.gravity, 1.0);
+        assert_eq!(p.rect, Some([0.25, 0.25, 0.5, 0.5]));
+        assert_eq!(p.color, [1., 1., 1.]);
+    }
+
+    #[test]
+    fn multiply_velocity_matches_entityfx() {
+        let mut rand = JavaRandom::new(21);
+        let mut p = spell(0., 0.5, 0., 0.2, 0.4, 0.6, &mut rand, 128, None);
+        let (x, y, z) = (p.motion.x, p.motion.y, p.motion.z);
+        p.multiply_velocity(2.0);
+        assert!((p.motion.x - x * 2.0).abs() < 1e-12);
+        // `motionY = (motionY - 0.1) * multiplier + 0.1`.
+        assert!((p.motion.y - ((y - 0.10000000149011612) * 2.0 + 0.10000000149011612)).abs() < 1e-12);
+        assert!((p.motion.z - z * 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn potion_swirl_spawns_a_coloured_spell_mob() {
+        let mut rand = JavaRandom::new(31);
+        let mut ps = Particles::default();
+        // The non-invisible branch draws `nextBoolean`; loop until it passes.
+        for _ in 0..64 {
+            ps.potion_swirl(0., 64., 0., 0.6, 1.8, false, 0x123456, false, Vec3::new(0., 64., 0.), &mut rand);
+        }
+        let p = ps.list.first().expect("a swirl particle");
+        assert_eq!(p.kind, Kind::Spell { base: 128 });
+        assert!((p.color[0] - 0x12 as f32 / 255.).abs() < 1e-6);
+        assert!((p.color[1] - 0x34 as f32 / 255.).abs() < 1e-6);
+        assert!((p.color[2] - 0x56 as f32 / 255.).abs() < 1e-6);
+    }
+
+    #[test]
+    fn remote_swirl_reads_the_data_watcher_colour() {
+        let mut r = crate::entities::Remote::new(1, crate::entities::Kind::Mob(50), 0, 0, 0, 0, 0);
+        r.pos = mc_core::Vec3::new(0., 64., 0.);
+        r.meta.insert(7, mc_protocol::MetaValue::Int(0x00ff00));
+        let map = std::collections::HashMap::from([(1, r)]);
+        let mut rand = JavaRandom::new(32);
+        let mut ps = Particles::default();
+        for _ in 0..64 {
+            ps.tick_potion_swirls(Vec3::new(0., 64., 0.), &map, &mut rand);
+        }
+        let p = ps.list.first().expect("a swirl particle");
+        assert!((p.color[0]).abs() < 1e-6 && (p.color[1] - 1.0).abs() < 1e-6 && (p.color[2]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn fx_mods_tint_after_construction_and_scale_velocity() {
+        let mut rand = JavaRandom::new(22);
+        let mut p = spell(0., 0.5, 0., 0.2, 0.4, 0.6, &mut rand, 128, None);
+        let before = p.motion;
+        p.apply_fx(FxMods { tint: Some(([1., 0.5, 0.25], 0.75)), velocity: Some(1.5) });
+        assert_eq!(p.color, [0.75, 0.375, 0.1875]);
+        assert!((p.motion.x - before.x * 1.5).abs() < 1e-12);
+        assert!((p.motion.y - ((before.y - 0.10000000149011612) * 1.5 + 0.10000000149011612)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn item_crack_keeps_its_initial_velocity() {
+        // `EntityBreakingFX`'s eight-argument constructor: `motion * 0.1 + speed`.
+        let rect = [0.25, 0.25, 0.5, 0.5];
+        let mut r1 = JavaRandom::new(23);
+        let p = breaking_rect_with_velocity(0., 0.5, 0., 1.0, 2.0, 3.0, &mut r1, rect);
+        let mut r2 = JavaRandom::new(23);
+        let base = breaking_rect(0., 0.5, 0., &mut r2, rect);
+        assert!((p.motion.x - (base.motion.x * 0.10000000149011612 + 1.0)).abs() < 1e-12);
+        assert!((p.motion.y - (base.motion.y * 0.10000000149011612 + 2.0)).abs() < 1e-12);
+        assert!((p.motion.z - (base.motion.z * 0.10000000149011612 + 3.0)).abs() < 1e-12);
     }
 }

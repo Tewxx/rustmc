@@ -148,9 +148,13 @@ pub fn render(frame: &ObjectFrame, stands: &mut ArmorStandModel, cam_yaw: f32, c
             m *= Mat4::from_rotation_x(45f32.to_radians());
             m *= Mat4::from_scale(Vec3::splat(0.05625));
             m *= Mat4::from_translation(Vec3::new(-4., 0., 0.));
-            let layer = Layer { tex: Tex::Mob("arrow"), tint: [1.; 3], overlay: None, additive: false, glint: false };
-            // The two shaft faces at x=-7 (normals ±x), then four fins every 90° about X.
-            let n = Vec3::new(-1., 0., 0.);
+            let layer = Layer { tex: Tex::Mob("arrow"), tint: [1.; 3], overlay: None, additive: false, normalize: false, glint: false };
+            // The two shaft faces at x=-7, then four fins every 90° about X. `RenderArrow`
+            // passes `glNormal3f(+-0.05625, 0, 0)` / `(0, 0, 0.05625)` — the scale factor, not a
+            // unit vector — and `GL_RESCALE_NORMAL` does not renormalise it, so arrows stay
+            // almost flat-lit in vanilla.
+            let f8 = 0.05625;
+            let n = Vec3::new(f8, 0., 0.);
             let quad = |pos: [Vec3; 4], uv: [[f32; 2]; 4], n: Vec3| ModelQuad { pos, uv, normal: n };
             out(&layer, m, &quad(
                 [Vec3::new(-7., -2., -2.), Vec3::new(-7., -2., 2.), Vec3::new(-7., 2., 2.), Vec3::new(-7., 2., -2.)],
@@ -171,7 +175,7 @@ pub fn render(frame: &ObjectFrame, stands: &mut ArmorStandModel, cam_yaw: f32, c
                     &quad(
                         [Vec3::new(-8., -2., 0.), Vec3::new(8., -2., 0.), Vec3::new(8., 2., 0.), Vec3::new(-8., 2., 0.)],
                         [[0., 0.], [0.5, 0.], [0.5, 0.15625], [0., 0.15625]],
-                        Vec3::new(0., 0., 1.),
+                        Vec3::new(0., 0., f8),
                     ),
                 );
             }
@@ -182,7 +186,7 @@ pub fn render(frame: &ObjectFrame, stands: &mut ArmorStandModel, cam_yaw: f32, c
             let i = *icon as i32;
             let (u0, v0) = ((i % 4 * 16) as f32 / 64., (i / 4 * 16) as f32 / 64.);
             let (u1, v1) = ((i % 4 * 16 + 16) as f32 / 64., (i / 4 * 16 + 16) as f32 / 64.);
-            let layer = Layer { tex: Tex::Mob("experience_orb"), tint: *color, overlay: None, additive: false, glint: false };
+            let layer = Layer { tex: Tex::Mob("experience_orb"), tint: *color, overlay: None, additive: false, normalize: false, glint: false };
             let m = Mat4::from_translation(*pos)
                 * Mat4::from_rotation_y((180. - cam_yaw).to_radians())
                 * Mat4::from_rotation_x((-cam_pitch).to_radians())
@@ -202,7 +206,7 @@ pub fn render(frame: &ObjectFrame, stands: &mut ArmorStandModel, cam_yaw: f32, c
             let a = &ARTS[(*art).min(ARTS.len() - 1)];
             let (w, h) = (a.size.0 as f32, a.size.1 as f32);
             let (tu, tv) = (a.offset.0 as f32, a.offset.1 as f32);
-            let layer = Layer { tex: Tex::Mob("painting"), tint: [1.; 3], overlay: None, additive: false, glint: false };
+            let layer = Layer { tex: Tex::Mob("painting"), tint: [1.; 3], overlay: None, additive: false, normalize: false, glint: false };
             let mut m = Mat4::from_translation(*pos);
             m *= Mat4::from_rotation_y((180. - yaw).to_radians());
             m *= Mat4::from_scale(Vec3::splat(0.0625));
@@ -268,7 +272,7 @@ pub fn render(frame: &ObjectFrame, stands: &mut ArmorStandModel, cam_yaw: f32, c
                 m *= Mat4::from_scale(Vec3::splat(0.5));
                 m *= Mat4::from_translation(Vec3::new(0., 24. * 0.0625, 0.));
             }
-            let layer = Layer { tex: Tex::Mob("armorstand/wood"), tint: [1.; 3], overlay: None, additive: false, glint: false };
+            let layer = Layer { tex: Tex::Mob("armorstand/wood"), tint: [1.; 3], overlay: None, additive: false, normalize: false, glint: false };
             // ModelArmorStand.setRotationAngles: the biped parts keep the living pose (head
             // yaw/pitch only for an idle stand); the stand pieces take the body rotation and
             // the base takes the opposite of the entity yaw.
@@ -346,6 +350,7 @@ pub fn layer_alpha(l: &Layer) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glam::Mat3;
 
     #[test]
     fn art_table_matches_enum_art() {
@@ -387,5 +392,36 @@ mod tests {
             assert_eq!(c[1], 1.);
             assert!(c[2] >= 0. && c[2] <= 0.2);
         }
+    }
+
+    /// `RenderArrow` passes `glNormal3f(0.05625, 0, 0)` / `(0, 0, 0.05625)` — the model scale
+    /// factor, not a unit vector — while `GL_RESCALE_NORMAL` only renormalises unit input, so
+    /// vanilla arrows end up almost flat-lit (0.40–0.46 here, from the ambient term plus at most
+    /// 0.6 * 0.05625 * |LIGHT0 + LIGHT1|). Normalising instead would be visibly brighter, so this
+    /// locks in the quirk.
+    #[test]
+    fn arrow_normals_keep_vanillas_rescale_normal_quirk() {
+        let mut stands = ArmorStandModel::new();
+        let mut quads = Vec::new();
+        render(
+            &ObjectFrame::Arrow { pos: Vec3::ZERO, yaw: 0., pitch: 0., shake: 0., light: [1.; 3] },
+            &mut stands,
+            0.,
+            0.,
+            &mut |_, m, q| quads.push((m, *q)),
+        );
+        assert_eq!(quads.len(), 6);
+        let lights = crate::entity_model::lights_in(Mat3::IDENTITY);
+        let (mut lit_max, mut normalized_max) = (0f32, 0f32);
+        for (m, q) in quads {
+            let nm = Mat3::from_mat4(m).inverse().transpose();
+            let lit = crate::entity_model::standard_lighting(crate::entity_model::gl_normal(nm, q.normal, false), lights);
+            assert!((0.4..0.46).contains(&lit), "arrow shade {lit}");
+            let normalized = crate::entity_model::standard_lighting(crate::entity_model::gl_normal(nm, q.normal, true), lights);
+            lit_max = lit_max.max(lit);
+            normalized_max = normalized_max.max(normalized);
+        }
+        // At least the faces turned towards a light would be visibly brighter if normalised.
+        assert!(normalized_max > lit_max + 0.05, "{lit_max} vs {normalized_max}");
     }
 }

@@ -1,0 +1,5907 @@
+{
+ "net/minecraft/block/Block": {
+  "hooks": [
+   {
+    "hunk": "@@ -38,8 +38,9 @@",
+    "patchLine": 9,
+    "symbols": [
+     "GameData.getBlockRegistry"
+    ]
+   },
+   {
+    "hunk": "@@ -38,8 +38,9 @@",
+    "patchLine": 11,
+    "symbols": [
+     "GameData.getBlockStateIDMap"
+    ]
+   },
+   {
+    "hunk": "@@ -467,8 +477,7 @@",
+    "patchLine": 98,
+    "symbols": [
+     "ForgeHooks.blockStrength"
+    ]
+   },
+   {
+    "hunk": "@@ -478,20 +487,16 @@",
+    "patchLine": 111,
+    "symbols": [
+     "ForgeEventFactory.fireBlockHarvesting"
+    ]
+   },
+   {
+    "hunk": "@@ -799,25 +809,35 @@",
+    "patchLine": 168,
+    "symbols": [
+     "ForgeEventFactory.fireBlockHarvesting"
+    ]
+   },
+   {
+    "hunk": "@@ -1010,6 +1030,1147 @@",
+    "patchLine": 351,
+    "symbols": [
+     "ForgeHooks.canHarvestBlock"
+    ]
+   },
+   {
+    "hunk": "@@ -1010,6 +1030,1147 @@",
+    "patchLine": 1309,
+    "symbols": [
+     "Loader.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -1010,6 +1030,1147 @@",
+    "patchLine": 1313,
+    "symbols": [
+     "FMLLog.bigWarning"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/block/Block.java.patch"
+ },
+ "net/minecraft/block/BlockBanner": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockBanner.java.patch"
+ },
+ "net/minecraft/block/BlockBush": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockBush.java.patch"
+ },
+ "net/minecraft/block/BlockButton": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockButton.java.patch"
+ },
+ "net/minecraft/block/BlockCactus": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockCactus.java.patch"
+ },
+ "net/minecraft/block/BlockChest": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockChest.java.patch"
+ },
+ "net/minecraft/block/BlockCocoa": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockCocoa.java.patch"
+ },
+ "net/minecraft/block/BlockCrops": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockCrops.java.patch"
+ },
+ "net/minecraft/block/BlockDeadBush": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockDeadBush.java.patch"
+ },
+ "net/minecraft/block/BlockDoor": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockDoor.java.patch"
+ },
+ "net/minecraft/block/BlockDoublePlant": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockDoublePlant.java.patch"
+ },
+ "net/minecraft/block/BlockDropper": {
+  "hooks": [
+   {
+    "hunk": "@@ -43,7 +43,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "VanillaInventoryCodeHooks.dropperInsertHook"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/block/BlockDropper.java.patch"
+ },
+ "net/minecraft/block/BlockFalling": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockFalling.java.patch"
+ },
+ "net/minecraft/block/BlockFarmland": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockFarmland.java.patch"
+ },
+ "net/minecraft/block/BlockFire": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockFire.java.patch"
+ },
+ "net/minecraft/block/BlockFlowerPot": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockFlowerPot.java.patch"
+ },
+ "net/minecraft/block/BlockGrass": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockGrass.java.patch"
+ },
+ "net/minecraft/block/BlockHugeMushroom": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockHugeMushroom.java.patch"
+ },
+ "net/minecraft/block/BlockIce": {
+  "hooks": [
+   {
+    "hunk": "@@ -38,14 +38,17 @@",
+    "patchLine": 19,
+    "symbols": [
+     "ForgeEventFactory.fireBlockHarvesting"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/block/BlockIce.java.patch"
+ },
+ "net/minecraft/block/BlockLadder": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockLadder.java.patch"
+ },
+ "net/minecraft/block/BlockLeaves": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockLeaves.java.patch"
+ },
+ "net/minecraft/block/BlockLever": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockLever.java.patch"
+ },
+ "net/minecraft/block/BlockLog": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockLog.java.patch"
+ },
+ "net/minecraft/block/BlockMobSpawner": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockMobSpawner.java.patch"
+ },
+ "net/minecraft/block/BlockMushroom": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockMushroom.java.patch"
+ },
+ "net/minecraft/block/BlockMycelium": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockMycelium.java.patch"
+ },
+ "net/minecraft/block/BlockNetherWart": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockNetherWart.java.patch"
+ },
+ "net/minecraft/block/BlockNewLeaf": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockNewLeaf.java.patch"
+ },
+ "net/minecraft/block/BlockNote": {
+  "hooks": [
+   {
+    "hunk": "@@ -98,6 +100,10 @@",
+    "patchLine": 17,
+    "symbols": [
+     "NoteBlockEvent.Play",
+     "new event.world.NoteBlockEvent.Play"
+    ]
+   },
+   {
+    "hunk": "@@ -98,6 +100,10 @@",
+    "patchLine": 18,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/block/BlockNote.java.patch"
+ },
+ "net/minecraft/block/BlockOldLeaf": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockOldLeaf.java.patch"
+ },
+ "net/minecraft/block/BlockOre": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockOre.java.patch"
+ },
+ "net/minecraft/block/BlockPane": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockPane.java.patch"
+ },
+ "net/minecraft/block/BlockPistonBase": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockPistonBase.java.patch"
+ },
+ "net/minecraft/block/BlockPistonMoving": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockPistonMoving.java.patch"
+ },
+ "net/minecraft/block/BlockPotato": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockPotato.java.patch"
+ },
+ "net/minecraft/block/BlockPumpkin": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockPumpkin.java.patch"
+ },
+ "net/minecraft/block/BlockQuartz": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockQuartz.java.patch"
+ },
+ "net/minecraft/block/BlockRailBase": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockRailBase.java.patch"
+ },
+ "net/minecraft/block/BlockRedstoneComparator": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockRedstoneComparator.java.patch"
+ },
+ "net/minecraft/block/BlockRedstoneDiode": {
+  "hooks": [
+   {
+    "hunk": "@@ -198,6 +198,8 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeEventFactory.onNeighborNotify"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/block/BlockRedstoneDiode.java.patch"
+ },
+ "net/minecraft/block/BlockRedstoneOre": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockRedstoneOre.java.patch"
+ },
+ "net/minecraft/block/BlockRedstoneWire": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockRedstoneWire.java.patch"
+ },
+ "net/minecraft/block/BlockReed": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockReed.java.patch"
+ },
+ "net/minecraft/block/BlockRotatedPillar": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockRotatedPillar.java.patch"
+ },
+ "net/minecraft/block/BlockSapling": {
+  "hooks": [
+   {
+    "hunk": "@@ -71,6 +71,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "TerrainGen.saplingGrowTree"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/block/BlockSapling.java.patch"
+ },
+ "net/minecraft/block/BlockSkull": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockSkull.java.patch"
+ },
+ "net/minecraft/block/BlockSlab": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockSlab.java.patch"
+ },
+ "net/minecraft/block/BlockSnow": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockSnow.java.patch"
+ },
+ "net/minecraft/block/BlockStairs": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockStairs.java.patch"
+ },
+ "net/minecraft/block/BlockStem": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockStem.java.patch"
+ },
+ "net/minecraft/block/BlockTallGrass": {
+  "hooks": [
+   {
+    "hunk": "@@ -204,4 +198,22 @@",
+    "patchLine": 62,
+    "symbols": [
+     "ForgeHooks.getGrassSeed"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/block/BlockTallGrass.java.patch"
+ },
+ "net/minecraft/block/BlockTorch": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockTorch.java.patch"
+ },
+ "net/minecraft/block/BlockTrapDoor": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockTrapDoor.java.patch"
+ },
+ "net/minecraft/block/BlockTripWireHook": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockTripWireHook.java.patch"
+ },
+ "net/minecraft/block/BlockVine": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/BlockVine.java.patch"
+ },
+ "net/minecraft/block/state/BlockPistonStructureHelper": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/state/BlockPistonStructureHelper.java.patch"
+ },
+ "net/minecraft/block/state/BlockState": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/state/BlockState.java.patch"
+ },
+ "net/minecraft/block/state/BlockStateBase": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/block/state/BlockStateBase.java.patch"
+ },
+ "net/minecraft/client/ClientBrandRetriever": {
+  "hooks": [
+   {
+    "hunk": "@@ -8,6 +8,6 @@",
+    "patchLine": 8,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/ClientBrandRetriever.java.patch"
+ },
+ "net/minecraft/client/LoadingScreenRenderer": {
+  "hooks": [
+   {
+    "hunk": "@@ -139,6 +139,10 @@",
+    "patchLine": 9,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/LoadingScreenRenderer.java.patch"
+ },
+ "net/minecraft/client/Minecraft": {
+  "hooks": [
+   {
+    "hunk": "@@ -415,10 +414,10 @@",
+    "patchLine": 16,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -415,10 +414,10 @@",
+    "patchLine": 20,
+    "symbols": [
+     "SplashProgress.drawVanillaScreen"
+    ]
+   },
+   {
+    "hunk": "@@ -453,6 +452,8 @@",
+    "patchLine": 28,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -486,22 +491,25 @@",
+    "patchLine": 60,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   },
+   {
+    "hunk": "@@ -486,22 +491,25 @@",
+    "patchLine": 61,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -486,22 +491,25 @@",
+    "patchLine": 64,
+    "symbols": [
+     "client.GuiIngameForge",
+     "new client.GuiIngameForge"
+    ]
+   },
+   {
+    "hunk": "@@ -486,22 +491,25 @@",
+    "patchLine": 69,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -486,22 +491,25 @@",
+    "patchLine": 77,
+    "symbols": [
+     "SplashProgress.clearVanillaResources"
+    ]
+   },
+   {
+    "hunk": "@@ -486,22 +491,25 @@",
+    "patchLine": 81,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -681,21 +689,23 @@",
+    "patchLine": 108,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -897,6 +902,17 @@",
+    "patchLine": 129,
+    "symbols": [
+     "event.GuiOpenEvent",
+     "new client.event.GuiOpenEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -897,6 +902,17 @@",
+    "patchLine": 131,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -1030,9 +1046,11 @@",
+    "patchLine": 146,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -1030,9 +1046,11 @@",
+    "patchLine": 150,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -1463,15 +1481,19 @@",
+    "patchLine": 173,
+    "symbols": [
+     "ForgeEventFactory.onPlayerInteract"
+    ]
+   },
+   {
+    "hunk": "@@ -1494,7 +1516,8 @@",
+    "patchLine": 189,
+    "symbols": [
+     "ForgeEventFactory.onPlayerInteract"
+    ]
+   },
+   {
+    "hunk": "@@ -1598,6 +1621,8 @@",
+    "patchLine": 198,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -1690,6 +1715,8 @@",
+    "patchLine": 207,
+    "symbols": [
+     "ForgeHooksClient.postMouseEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -1745,6 +1772,7 @@",
+    "patchLine": 216,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -1923,6 +1951,7 @@",
+    "patchLine": 224,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -2119,12 +2148,15 @@",
+    "patchLine": 232,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -2119,12 +2148,15 @@",
+    "patchLine": 240,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -2160,6 +2192,12 @@",
+    "patchLine": 248,
+    "symbols": [
+     "StartupQuery.check"
+    ]
+   },
+   {
+    "hunk": "@@ -2197,6 +2241,8 @@",
+    "patchLine": 278,
+    "symbols": [
+     "EVENT_BUS.post",
+     "WorldEvent.Unload",
+     "new event.world.WorldEvent.Unload"
+    ]
+   },
+   {
+    "hunk": "@@ -2232,6 +2290,7 @@",
+    "patchLine": 306,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -2336,126 +2395,10 @@",
+    "patchLine": 434,
+    "symbols": [
+     "ForgeHooks.onPickBlock"
+    ]
+   },
+   {
+    "hunk": "@@ -2756,18 +2699,8 @@",
+    "patchLine": 456,
+    "symbols": [
+     "SplashProgress.getMaxTextureSize"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/Minecraft.java.patch"
+ },
+ "net/minecraft/client/audio/SoundManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -69,6 +69,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "new client.event.sound.SoundSetupEvent",
+     "sound.SoundSetupEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -80,6 +81,7 @@",
+    "patchLine": 15,
+    "symbols": [
+     "EVENT_BUS.post",
+     "new client.event.sound.SoundLoadEvent",
+     "sound.SoundLoadEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -316,6 +318,9 @@",
+    "patchLine": 23,
+    "symbols": [
+     "ForgeHooksClient.playSound"
+    ]
+   },
+   {
+    "hunk": "@@ -357,10 +362,12 @@",
+    "patchLine": 33,
+    "symbols": [
+     "EVENT_BUS.post",
+     "new client.event.sound.PlayStreamingSourceEvent",
+     "sound.PlayStreamingSourceEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -357,10 +362,12 @@",
+    "patchLine": 38,
+    "symbols": [
+     "EVENT_BUS.post",
+     "new client.event.sound.PlaySoundSourceEvent",
+     "sound.PlaySoundSourceEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/audio/SoundManager.java.patch"
+ },
+ "net/minecraft/client/entity/AbstractClientPlayer": {
+  "hooks": [
+   {
+    "hunk": "@@ -128,6 +128,6 @@",
+    "patchLine": 8,
+    "symbols": [
+     "ForgeHooksClient.getOffsetFOV"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/entity/AbstractClientPlayer.java.patch"
+ },
+ "net/minecraft/client/entity/EntityPlayerSP": {
+  "hooks": [
+   {
+    "hunk": "@@ -448,6 +461,12 @@",
+    "patchLine": 72,
+    "symbols": [
+     "ForgeEventFactory.onPlaySoundAtEntity"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/entity/EntityPlayerSP.java.patch"
+ },
+ "net/minecraft/client/gui/FontRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/FontRenderer.java.patch"
+ },
+ "net/minecraft/client/gui/GuiButton": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiButton.java.patch"
+ },
+ "net/minecraft/client/gui/GuiChat": {
+  "hooks": [
+   {
+    "hunk": "@@ -215,13 +215,14 @@",
+    "patchLine": 15,
+    "symbols": [
+     "instance.autoComplete"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiChat.java.patch"
+ },
+ "net/minecraft/client/gui/GuiCreateWorld": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiCreateWorld.java.patch"
+ },
+ "net/minecraft/client/gui/GuiIngameMenu": {
+  "hooks": [
+   {
+    "hunk": "@@ -74,13 +75,19 @@",
+    "patchLine": 29,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiIngameMenu.java.patch"
+ },
+ "net/minecraft/client/gui/GuiMainMenu": {
+  "hooks": [
+   {
+    "hunk": "@@ -271,6 +272,11 @@",
+    "patchLine": 19,
+    "symbols": [
+     "client.GuiModList",
+     "new fml.client.GuiModList"
+    ]
+   },
+   {
+    "hunk": "@@ -516,7 +522,16 @@",
+    "patchLine": 30,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -516,7 +522,16 @@",
+    "patchLine": 39,
+    "symbols": [
+     "ForgeHooksClient.renderMainMenu"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiMainMenu.java.patch"
+ },
+ "net/minecraft/client/gui/GuiMultiplayer": {
+  "hooks": [
+   {
+    "hunk": "@@ -40,6 +40,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -372,7 +373,7 @@",
+    "patchLine": 16,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiMultiplayer.java.patch"
+ },
+ "net/minecraft/client/gui/GuiOverlayDebug": {
+  "hooks": [
+   {
+    "hunk": "@@ -176,6 +176,9 @@",
+    "patchLine": 8,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiOverlayDebug.java.patch"
+ },
+ "net/minecraft/client/gui/GuiScreen": {
+  "hooks": [
+   {
+    "hunk": "@@ -153,7 +154,13 @@",
+    "patchLine": 23,
+    "symbols": [
+     "GuiUtils.drawHoveringText"
+    ]
+   },
+   {
+    "hunk": "@@ -436,6 +443,7 @@",
+    "patchLine": 32,
+    "symbols": [
+     "instance.func_71556_a"
+    ]
+   },
+   {
+    "hunk": "@@ -450,9 +458,15 @@",
+    "patchLine": 40,
+    "symbols": [
+     "ActionPerformedEvent.Pre",
+     "new client.event.GuiScreenEvent.ActionPerformedEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -450,9 +458,15 @@",
+    "patchLine": 41,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -450,9 +458,15 @@",
+    "patchLine": 48,
+    "symbols": [
+     "ActionPerformedEvent.Post",
+     "EVENT_BUS.post",
+     "new client.event.GuiScreenEvent.ActionPerformedEvent.Post"
+    ]
+   },
+   {
+    "hunk": "@@ -482,8 +496,12 @@",
+    "patchLine": 56,
+    "symbols": [
+     "EVENT_BUS.post",
+     "InitGuiEvent.Pre",
+     "new client.event.GuiScreenEvent.InitGuiEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -482,8 +496,12 @@",
+    "patchLine": 61,
+    "symbols": [
+     "EVENT_BUS.post",
+     "InitGuiEvent.Post",
+     "new client.event.GuiScreenEvent.InitGuiEvent.Post"
+    ]
+   },
+   {
+    "hunk": "@@ -502,7 +520,9 @@",
+    "patchLine": 69,
+    "symbols": [
+     "EVENT_BUS.post",
+     "MouseInputEvent.Pre",
+     "new client.event.GuiScreenEvent.MouseInputEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -502,7 +520,9 @@",
+    "patchLine": 71,
+    "symbols": [
+     "EVENT_BUS.post",
+     "MouseInputEvent.Post",
+     "new client.event.GuiScreenEvent.MouseInputEvent.Post"
+    ]
+   },
+   {
+    "hunk": "@@ -510,7 +530,9 @@",
+    "patchLine": 79,
+    "symbols": [
+     "EVENT_BUS.post",
+     "KeyboardInputEvent.Pre",
+     "new client.event.GuiScreenEvent.KeyboardInputEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -510,7 +530,9 @@",
+    "patchLine": 81,
+    "symbols": [
+     "EVENT_BUS.post",
+     "KeyboardInputEvent.Post",
+     "new client.event.GuiScreenEvent.KeyboardInputEvent.Post"
+    ]
+   },
+   {
+    "hunk": "@@ -570,6 +592,7 @@",
+    "patchLine": 89,
+    "symbols": [
+     "EVENT_BUS.post",
+     "GuiScreenEvent.BackgroundDrawnEvent",
+     "new client.event.GuiScreenEvent.BackgroundDrawnEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiScreen.java.patch"
+ },
+ "net/minecraft/client/gui/GuiSelectWorld": {
+  "hooks": [
+   {
+    "hunk": "@@ -186,7 +186,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiSelectWorld.java.patch"
+ },
+ "net/minecraft/client/gui/GuiSleepMP": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiSleepMP.java.patch"
+ },
+ "net/minecraft/client/gui/GuiSlot": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiSlot.java.patch"
+ },
+ "net/minecraft/client/gui/GuiUtilRenderComponents": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/GuiUtilRenderComponents.java.patch"
+ },
+ "net/minecraft/client/gui/ServerListEntryNormal": {
+  "hooks": [
+   {
+    "hunk": "@@ -82,7 +82,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -176,6 +176,11 @@",
+    "patchLine": 16,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/ServerListEntryNormal.java.patch"
+ },
+ "net/minecraft/client/gui/achievement/GuiAchievements": {
+  "hooks": [
+   {
+    "hunk": "@@ -57,6 +61,14 @@",
+    "patchLine": 21,
+    "symbols": [
+     "AchievementPage.isAchievementInPages"
+    ]
+   },
+   {
+    "hunk": "@@ -64,6 +76,7 @@",
+    "patchLine": 33,
+    "symbols": [
+     "AchievementPage.getTitle"
+    ]
+   },
+   {
+    "hunk": "@@ -74,6 +87,16 @@",
+    "patchLine": 45,
+    "symbols": [
+     "AchievementPage.getAchievementPages"
+    ]
+   },
+   {
+    "hunk": "@@ -74,6 +87,16 @@",
+    "patchLine": 49,
+    "symbols": [
+     "AchievementPage.getTitle"
+    ]
+   },
+   {
+    "hunk": "@@ -331,11 +356,12 @@",
+    "patchLine": 70,
+    "symbols": [
+     "AchievementPage.getAchievementPage"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/achievement/GuiAchievements.java.patch"
+ },
+ "net/minecraft/client/gui/achievement/GuiStats": {
+  "hooks": [
+   {
+    "hunk": "@@ -748,7 +758,7 @@",
+    "patchLine": 57,
+    "symbols": [
+     "EntityRegistry.getEggs"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/gui/achievement/GuiStats.java.patch"
+ },
+ "net/minecraft/client/gui/inventory/GuiContainer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/inventory/GuiContainer.java.patch"
+ },
+ "net/minecraft/client/gui/inventory/GuiContainerCreative": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/gui/inventory/GuiContainerCreative.java.patch"
+ },
+ "net/minecraft/client/model/ModelBase": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/model/ModelBase.java.patch"
+ },
+ "net/minecraft/client/model/ModelBox": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/model/ModelBox.java.patch"
+ },
+ "net/minecraft/client/model/ModelRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/model/ModelRenderer.java.patch"
+ },
+ "net/minecraft/client/model/PositionTextureVertex": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/model/PositionTextureVertex.java.patch"
+ },
+ "net/minecraft/client/model/TexturedQuad": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/model/TexturedQuad.java.patch"
+ },
+ "net/minecraft/client/multiplayer/ChunkProviderClient": {
+  "hooks": [
+   {
+    "hunk": "@@ -55,6 +55,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ChunkEvent.Load",
+     "EVENT_BUS.post",
+     "new event.world.ChunkEvent.Load"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/multiplayer/ChunkProviderClient.java.patch"
+ },
+ "net/minecraft/client/multiplayer/GuiConnecting": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/multiplayer/GuiConnecting.java.patch"
+ },
+ "net/minecraft/client/multiplayer/PlayerControllerMP": {
+  "hooks": [
+   {
+    "hunk": "@@ -393,7 +407,9 @@",
+    "patchLine": 71,
+    "symbols": [
+     "ForgeEventFactory.onPlayerDestroyItem"
+    ]
+   },
+   {
+    "hunk": "@@ -420,9 +436,10 @@",
+    "patchLine": 84,
+    "symbols": [
+     "ForgeEventFactory.onPlayerDestroyItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/multiplayer/PlayerControllerMP.java.patch"
+ },
+ "net/minecraft/client/multiplayer/WorldClient": {
+  "hooks": [
+   {
+    "hunk": "@@ -52,12 +52,13 @@",
+    "patchLine": 14,
+    "symbols": [
+     "EVENT_BUS.post",
+     "WorldEvent.Load",
+     "new event.world.WorldEvent.Load"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/multiplayer/WorldClient.java.patch"
+ },
+ "net/minecraft/client/network/NetHandlerHandshakeMemory": {
+  "hooks": [
+   {
+    "hunk": "@@ -23,6 +23,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/network/NetHandlerHandshakeMemory.java.patch"
+ },
+ "net/minecraft/client/network/NetHandlerLoginClient": {
+  "hooks": [
+   {
+    "hunk": "@@ -104,7 +104,10 @@",
+    "patchLine": 8,
+    "symbols": [
+     "FMLNetworkHandler.fmlClientHandshake"
+    ]
+   },
+   {
+    "hunk": "@@ -104,7 +104,10 @@",
+    "patchLine": 11,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/network/NetHandlerLoginClient.java.patch"
+ },
+ "net/minecraft/client/network/NetHandlerPlayClient": {
+  "hooks": [
+   {
+    "hunk": "@@ -246,7 +246,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "NetworkDispatcher.get"
+    ]
+   },
+   {
+    "hunk": "@@ -750,14 +750,16 @@",
+    "patchLine": 16,
+    "symbols": [
+     "ForgeEventFactory.onClientChat"
+    ]
+   },
+   {
+    "hunk": "@@ -808,6 +810,11 @@",
+    "patchLine": 37,
+    "symbols": [
+     "FMLLog.info"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/network/NetHandlerPlayClient.java.patch"
+ },
+ "net/minecraft/client/network/OldServerPinger": {
+  "hooks": [
+   {
+    "hunk": "@@ -150,6 +150,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/network/OldServerPinger.java.patch"
+ },
+ "net/minecraft/client/particle/EffectRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/particle/EffectRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/BlockModelRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/BlockModelRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/BlockModelShapes": {
+  "hooks": [
+   {
+    "hunk": "@@ -309,5 +309,6 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ModelLoader.onRegisterAllBlocks"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/BlockModelShapes.java.patch"
+ },
+ "net/minecraft/client/renderer/BlockRendererDispatcher": {
+  "hooks": [
+   {
+    "hunk": "@@ -24,7 +24,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "new client.model.pipeline.ForgeBlockModelRenderer",
+     "pipeline.ForgeBlockModelRenderer"
+    ]
+   },
+   {
+    "hunk": "@@ -48,6 +48,24 @@",
+    "patchLine": 24,
+    "symbols": [
+     "ForgeHooksClient.setRenderLayer"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/BlockRendererDispatcher.java.patch"
+ },
+ "net/minecraft/client/renderer/EntityRenderer": {
+  "hooks": [
+   {
+    "hunk": "@@ -200,6 +200,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeHooksClient.loadEntityShader"
+    ]
+   },
+   {
+    "hunk": "@@ -512,7 +513,7 @@",
+    "patchLine": 25,
+    "symbols": [
+     "ForgeHooksClient.getFOVModifier"
+    ]
+   },
+   {
+    "hunk": "@@ -576,14 +577,8 @@",
+    "patchLine": 34,
+    "symbols": [
+     "ForgeHooksClient.orientBedCamera"
+    ]
+   },
+   {
+    "hunk": "@@ -650,17 +645,20 @@",
+    "patchLine": 65,
+    "symbols": [
+     "EntityViewRenderEvent.CameraSetup",
+     "new client.event.EntityViewRenderEvent.CameraSetup"
+    ]
+   },
+   {
+    "hunk": "@@ -650,17 +645,20 @@",
+    "patchLine": 66,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -1103,7 +1101,7 @@",
+    "patchLine": 78,
+    "symbols": [
+     "ForgeHooksClient.drawScreen"
+    ]
+   },
+   {
+    "hunk": "@@ -1314,7 +1312,9 @@",
+    "patchLine": 95,
+    "symbols": [
+     "ForgeHooksClient.setRenderPass"
+    ]
+   },
+   {
+    "hunk": "@@ -1314,7 +1312,9 @@",
+    "patchLine": 97,
+    "symbols": [
+     "ForgeHooksClient.setRenderPass"
+    ]
+   },
+   {
+    "hunk": "@@ -1326,6 +1326,7 @@",
+    "patchLine": 105,
+    "symbols": [
+     "ForgeHooksClient.onDrawBlockHighlight"
+    ]
+   },
+   {
+    "hunk": "@@ -1339,6 +1340,7 @@",
+    "patchLine": 113,
+    "symbols": [
+     "ForgeHooksClient.onDrawBlockHighlight"
+    ]
+   },
+   {
+    "hunk": "@@ -1380,6 +1382,15 @@",
+    "patchLine": 125,
+    "symbols": [
+     "ForgeHooksClient.setRenderPass"
+    ]
+   },
+   {
+    "hunk": "@@ -1380,6 +1382,15 @@",
+    "patchLine": 127,
+    "symbols": [
+     "ForgeHooksClient.setRenderPass"
+    ]
+   },
+   {
+    "hunk": "@@ -1392,8 +1403,12 @@",
+    "patchLine": 138,
+    "symbols": [
+     "ForgeHooksClient.dispatchRenderLast"
+    ]
+   },
+   {
+    "hunk": "@@ -1392,8 +1403,12 @@",
+    "patchLine": 142,
+    "symbols": [
+     "ForgeHooksClient.renderFirstPersonHand"
+    ]
+   },
+   {
+    "hunk": "@@ -1830,6 +1852,13 @@",
+    "patchLine": 164,
+    "symbols": [
+     "EntityViewRenderEvent.FogColors",
+     "new client.event.EntityViewRenderEvent.FogColors"
+    ]
+   },
+   {
+    "hunk": "@@ -1830,6 +1852,13 @@",
+    "patchLine": 165,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -1848,6 +1877,10 @@",
+    "patchLine": 178,
+    "symbols": [
+     "ForgeHooksClient.getFogDensity"
+    ]
+   },
+   {
+    "hunk": "@@ -1925,6 +1958,7 @@",
+    "patchLine": 189,
+    "symbols": [
+     "ForgeHooksClient.onFogRender"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/EntityRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/InventoryEffectRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/InventoryEffectRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/ItemModelMesher": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/ItemModelMesher.java.patch"
+ },
+ "net/minecraft/client/renderer/ItemRenderer": {
+  "hooks": [
+   {
+    "hunk": "@@ -378,11 +379,13 @@",
+    "patchLine": 30,
+    "symbols": [
+     "ForgeEventFactory.renderBlockOverlay"
+    ]
+   },
+   {
+    "hunk": "@@ -391,11 +394,13 @@",
+    "patchLine": 38,
+    "symbols": [
+     "ForgeEventFactory.renderWaterOverlay"
+    ]
+   },
+   {
+    "hunk": "@@ -391,11 +394,13 @@",
+    "patchLine": 44,
+    "symbols": [
+     "ForgeEventFactory.renderFireOverlay"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/ItemRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/OpenGlHelper": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/OpenGlHelper.java.patch"
+ },
+ "net/minecraft/client/renderer/RenderGlobal": {
+  "hooks": [
+   {
+    "hunk": "@@ -525,8 +525,10 @@",
+    "patchLine": 7,
+    "symbols": [
+     "MinecraftForgeClient.getRenderPass"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/RenderGlobal.java.patch"
+ },
+ "net/minecraft/client/renderer/WorldRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/WorldRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/WorldVertexBufferUploader": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/WorldVertexBufferUploader.java.patch"
+ },
+ "net/minecraft/client/renderer/block/model/BakedQuad": {
+  "hooks": [
+   {
+    "hunk": "@@ -5,8 +5,9 @@",
+    "patchLine": 10,
+    "symbols": [
+     "LightUtil.putBakedQuad"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/block/model/BakedQuad.java.patch"
+ },
+ "net/minecraft/client/renderer/block/model/FaceBakery": {
+  "hooks": [
+   {
+    "hunk": "@@ -33,16 +38,22 @@",
+    "patchLine": 21,
+    "symbols": [
+     "ForgeHooksClient.fillNormal"
+    ]
+   },
+   {
+    "hunk": "@@ -154,14 +170,19 @@",
+    "patchLine": 78,
+    "symbols": [
+     "ForgeHooksClient.transform"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/block/model/FaceBakery.java.patch"
+ },
+ "net/minecraft/client/renderer/block/model/ItemCameraTransforms": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/block/model/ItemCameraTransforms.java.patch"
+ },
+ "net/minecraft/client/renderer/block/model/ItemTransformVec3f": {
+  "hooks": [
+   {
+    "hunk": "@@ -13,9 +13,14 @@",
+    "patchLine": 15,
+    "symbols": [
+     "ForgeHooksClient.applyTransform"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/block/model/ItemTransformVec3f.java.patch"
+ },
+ "net/minecraft/client/renderer/block/model/ModelBlockDefinition": {
+  "hooks": [
+   {
+    "hunk": "@@ -29,7 +29,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "BlockStateLoader.load"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/block/model/ModelBlockDefinition.java.patch"
+ },
+ "net/minecraft/client/renderer/block/statemap/StateMap": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/block/statemap/StateMap.java.patch"
+ },
+ "net/minecraft/client/renderer/chunk/RenderChunk": {
+  "hooks": [
+   {
+    "hunk": "@@ -131,7 +131,9 @@",
+    "patchLine": 9,
+    "symbols": [
+     "MinecraftForgeClient.onRebuildChunk"
+    ]
+   },
+   {
+    "hunk": "@@ -174,7 +176,9 @@",
+    "patchLine": 30,
+    "symbols": [
+     "ForgeHooksClient.setRenderLayer"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/chunk/RenderChunk.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/RenderEntityItem": {
+  "hooks": [
+   {
+    "hunk": "@@ -119,25 +118,15 @@",
+    "patchLine": 31,
+    "symbols": [
+     "ForgeHooksClient.handleCameraTransforms"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/RenderEntityItem.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/RenderItem": {
+  "hooks": [
+   {
+    "hunk": "@@ -72,7 +72,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "client.ItemModelMesherForge",
+     "new client.ItemModelMesherForge"
+    ]
+   },
+   {
+    "hunk": "@@ -226,7 +226,7 @@",
+    "patchLine": 17,
+    "symbols": [
+     "LightUtil.renderQuadColor"
+    ]
+   },
+   {
+    "hunk": "@@ -317,14 +322,9 @@",
+    "patchLine": 40,
+    "symbols": [
+     "ForgeHooksClient.handleCameraTransforms"
+    ]
+   },
+   {
+    "hunk": "@@ -352,7 +352,7 @@",
+    "patchLine": 55,
+    "symbols": [
+     "ForgeHooksClient.handleCameraTransforms"
+    ]
+   },
+   {
+    "hunk": "@@ -1038,6 +1039,7 @@",
+    "patchLine": 87,
+    "symbols": [
+     "ModelLoader.onRegisterItems"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/RenderItem.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/RenderManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -192,7 +192,12 @@",
+    "patchLine": 7,
+    "symbols": [
+     "RenderingRegistry.loadEntityRenderers"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/RenderManager.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/RenderPlayer": {
+  "hooks": [
+   {
+    "hunk": "@@ -49,6 +49,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "RenderPlayerEvent.Pre",
+     "new client.event.RenderPlayerEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -61,6 +62,7 @@",
+    "patchLine": 15,
+    "symbols": [
+     "EVENT_BUS.post",
+     "RenderPlayerEvent.Post",
+     "new client.event.RenderPlayerEvent.Post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/RenderPlayer.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/RenderVillager": {
+  "hooks": [
+   {
+    "hunk": "@@ -44,7 +44,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "VillagerRegistry.getVillagerSkin"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/RenderVillager.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/RendererLivingEntity": {
+  "hooks": [
+   {
+    "hunk": "@@ -83,10 +86,12 @@",
+    "patchLine": 17,
+    "symbols": [
+     "EVENT_BUS.post",
+     "RenderLivingEvent.Pre",
+     "new client.event.RenderLivingEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -191,6 +196,7 @@",
+    "patchLine": 40,
+    "symbols": [
+     "EVENT_BUS.post",
+     "RenderLivingEvent.Post",
+     "new client.event.RenderLivingEvent.Post"
+    ]
+   },
+   {
+    "hunk": "@@ -469,10 +475,11 @@",
+    "patchLine": 48,
+    "symbols": [
+     "EVENT_BUS.post",
+     "Specials.Pre",
+     "new client.event.RenderLivingEvent.Specials.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -518,6 +525,7 @@",
+    "patchLine": 61,
+    "symbols": [
+     "EVENT_BUS.post",
+     "Specials.Post",
+     "new client.event.RenderLivingEvent.Specials.Post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/RendererLivingEntity.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/layers/LayerArmorBase": {
+  "hooks": [
+   {
+    "hunk": "@@ -157,4 +158,49 @@",
+    "patchLine": 95,
+    "symbols": [
+     "ForgeHooksClient.getArmorTexture"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/layers/LayerArmorBase.java.patch"
+ },
+ "net/minecraft/client/renderer/entity/layers/LayerBipedArmor": {
+  "hooks": [
+   {
+    "hunk": "@@ -49,4 +49,10 @@",
+    "patchLine": 11,
+    "symbols": [
+     "ForgeHooksClient.getArmorModel"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/entity/layers/LayerBipedArmor.java.patch"
+ },
+ "net/minecraft/client/renderer/texture/Stitcher": {
+  "hooks": [
+   {
+    "hunk": "@@ -58,12 +58,17 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -58,12 +58,17 @@",
+    "patchLine": 15,
+    "symbols": [
+     "FMLLog.info"
+    ]
+   },
+   {
+    "hunk": "@@ -58,12 +58,17 @@",
+    "patchLine": 17,
+    "symbols": [
+     "FMLLog.info"
+    ]
+   },
+   {
+    "hunk": "@@ -73,6 +78,7 @@",
+    "patchLine": 25,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/texture/Stitcher.java.patch"
+ },
+ "net/minecraft/client/renderer/texture/TextureAtlasSprite": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/texture/TextureAtlasSprite.java.patch"
+ },
+ "net/minecraft/client/renderer/texture/TextureManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -137,9 +137,12 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -137,9 +137,12 @@",
+    "patchLine": 13,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/texture/TextureManager.java.patch"
+ },
+ "net/minecraft/client/renderer/texture/TextureMap": {
+  "hooks": [
+   {
+    "hunk": "@@ -90,12 +103,28 @@",
+    "patchLine": 48,
+    "symbols": [
+     "ForgeHooksClient.onTextureStitchedPre"
+    ]
+   },
+   {
+    "hunk": "@@ -90,12 +103,28 @@",
+    "patchLine": 49,
+    "symbols": [
+     "FMLLog.info"
+    ]
+   },
+   {
+    "hunk": "@@ -90,12 +103,28 @@",
+    "patchLine": 50,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -145,12 +174,14 @@",
+    "patchLine": 79,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -145,12 +174,14 @@",
+    "patchLine": 86,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -166,6 +197,7 @@",
+    "patchLine": 94,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   },
+   {
+    "hunk": "@@ -175,8 +207,11 @@",
+    "patchLine": 102,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -213,9 +248,13 @@",
+    "patchLine": 114,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   },
+   {
+    "hunk": "@@ -213,9 +248,13 @@",
+    "patchLine": 116,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -256,6 +297,13 @@",
+    "patchLine": 141,
+    "symbols": [
+     "ForgeHooksClient.onTextureStitchedPost"
+    ]
+   },
+   {
+    "hunk": "@@ -256,6 +297,13 @@",
+    "patchLine": 146,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/texture/TextureMap.java.patch"
+ },
+ "net/minecraft/client/renderer/texture/TextureUtil": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/texture/TextureUtil.java.patch"
+ },
+ "net/minecraft/client/renderer/tileentity/RenderItemFrame": {
+  "hooks": [
+   {
+    "hunk": "@@ -99,15 +99,18 @@",
+    "patchLine": 16,
+    "symbols": [
+     "event.RenderItemInFrameEvent",
+     "new client.event.RenderItemInFrameEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -99,15 +99,18 @@",
+    "patchLine": 17,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/tileentity/RenderItemFrame.java.patch"
+ },
+ "net/minecraft/client/renderer/tileentity/TileEntityItemStackRenderer": {
+  "hooks": [
+   {
+    "hunk": "@@ -78,6 +78,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeHooksClient.renderTileItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/tileentity/TileEntityItemStackRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/tileentity/TileEntityPistonRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/tileentity/TileEntityPistonRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/tileentity/TileEntityRendererDispatcher": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/tileentity/TileEntityRendererDispatcher.java.patch"
+ },
+ "net/minecraft/client/renderer/tileentity/TileEntitySpecialRenderer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/tileentity/TileEntitySpecialRenderer.java.patch"
+ },
+ "net/minecraft/client/renderer/vertex/VertexFormatElement": {
+  "hooks": [
+   {
+    "hunk": "@@ -142,10 +142,17 @@",
+    "patchLine": 16,
+    "symbols": [
+     "ForgeHooksClient.preDraw"
+    ]
+   },
+   {
+    "hunk": "@@ -142,10 +142,17 @@",
+    "patchLine": 17,
+    "symbols": [
+     "ForgeHooksClient.postDraw"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/renderer/vertex/VertexFormatElement.java.patch"
+ },
+ "net/minecraft/client/resources/AbstractResourcePack": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/resources/AbstractResourcePack.java.patch"
+ },
+ "net/minecraft/client/resources/FallbackResourceManager": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/resources/FallbackResourceManager.java.patch"
+ },
+ "net/minecraft/client/resources/LanguageManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -73,6 +73,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "LanguageRegistry.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/resources/LanguageManager.java.patch"
+ },
+ "net/minecraft/client/resources/Locale": {
+  "hooks": [
+   {
+    "hunk": "@@ -95,6 +95,8 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/resources/Locale.java.patch"
+ },
+ "net/minecraft/client/resources/SimpleReloadableResourceManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -92,6 +92,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -102,23 +103,32 @@",
+    "patchLine": 21,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   },
+   {
+    "hunk": "@@ -102,23 +103,32 @@",
+    "patchLine": 26,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -102,23 +103,32 @@",
+    "patchLine": 30,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   },
+   {
+    "hunk": "@@ -102,23 +103,32 @@",
+    "patchLine": 35,
+    "symbols": [
+     "ProgressManager.push"
+    ]
+   },
+   {
+    "hunk": "@@ -102,23 +103,32 @@",
+    "patchLine": 41,
+    "symbols": [
+     "ProgressManager.pop"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/resources/SimpleReloadableResourceManager.java.patch"
+ },
+ "net/minecraft/client/resources/model/IBakedModel": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/resources/model/IBakedModel.java.patch"
+ },
+ "net/minecraft/client/resources/model/ModelBakery": {
+  "hooks": [
+   {
+    "hunk": "@@ -395,7 +400,7 @@",
+    "patchLine": 45,
+    "symbols": [
+     "ModelLoader.getInventoryVariant"
+    ]
+   },
+   {
+    "hunk": "@@ -463,13 +473,13 @@",
+    "patchLine": 66,
+    "symbols": [
+     "TRSRTransformation.isInteger"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/resources/model/ModelBakery.java.patch"
+ },
+ "net/minecraft/client/resources/model/ModelManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -24,9 +24,10 @@",
+    "patchLine": 8,
+    "symbols": [
+     "model.ModelLoader",
+     "new client.model.ModelLoader"
+    ]
+   },
+   {
+    "hunk": "@@ -24,9 +24,10 @@",
+    "patchLine": 11,
+    "symbols": [
+     "ForgeHooksClient.onModelBake"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/resources/model/ModelManager.java.patch"
+ },
+ "net/minecraft/client/resources/model/ModelRotation": {
+  "hooks": [
+   {
+    "hunk": "@@ -116,4 +116,9 @@",
+    "patchLine": 17,
+    "symbols": [
+     "ForgeHooksClient.applyTransform"
+    ]
+   },
+   {
+    "hunk": "@@ -116,4 +116,9 @@",
+    "patchLine": 18,
+    "symbols": [
+     "ForgeHooksClient.getMatrix"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/resources/model/ModelRotation.java.patch"
+ },
+ "net/minecraft/client/settings/GameSettings": {
+  "hooks": [
+   {
+    "hunk": "@@ -994,6 +994,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/client/settings/GameSettings.java.patch"
+ },
+ "net/minecraft/client/shader/Framebuffer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/client/shader/Framebuffer.java.patch"
+ },
+ "net/minecraft/command/CommandBase": {
+  "hooks": [
+   {
+    "hunk": "@@ -329,7 +329,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "ForgeHooks.newChatWithLinks"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/command/CommandBase.java.patch"
+ },
+ "net/minecraft/command/CommandEnchant": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/command/CommandEnchant.java.patch"
+ },
+ "net/minecraft/command/CommandFill": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/command/CommandFill.java.patch"
+ },
+ "net/minecraft/command/CommandHandler": {
+  "hooks": [
+   {
+    "hunk": "@@ -44,6 +44,16 @@",
+    "patchLine": 7,
+    "symbols": [
+     "event.CommandEvent",
+     "new event.CommandEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -44,6 +44,16 @@",
+    "patchLine": 8,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/command/CommandHandler.java.patch"
+ },
+ "net/minecraft/command/PlayerSelector": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/command/PlayerSelector.java.patch"
+ },
+ "net/minecraft/command/server/CommandSetBlock": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/command/server/CommandSetBlock.java.patch"
+ },
+ "net/minecraft/command/server/CommandTestForBlock": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/command/server/CommandTestForBlock.java.patch"
+ },
+ "net/minecraft/crash/CrashReport": {
+  "hooks": [
+   {
+    "hunk": "@@ -115,6 +115,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -203,6 +204,8 @@",
+    "patchLine": 15,
+    "symbols": [
+     "BlamingTransformer.onCrash"
+    ]
+   },
+   {
+    "hunk": "@@ -203,6 +204,8 @@",
+    "patchLine": 16,
+    "symbols": [
+     "CoreModManager.onCrash"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/crash/CrashReport.java.patch"
+ },
+ "net/minecraft/crash/CrashReportCategory": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/crash/CrashReportCategory.java.patch"
+ },
+ "net/minecraft/creativetab/CreativeTabs": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/creativetab/CreativeTabs.java.patch"
+ },
+ "net/minecraft/enchantment/Enchantment": {
+  "hooks": [
+   {
+    "hunk": "@@ -150,6 +150,45 @@",
+    "patchLine": 46,
+    "symbols": [
+     "EnumHelper.setFailsafeFieldValue"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/enchantment/Enchantment.java.patch"
+ },
+ "net/minecraft/enchantment/EnchantmentHelper": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/enchantment/EnchantmentHelper.java.patch"
+ },
+ "net/minecraft/entity/Entity": {
+  "hooks": [
+   {
+    "hunk": "@@ -172,6 +181,9 @@",
+    "patchLine": 32,
+    "symbols": [
+     "EVENT_BUS.post",
+     "EntityEvent.EntityConstructing",
+     "new event.entity.EntityEvent.EntityConstructing"
+    ]
+   },
+   {
+    "hunk": "@@ -172,6 +181,9 @@",
+    "patchLine": 34,
+    "symbols": [
+     "ForgeEventFactory.gatherCapabilities"
+    ]
+   },
+   {
+    "hunk": "@@ -996,12 +1008,12 @@",
+    "patchLine": 51,
+    "symbols": [
+     "ForgeHooks.isInsideOfMaterial"
+    ]
+   },
+   {
+    "hunk": "@@ -1356,6 +1368,23 @@",
+    "patchLine": 69,
+    "symbols": [
+     "FMLLog.severe"
+    ]
+   },
+   {
+    "hunk": "@@ -1438,6 +1467,30 @@",
+    "patchLine": 94,
+    "symbols": [
+     "FMLLog.severe"
+    ]
+   },
+   {
+    "hunk": "@@ -1655,6 +1711,7 @@",
+    "patchLine": 126,
+    "symbols": [
+     "ForgeEventFactory.canMountEntity"
+    ]
+   },
+   {
+    "hunk": "@@ -2049,6 +2106,7 @@",
+    "patchLine": 134,
+    "symbols": [
+     "ForgeHooks.onTravelToDimension"
+    ]
+   },
+   {
+    "hunk": "@@ -2353,4 +2411,209 @@",
+    "patchLine": 224,
+    "symbols": [
+     "EntityRegistry.getEggs"
+    ]
+   },
+   {
+    "hunk": "@@ -2353,4 +2411,209 @@",
+    "patchLine": 274,
+    "symbols": [
+     "FMLLog.warning"
+    ]
+   },
+   {
+    "hunk": "@@ -2353,4 +2411,209 @@",
+    "patchLine": 279,
+    "symbols": [
+     "FMLLog.warning"
+    ]
+   },
+   {
+    "hunk": "@@ -2353,4 +2411,209 @@",
+    "patchLine": 292,
+    "symbols": [
+     "FMLLog.info"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/Entity.java.patch"
+ },
+ "net/minecraft/entity/EntityAgeable": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityAgeable.java.patch"
+ },
+ "net/minecraft/entity/EntityHanging": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityHanging.java.patch"
+ },
+ "net/minecraft/entity/EntityList": {
+  "hooks": [
+   {
+    "hunk": "@@ -167,7 +169,17 @@",
+    "patchLine": 33,
+    "symbols": [
+     "FMLLog.log"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityList.java.patch"
+ },
+ "net/minecraft/entity/EntityLiving": {
+  "hooks": [
+   {
+    "hunk": "@@ -121,6 +121,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeHooks.onLivingSetAttackTarget"
+    ]
+   },
+   {
+    "hunk": "@@ -498,10 +499,22 @@",
+    "patchLine": 20,
+    "symbols": [
+     "ForgeEventFactory.canEntityDespawn"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityLiving.java.patch"
+ },
+ "net/minecraft/entity/EntityLivingBase": {
+  "hooks": [
+   {
+    "hunk": "@@ -319,7 +320,7 @@",
+    "patchLine": 25,
+    "symbols": [
+     "ForgeEventFactory.getExperienceDrop"
+    ]
+   },
+   {
+    "hunk": "@@ -380,6 +381,7 @@",
+    "patchLine": 33,
+    "symbols": [
+     "ForgeHooks.onLivingSetAttackTarget"
+    ]
+   },
+   {
+    "hunk": "@@ -712,6 +713,8 @@",
+    "patchLine": 49,
+    "symbols": [
+     "ForgeEventFactory.onLivingHeal"
+    ]
+   },
+   {
+    "hunk": "@@ -732,6 +735,7 @@",
+    "patchLine": 58,
+    "symbols": [
+     "ForgeHooks.onLivingAttack"
+    ]
+   },
+   {
+    "hunk": "@@ -883,6 +887,7 @@",
+    "patchLine": 78,
+    "symbols": [
+     "ForgeHooks.onLivingDeath"
+    ]
+   },
+   {
+    "hunk": "@@ -918,6 +926,16 @@",
+    "patchLine": 99,
+    "symbols": [
+     "ForgeHooks.onLivingDrops"
+    ]
+   },
+   {
+    "hunk": "@@ -972,7 +990,7 @@",
+    "patchLine": 114,
+    "symbols": [
+     "ForgeHooks.isLivingOnLadder"
+    ]
+   },
+   {
+    "hunk": "@@ -982,6 +1000,9 @@",
+    "patchLine": 122,
+    "symbols": [
+     "ForgeHooks.onLivingFall"
+    ]
+   },
+   {
+    "hunk": "@@ -1094,6 +1115,8 @@",
+    "patchLine": 132,
+    "symbols": [
+     "ForgeHooks.onLivingHurt"
+    ]
+   },
+   {
+    "hunk": "@@ -1281,6 +1309,7 @@",
+    "patchLine": 153,
+    "symbols": [
+     "ForgeEventFactory.canMountEntity"
+    ]
+   },
+   {
+    "hunk": "@@ -1346,6 +1375,7 @@",
+    "patchLine": 161,
+    "symbols": [
+     "ForgeHooks.onLivingJump"
+    ]
+   },
+   {
+    "hunk": "@@ -1530,6 +1560,7 @@",
+    "patchLine": 169,
+    "symbols": [
+     "ForgeHooks.onLivingUpdate"
+    ]
+   },
+   {
+    "hunk": "@@ -1817,6 +1848,7 @@",
+    "patchLine": 177,
+    "symbols": [
+     "ForgeEventFactory.canMountEntity"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityLivingBase.java.patch"
+ },
+ "net/minecraft/entity/EntityMinecartCommandBlock": {
+  "hooks": [
+   {
+    "hunk": "@@ -109,6 +109,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "minecart.MinecartInteractEvent",
+     "new event.entity.minecart.MinecartInteractEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityMinecartCommandBlock.java.patch"
+ },
+ "net/minecraft/entity/EntitySpawnPlacementRegistry": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/EntitySpawnPlacementRegistry.java.patch"
+ },
+ "net/minecraft/entity/EntityTracker": {
+  "hooks": [
+   {
+    "hunk": "@@ -56,6 +56,8 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EntityRegistry.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityTracker.java.patch"
+ },
+ "net/minecraft/entity/EntityTrackerEntry": {
+  "hooks": [
+   {
+    "hunk": "@@ -379,6 +379,14 @@",
+    "patchLine": 12,
+    "symbols": [
+     "FMLNetworkHandler.makeEntitySpawnAdjustment"
+    ]
+   },
+   {
+    "hunk": "@@ -426,12 +434,14 @@",
+    "patchLine": 22,
+    "symbols": [
+     "ForgeEventFactory.onStartEntityTracking"
+    ]
+   },
+   {
+    "hunk": "@@ -426,12 +434,14 @@",
+    "patchLine": 29,
+    "symbols": [
+     "ForgeEventFactory.onStopEntityTracking"
+    ]
+   },
+   {
+    "hunk": "@@ -463,6 +473,9 @@",
+    "patchLine": 37,
+    "symbols": [
+     "FMLNetworkHandler.getEntitySpawningPacket"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/EntityTrackerEntry.java.patch"
+ },
+ "net/minecraft/entity/ai/EntityAIAttackOnCollide": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/ai/EntityAIAttackOnCollide.java.patch"
+ },
+ "net/minecraft/entity/boss/EntityDragon": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/boss/EntityDragon.java.patch"
+ },
+ "net/minecraft/entity/boss/EntityWither": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/boss/EntityWither.java.patch"
+ },
+ "net/minecraft/entity/boss/IBossDisplayData": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/boss/IBossDisplayData.java.patch"
+ },
+ "net/minecraft/entity/effect/EntityLightningBolt": {
+  "hooks": [
+   {
+    "hunk": "@@ -90,7 +90,8 @@",
+    "patchLine": 8,
+    "symbols": [
+     "ForgeEventFactory.onEntityStruckByLightning"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/effect/EntityLightningBolt.java.patch"
+ },
+ "net/minecraft/entity/item/EntityEnderPearl": {
+  "hooks": [
+   {
+    "hunk": "@@ -61,6 +61,9 @@",
+    "patchLine": 7,
+    "symbols": [
+     "living.EnderTeleportEvent",
+     "new event.entity.living.EnderTeleportEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -61,6 +61,9 @@",
+    "patchLine": 8,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityEnderPearl.java.patch"
+ },
+ "net/minecraft/entity/item/EntityItem": {
+  "hooks": [
+   {
+    "hunk": "@@ -129,8 +137,16 @@",
+    "patchLine": 41,
+    "symbols": [
+     "ForgeEventFactory.onItemExpire"
+    ]
+   },
+   {
+    "hunk": "@@ -311,20 +328,23 @@",
+    "patchLine": 80,
+    "symbols": [
+     "ForgeEventFactory.onItemPickup"
+    ]
+   },
+   {
+    "hunk": "@@ -361,6 +381,7 @@",
+    "patchLine": 91,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityItem.java.patch"
+ },
+ "net/minecraft/entity/item/EntityItemFrame": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityItemFrame.java.patch"
+ },
+ "net/minecraft/entity/item/EntityMinecart": {
+  "hooks": [
+   {
+    "hunk": "@@ -367,6 +386,7 @@",
+    "patchLine": 70,
+    "symbols": [
+     "EVENT_BUS.post",
+     "minecart.MinecartUpdateEvent",
+     "new event.entity.minecart.MinecartUpdateEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -817,13 +842,20 @@",
+    "patchLine": 217,
+    "symbols": [
+     "EVENT_BUS.post",
+     "minecart.MinecartCollisionEvent",
+     "new event.entity.minecart.MinecartCollisionEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityMinecart.java.patch"
+ },
+ "net/minecraft/entity/item/EntityMinecartContainer": {
+  "hooks": [
+   {
+    "hunk": "@@ -180,6 +180,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "minecart.MinecartInteractEvent",
+     "new event.entity.minecart.MinecartInteractEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -232,4 +233,22 @@",
+    "patchLine": 16,
+    "symbols": [
+     "new items.wrapper.InvWrapper",
+     "wrapper.InvWrapper"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityMinecartContainer.java.patch"
+ },
+ "net/minecraft/entity/item/EntityMinecartEmpty": {
+  "hooks": [
+   {
+    "hunk": "@@ -18,6 +18,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "minecart.MinecartInteractEvent",
+     "new event.entity.minecart.MinecartInteractEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityMinecartEmpty.java.patch"
+ },
+ "net/minecraft/entity/item/EntityMinecartFurnace": {
+  "hooks": [
+   {
+    "hunk": "@@ -131,6 +131,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "minecart.MinecartInteractEvent",
+     "new event.entity.minecart.MinecartInteractEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityMinecartFurnace.java.patch"
+ },
+ "net/minecraft/entity/item/EntityMinecartHopper": {
+  "hooks": [
+   {
+    "hunk": "@@ -54,6 +54,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "minecart.MinecartInteractEvent",
+     "new event.entity.minecart.MinecartInteractEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityMinecartHopper.java.patch"
+ },
+ "net/minecraft/entity/item/EntityXPOrb": {
+  "hooks": [
+   {
+    "hunk": "@@ -199,6 +199,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "EVENT_BUS.post",
+     "new event.entity.player.PlayerPickupXpEvent",
+     "player.PlayerPickupXpEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/item/EntityXPOrb.java.patch"
+ },
+ "net/minecraft/entity/monster/EntityEnderman": {
+  "hooks": [
+   {
+    "hunk": "@@ -198,12 +198,14 @@",
+    "patchLine": 7,
+    "symbols": [
+     "living.EnderTeleportEvent",
+     "new event.entity.living.EnderTeleportEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -198,12 +198,14 @@",
+    "patchLine": 8,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/monster/EntityEnderman.java.patch"
+ },
+ "net/minecraft/entity/monster/EntityMagmaCube": {
+  "hooks": [
+   {
+    "hunk": "@@ -103,6 +103,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeHooks.onLivingJump"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/monster/EntityMagmaCube.java.patch"
+ },
+ "net/minecraft/entity/monster/EntitySlime": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/monster/EntitySlime.java.patch"
+ },
+ "net/minecraft/entity/monster/EntityZombie": {
+  "hooks": [
+   {
+    "hunk": "@@ -229,12 +229,25 @@",
+    "patchLine": 21,
+    "symbols": [
+     "ForgeEventFactory.fireZombieSummonAid"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/monster/EntityZombie.java.patch"
+ },
+ "net/minecraft/entity/passive/EntityHorse": {
+  "hooks": [
+   {
+    "hunk": "@@ -1247,6 +1247,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeHooks.onLivingJump"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/passive/EntityHorse.java.patch"
+ },
+ "net/minecraft/entity/passive/EntityMooshroom": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/passive/EntityMooshroom.java.patch"
+ },
+ "net/minecraft/entity/passive/EntityOcelot": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/passive/EntityOcelot.java.patch"
+ },
+ "net/minecraft/entity/passive/EntitySheep": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/passive/EntitySheep.java.patch"
+ },
+ "net/minecraft/entity/passive/EntityVillager": {
+  "hooks": [
+   {
+    "hunk": "@@ -697,7 +700,7 @@",
+    "patchLine": 41,
+    "symbols": [
+     "VillagerRegistry.setRandomProfession"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/passive/EntityVillager.java.patch"
+ },
+ "net/minecraft/entity/player/EntityPlayer": {
+  "hooks": [
+   {
+    "hunk": "@@ -175,7 +180,8 @@",
+    "patchLine": 20,
+    "symbols": [
+     "ForgeEventFactory.onUseItemStop"
+    ]
+   },
+   {
+    "hunk": "@@ -199,6 +205,7 @@",
+    "patchLine": 29,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -212,6 +219,14 @@",
+    "patchLine": 37,
+    "symbols": [
+     "ForgeEventFactory.onItemUseTick"
+    ]
+   },
+   {
+    "hunk": "@@ -266,7 +282,7 @@",
+    "patchLine": 61,
+    "symbols": [
+     "ForgeHooks.canInteractWith"
+    ]
+   },
+   {
+    "hunk": "@@ -343,6 +359,7 @@",
+    "patchLine": 69,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -412,11 +429,12 @@",
+    "patchLine": 77,
+    "symbols": [
+     "ForgeEventFactory.onItemUseFinish"
+    ]
+   },
+   {
+    "hunk": "@@ -610,11 +628,15 @@",
+    "patchLine": 105,
+    "symbols": [
+     "ForgeHooks.onLivingDeath"
+    ]
+   },
+   {
+    "hunk": "@@ -625,6 +647,9 @@",
+    "patchLine": 122,
+    "symbols": [
+     "ForgeEventFactory.onPlayerDrops"
+    ]
+   },
+   {
+    "hunk": "@@ -707,12 +732,25 @@",
+    "patchLine": 142,
+    "symbols": [
+     "ForgeHooks.onPlayerTossEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -707,12 +732,25 @@",
+    "patchLine": 151,
+    "symbols": [
+     "ForgeHooks.onPlayerTossEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -826,12 +876,13 @@",
+    "patchLine": 187,
+    "symbols": [
+     "ForgeEventFactory.getBreakSpeed"
+    ]
+   },
+   {
+    "hunk": "@@ -826,12 +876,13 @@",
+    "patchLine": 194,
+    "symbols": [
+     "ForgeEventFactory.doPlayerHarvestCheck"
+    ]
+   },
+   {
+    "hunk": "@@ -911,6 +989,7 @@",
+    "patchLine": 243,
+    "symbols": [
+     "ForgeHooks.onLivingAttack"
+    ]
+   },
+   {
+    "hunk": "@@ -1007,12 +1086,15 @@",
+    "patchLine": 251,
+    "symbols": [
+     "ForgeHooks.onLivingHurt"
+    ]
+   },
+   {
+    "hunk": "@@ -1007,12 +1086,15 @@",
+    "patchLine": 259,
+    "symbols": [
+     "ArmorProperties.applyArmor"
+    ]
+   },
+   {
+    "hunk": "@@ -1074,6 +1156,7 @@",
+    "patchLine": 268,
+    "symbols": [
+     "ForgeEventFactory.canInteractWith"
+    ]
+   },
+   {
+    "hunk": "@@ -1125,7 +1208,9 @@",
+    "patchLine": 278,
+    "symbols": [
+     "ForgeEventFactory.onPlayerDestroyItem"
+    ]
+   },
+   {
+    "hunk": "@@ -1135,6 +1220,7 @@",
+    "patchLine": 286,
+    "symbols": [
+     "ForgeHooks.onPlayerAttackTarget"
+    ]
+   },
+   {
+    "hunk": "@@ -1311,6 +1397,8 @@",
+    "patchLine": 294,
+    "symbols": [
+     "ForgeEventFactory.onPlayerSleepInBed"
+    ]
+   },
+   {
+    "hunk": "@@ -1415,13 +1503,14 @@",
+    "patchLine": 315,
+    "symbols": [
+     "ForgeEventFactory.onPlayerWakeup"
+    ]
+   },
+   {
+    "hunk": "@@ -1448,14 +1541,14 @@",
+    "patchLine": 345,
+    "symbols": [
+     "ForgeEventFactory.fireSleepingLocationCheck"
+    ]
+   },
+   {
+    "hunk": "@@ -1519,16 +1612,24 @@",
+    "patchLine": 394,
+    "symbols": [
+     "ForgeEventFactory.onPlayerSpawnSet"
+    ]
+   },
+   {
+    "hunk": "@@ -1712,6 +1813,10 @@",
+    "patchLine": 410,
+    "symbols": [
+     "ForgeEventFactory.onPlayerFall"
+    ]
+   },
+   {
+    "hunk": "@@ -1735,6 +1840,7 @@",
+    "patchLine": 419,
+    "symbols": [
+     "EntityRegistry.getEggs"
+    ]
+   },
+   {
+    "hunk": "@@ -1847,6 +1953,8 @@",
+    "patchLine": 427,
+    "symbols": [
+     "ForgeEventFactory.onItemUseStart"
+    ]
+   },
+   {
+    "hunk": "@@ -1931,6 +2043,18 @@",
+    "patchLine": 458,
+    "symbols": [
+     "ForgeEventFactory.onPlayerClone"
+    ]
+   },
+   {
+    "hunk": "@@ -2155,6 +2289,136 @@",
+    "patchLine": 516,
+    "symbols": [
+     "FMLNetworkHandler.openGui"
+    ]
+   },
+   {
+    "hunk": "@@ -2155,6 +2289,136 @@",
+    "patchLine": 600,
+    "symbols": [
+     "ForgeEventFactory.getPlayerDisplayName"
+    ]
+   },
+   {
+    "hunk": "@@ -2155,6 +2289,136 @@",
+    "patchLine": 610,
+    "symbols": [
+     "ForgeEventFactory.getPlayerDisplayName"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/player/EntityPlayer.java.patch"
+ },
+ "net/minecraft/entity/player/EntityPlayerMP": {
+  "hooks": [
+   {
+    "hunk": "@@ -223,7 +224,7 @@",
+    "patchLine": 26,
+    "symbols": [
+     "ForgeHooks.canInteractWith"
+    ]
+   },
+   {
+    "hunk": "@@ -294,6 +295,7 @@",
+    "patchLine": 34,
+    "symbols": [
+     "ChunkWatchEvent.Watch",
+     "EVENT_BUS.post",
+     "new event.world.ChunkWatchEvent.Watch"
+    ]
+   },
+   {
+    "hunk": "@@ -424,6 +426,7 @@",
+    "patchLine": 42,
+    "symbols": [
+     "ForgeHooks.onLivingDeath"
+    ]
+   },
+   {
+    "hunk": "@@ -447,7 +450,20 @@",
+    "patchLine": 56,
+    "symbols": [
+     "new event.entity.player.PlayerDropsEvent",
+     "player.PlayerDropsEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -447,7 +450,20 @@",
+    "patchLine": 57,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -461,6 +477,7 @@",
+    "patchLine": 71,
+    "symbols": [
+     "EntityRegistry.getEggs"
+    ]
+   },
+   {
+    "hunk": "@@ -528,6 +545,7 @@",
+    "patchLine": 79,
+    "symbols": [
+     "ForgeHooks.onTravelToDimension"
+    ]
+   },
+   {
+    "hunk": "@@ -831,6 +849,7 @@",
+    "patchLine": 87,
+    "symbols": [
+     "EVENT_BUS.post",
+     "new event.entity.player.AchievementEvent",
+     "player.AchievementEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/player/EntityPlayerMP.java.patch"
+ },
+ "net/minecraft/entity/player/InventoryPlayer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/entity/player/InventoryPlayer.java.patch"
+ },
+ "net/minecraft/entity/projectile/EntityFishHook": {
+  "hooks": [
+   {
+    "hunk": "@@ -567,11 +567,19 @@",
+    "patchLine": 16,
+    "symbols": [
+     "FishingHooks.getFishableCategory"
+    ]
+   },
+   {
+    "hunk": "@@ -567,11 +567,19 @@",
+    "patchLine": 17,
+    "symbols": [
+     "FishingHooks.getRandomFishable"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/entity/projectile/EntityFishHook.java.patch"
+ },
+ "net/minecraft/init/Bootstrap": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/init/Bootstrap.java.patch"
+ },
+ "net/minecraft/inventory/Container": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/inventory/Container.java.patch"
+ },
+ "net/minecraft/inventory/ContainerBeacon": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/inventory/ContainerBeacon.java.patch"
+ },
+ "net/minecraft/inventory/ContainerBrewingStand": {
+  "hooks": [
+   {
+    "hunk": "@@ -154,7 +154,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "BrewingRecipeRegistry.isValidIngredient"
+    ]
+   },
+   {
+    "hunk": "@@ -195,7 +195,7 @@",
+    "patchLine": 26,
+    "symbols": [
+     "BrewingRecipeRegistry.isValidInput"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/inventory/ContainerBrewingStand.java.patch"
+ },
+ "net/minecraft/inventory/ContainerEnchantment": {
+  "hooks": [
+   {
+    "hunk": "@@ -65,9 +65,12 @@",
+    "patchLine": 7,
+    "symbols": [
+     "OreDictionary.getOres"
+    ]
+   },
+   {
+    "hunk": "@@ -65,9 +65,12 @@",
+    "patchLine": 12,
+    "symbols": [
+     "OreDictionary.itemMatches"
+    ]
+   },
+   {
+    "hunk": "@@ -153,37 +157,14 @@",
+    "patchLine": 39,
+    "symbols": [
+     "ForgeHooks.getEnchantPower"
+    ]
+   },
+   {
+    "hunk": "@@ -153,37 +157,14 @@",
+    "patchLine": 40,
+    "symbols": [
+     "ForgeHooks.getEnchantPower"
+    ]
+   },
+   {
+    "hunk": "@@ -153,37 +157,14 @@",
+    "patchLine": 62,
+    "symbols": [
+     "ForgeHooks.getEnchantPower"
+    ]
+   },
+   {
+    "hunk": "@@ -153,37 +157,14 @@",
+    "patchLine": 63,
+    "symbols": [
+     "ForgeHooks.getEnchantPower"
+    ]
+   },
+   {
+    "hunk": "@@ -153,37 +157,14 @@",
+    "patchLine": 64,
+    "symbols": [
+     "ForgeHooks.getEnchantPower"
+    ]
+   },
+   {
+    "hunk": "@@ -153,37 +157,14 @@",
+    "patchLine": 65,
+    "symbols": [
+     "ForgeHooks.getEnchantPower"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/inventory/ContainerEnchantment.java.patch"
+ },
+ "net/minecraft/inventory/ContainerPlayer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/inventory/ContainerPlayer.java.patch"
+ },
+ "net/minecraft/inventory/ContainerRepair": {
+  "hooks": [
+   {
+    "hunk": "@@ -70,6 +70,8 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeHooks.onAnvilRepair"
+    ]
+   },
+   {
+    "hunk": "@@ -172,6 +174,7 @@",
+    "patchLine": 25,
+    "symbols": [
+     "ForgeHooks.onAnvilChange"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/inventory/ContainerRepair.java.patch"
+ },
+ "net/minecraft/inventory/Slot": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/inventory/Slot.java.patch"
+ },
+ "net/minecraft/inventory/SlotCrafting": {
+  "hooks": [
+   {
+    "hunk": "@@ -112,8 +112,11 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -112,8 +112,11 @@",
+    "patchLine": 9,
+    "symbols": [
+     "ForgeHooks.setCraftingPlayer"
+    ]
+   },
+   {
+    "hunk": "@@ -112,8 +112,11 @@",
+    "patchLine": 11,
+    "symbols": [
+     "ForgeHooks.setCraftingPlayer"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/inventory/SlotCrafting.java.patch"
+ },
+ "net/minecraft/inventory/SlotFurnaceOutput": {
+  "hooks": [
+   {
+    "hunk": "@@ -81,6 +81,8 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/inventory/SlotFurnaceOutput.java.patch"
+ },
+ "net/minecraft/item/Item": {
+  "hooks": [
+   {
+    "hunk": "@@ -48,8 +48,8 @@",
+    "patchLine": 9,
+    "symbols": [
+     "GameData.getItemRegistry"
+    ]
+   },
+   {
+    "hunk": "@@ -48,8 +48,8 @@",
+    "patchLine": 10,
+    "symbols": [
+     "GameData.getBlockItemMap"
+    ]
+   },
+   {
+    "hunk": "@@ -371,11 +380,670 @@",
+    "patchLine": 683,
+    "symbols": [
+     "Loader.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -371,11 +380,670 @@",
+    "patchLine": 687,
+    "symbols": [
+     "FMLLog.bigWarning"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/Item.java.patch"
+ },
+ "net/minecraft/item/ItemArmor": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemArmor.java.patch"
+ },
+ "net/minecraft/item/ItemBlock": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemBlock.java.patch"
+ },
+ "net/minecraft/item/ItemBow": {
+  "hooks": [
+   {
+    "hunk": "@@ -27,6 +27,9 @@",
+    "patchLine": 7,
+    "symbols": [
+     "new event.entity.player.ArrowLooseEvent",
+     "player.ArrowLooseEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -27,6 +27,9 @@",
+    "patchLine": 8,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -104,6 +107,9 @@",
+    "patchLine": 17,
+    "symbols": [
+     "new event.entity.player.ArrowNockEvent",
+     "player.ArrowNockEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -104,6 +107,9 @@",
+    "patchLine": 18,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemBow.java.patch"
+ },
+ "net/minecraft/item/ItemBucket": {
+  "hooks": [
+   {
+    "hunk": "@@ -36,6 +36,9 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeEventFactory.onBucketUse"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemBucket.java.patch"
+ },
+ "net/minecraft/item/ItemBucketMilk": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemBucketMilk.java.patch"
+ },
+ "net/minecraft/item/ItemDye": {
+  "hooks": [
+   {
+    "hunk": "@@ -97,8 +97,18 @@",
+    "patchLine": 17,
+    "symbols": [
+     "FakePlayerFactory.getMinecraft"
+    ]
+   },
+   {
+    "hunk": "@@ -97,8 +97,18 @@",
+    "patchLine": 25,
+    "symbols": [
+     "ForgeEventFactory.onApplyBonemeal"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemDye.java.patch"
+ },
+ "net/minecraft/item/ItemEmptyMap": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemEmptyMap.java.patch"
+ },
+ "net/minecraft/item/ItemFlintAndSteel": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemFlintAndSteel.java.patch"
+ },
+ "net/minecraft/item/ItemHoe": {
+  "hooks": [
+   {
+    "hunk": "@@ -34,10 +34,13 @@",
+    "patchLine": 7,
+    "symbols": [
+     "ForgeEventFactory.onHoeUse"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemHoe.java.patch"
+ },
+ "net/minecraft/item/ItemLilyPad": {
+  "hooks": [
+   {
+    "hunk": "@@ -49,7 +49,14 @@",
+    "patchLine": 8,
+    "symbols": [
+     "BlockSnapshot.getBlockSnapshot"
+    ]
+   },
+   {
+    "hunk": "@@ -49,7 +49,14 @@",
+    "patchLine": 10,
+    "symbols": [
+     "ForgeEventFactory.onPlayerBlockPlace"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemLilyPad.java.patch"
+ },
+ "net/minecraft/item/ItemMap": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemMap.java.patch"
+ },
+ "net/minecraft/item/ItemMonsterPlacer": {
+  "hooks": [
+   {
+    "hunk": "@@ -207,5 +217,28 @@",
+    "patchLine": 90,
+    "symbols": [
+     "EntityRegistry.getEggs"
+    ]
+   },
+   {
+    "hunk": "@@ -207,5 +217,28 @@",
+    "patchLine": 110,
+    "symbols": [
+     "EntityRegistry.getEggs"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemMonsterPlacer.java.patch"
+ },
+ "net/minecraft/item/ItemRecord": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemRecord.java.patch"
+ },
+ "net/minecraft/item/ItemSeedFood": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemSeedFood.java.patch"
+ },
+ "net/minecraft/item/ItemSeeds": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemSeeds.java.patch"
+ },
+ "net/minecraft/item/ItemShears": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemShears.java.patch"
+ },
+ "net/minecraft/item/ItemSkull": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemSkull.java.patch"
+ },
+ "net/minecraft/item/ItemSnow": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/item/ItemSnow.java.patch"
+ },
+ "net/minecraft/item/ItemStack": {
+  "hooks": [
+   {
+    "hunk": "@@ -120,11 +126,12 @@",
+    "patchLine": 60,
+    "symbols": [
+     "ForgeHooks.onPlaceItemIntoWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -742,6 +748,7 @@",
+    "patchLine": 179,
+    "symbols": [
+     "ForgeEventFactory.onItemTooltip"
+    ]
+   },
+   {
+    "hunk": "@@ -860,6 +867,18 @@",
+    "patchLine": 199,
+    "symbols": [
+     "ForgeEventFactory.gatherCapabilities"
+    ]
+   },
+   {
+    "hunk": "@@ -860,6 +867,18 @@",
+    "patchLine": 204,
+    "symbols": [
+     "ForgeEventFactory.gatherCapabilities"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemStack.java.patch"
+ },
+ "net/minecraft/item/ItemSword": {
+  "hooks": [
+   {
+    "hunk": "@@ -101,7 +101,9 @@",
+    "patchLine": 9,
+    "symbols": [
+     "OreDictionary.itemMatches"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemSword.java.patch"
+ },
+ "net/minecraft/item/ItemTool": {
+  "hooks": [
+   {
+    "hunk": "@@ -74,7 +86,9 @@",
+    "patchLine": 28,
+    "symbols": [
+     "OreDictionary.itemMatches"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/ItemTool.java.patch"
+ },
+ "net/minecraft/item/crafting/FurnaceRecipes": {
+  "hooks": [
+   {
+    "hunk": "@@ -72,6 +72,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLLog.info"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/FurnaceRecipes.java.patch"
+ },
+ "net/minecraft/item/crafting/RecipeFireworks": {
+  "hooks": [
+   {
+    "hunk": "@@ -249,11 +249,7 @@",
+    "patchLine": 34,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/RecipeFireworks.java.patch"
+ },
+ "net/minecraft/item/crafting/RecipeRepairItem": {
+  "hooks": [
+   {
+    "hunk": "@@ -102,11 +102,7 @@",
+    "patchLine": 39,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/RecipeRepairItem.java.patch"
+ },
+ "net/minecraft/item/crafting/RecipesArmorDyes": {
+  "hooks": [
+   {
+    "hunk": "@@ -146,11 +146,7 @@",
+    "patchLine": 12,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/RecipesArmorDyes.java.patch"
+ },
+ "net/minecraft/item/crafting/RecipesBanners": {
+  "hooks": [
+   {
+    "hunk": "@@ -135,11 +135,7 @@",
+    "patchLine": 12,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   },
+   {
+    "hunk": "@@ -356,9 +352,9 @@",
+    "patchLine": 24,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/RecipesBanners.java.patch"
+ },
+ "net/minecraft/item/crafting/RecipesMapCloning": {
+  "hooks": [
+   {
+    "hunk": "@@ -108,11 +108,7 @@",
+    "patchLine": 12,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/RecipesMapCloning.java.patch"
+ },
+ "net/minecraft/item/crafting/ShapedRecipes": {
+  "hooks": [
+   {
+    "hunk": "@@ -33,11 +33,7 @@",
+    "patchLine": 12,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/ShapedRecipes.java.patch"
+ },
+ "net/minecraft/item/crafting/ShapelessRecipes": {
+  "hooks": [
+   {
+    "hunk": "@@ -29,11 +29,7 @@",
+    "patchLine": 12,
+    "symbols": [
+     "ForgeHooks.getContainerItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/item/crafting/ShapelessRecipes.java.patch"
+ },
+ "net/minecraft/nbt/CompressedStreamTools": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/nbt/CompressedStreamTools.java.patch"
+ },
+ "net/minecraft/nbt/NBTSizeTracker": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/nbt/NBTSizeTracker.java.patch"
+ },
+ "net/minecraft/nbt/NBTTagCompound": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/nbt/NBTTagCompound.java.patch"
+ },
+ "net/minecraft/nbt/NBTTagString": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/nbt/NBTTagString.java.patch"
+ },
+ "net/minecraft/network/NetHandlerPlayServer": {
+  "hooks": [
+   {
+    "hunk": "@@ -560,13 +572,20 @@",
+    "patchLine": 72,
+    "symbols": [
+     "ForgeEventFactory.onPlayerInteract"
+    ]
+   },
+   {
+    "hunk": "@@ -770,8 +795,10 @@",
+    "patchLine": 118,
+    "symbols": [
+     "ForgeHooks.newChatWithLinks"
+    ]
+   },
+   {
+    "hunk": "@@ -770,8 +795,10 @@",
+    "patchLine": 119,
+    "symbols": [
+     "ForgeHooks.onServerChatEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/network/NetHandlerPlayServer.java.patch"
+ },
+ "net/minecraft/network/NetworkManager": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/network/NetworkManager.java.patch"
+ },
+ "net/minecraft/network/NetworkSystem": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/network/NetworkSystem.java.patch"
+ },
+ "net/minecraft/network/ServerStatusResponse": {
+  "hooks": [
+   {
+    "hunk": "@@ -215,6 +219,7 @@",
+    "patchLine": 37,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -242,7 +247,47 @@",
+    "patchLine": 45,
+    "symbols": [
+     "FMLNetworkHandler.enhanceStatusQuery"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/network/ServerStatusResponse.java.patch"
+ },
+ "net/minecraft/network/handshake/client/C00Handshake": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/network/handshake/client/C00Handshake.java.patch"
+ },
+ "net/minecraft/network/play/client/C17PacketCustomPayload": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/network/play/client/C17PacketCustomPayload.java.patch"
+ },
+ "net/minecraft/network/play/server/S3FPacketCustomPayload": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/network/play/server/S3FPacketCustomPayload.java.patch"
+ },
+ "net/minecraft/network/status/server/S00PacketServerInfo": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/network/status/server/S00PacketServerInfo.java.patch"
+ },
+ "net/minecraft/potion/Potion": {
+  "hooks": [
+   {
+    "hunk": "@@ -64,10 +64,10 @@",
+    "patchLine": 21,
+    "symbols": [
+     "GameData.getPotionRegistry"
+    ]
+   },
+   {
+    "hunk": "@@ -83,14 +83,18 @@",
+    "patchLine": 36,
+    "symbols": [
+     "GameData.getPotionRegistry"
+    ]
+   },
+   {
+    "hunk": "@@ -83,14 +83,18 @@",
+    "patchLine": 42,
+    "symbols": [
+     "GameData.getPotionRegistry"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/potion/Potion.java.patch"
+ },
+ "net/minecraft/potion/PotionEffect": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/potion/PotionEffect.java.patch"
+ },
+ "net/minecraft/realms/RealmsConnect": {
+  "hooks": [
+   {
+    "hunk": "@@ -38,6 +38,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLClientHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/realms/RealmsConnect.java.patch"
+ },
+ "net/minecraft/server/MinecraftServer": {
+  "hooks": [
+   {
+    "hunk": "@@ -259,47 +258,21 @@",
+    "patchLine": 38,
+    "symbols": [
+     "DimensionManager.getStaticDimensionIDs"
+    ]
+   },
+   {
+    "hunk": "@@ -259,47 +258,21 @@",
+    "patchLine": 79,
+    "symbols": [
+     "EVENT_BUS.post",
+     "WorldEvent.Load",
+     "new event.world.WorldEvent.Load"
+    ]
+   },
+   {
+    "hunk": "@@ -314,7 +287,7 @@",
+    "patchLine": 92,
+    "symbols": [
+     "DimensionManager.getWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -403,7 +376,7 @@",
+    "patchLine": 101,
+    "symbols": [
+     "Loader.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -427,8 +400,15 @@",
+    "patchLine": 109,
+    "symbols": [
+     "EVENT_BUS.post",
+     "WorldEvent.Unload",
+     "new event.world.WorldEvent.Unload"
+    ]
+   },
+   {
+    "hunk": "@@ -427,8 +400,15 @@",
+    "patchLine": 116,
+    "symbols": [
+     "DimensionManager.setWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -460,6 +440,7 @@",
+    "patchLine": 125,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -504,12 +485,20 @@",
+    "patchLine": 133,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -504,12 +485,20 @@",
+    "patchLine": 134,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -504,12 +485,20 @@",
+    "patchLine": 138,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -504,12 +485,20 @@",
+    "patchLine": 145,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -535,14 +524,15 @@",
+    "patchLine": 154,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -550,6 +540,8 @@",
+    "patchLine": 171,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -599,6 +591,7 @@",
+    "patchLine": 180,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -652,6 +646,7 @@",
+    "patchLine": 196,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -667,14 +662,17 @@",
+    "patchLine": 204,
+    "symbols": [
+     "ChunkIOExecutor.tick"
+    ]
+   },
+   {
+    "hunk": "@@ -667,14 +662,17 @@",
+    "patchLine": 207,
+    "symbols": [
+     "DimensionManager.getIDs"
+    ]
+   },
+   {
+    "hunk": "@@ -667,14 +662,17 @@",
+    "patchLine": 217,
+    "symbols": [
+     "DimensionManager.getWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -685,6 +683,7 @@",
+    "patchLine": 225,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -708,6 +707,7 @@",
+    "patchLine": 233,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -715,9 +715,11 @@",
+    "patchLine": 246,
+    "symbols": [
+     "DimensionManager.unloadWorlds"
+    ]
+   },
+   {
+    "hunk": "@@ -739,6 +741,7 @@",
+    "patchLine": 254,
+    "symbols": [
+     "StartupQuery.reset"
+    ]
+   },
+   {
+    "hunk": "@@ -755,7 +758,13 @@",
+    "patchLine": 263,
+    "symbols": [
+     "DimensionManager.getWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -755,7 +758,13 @@",
+    "patchLine": 266,
+    "symbols": [
+     "DimensionManager.initDimension"
+    ]
+   },
+   {
+    "hunk": "@@ -755,7 +758,13 @@",
+    "patchLine": 267,
+    "symbols": [
+     "DimensionManager.getWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -785,7 +794,7 @@",
+    "patchLine": 278,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -996,6 +1005,7 @@",
+    "patchLine": 286,
+    "symbols": [
+     "EVENT_BUS.post",
+     "WorldEvent.Unload",
+     "new event.world.WorldEvent.Unload"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/MinecraftServer.java.patch"
+ },
+ "net/minecraft/server/dedicated/DedicatedServer": {
+  "hooks": [
+   {
+    "hunk": "@@ -82,6 +83,7 @@",
+    "patchLine": 15,
+    "symbols": [
+     "TerminalHandler.handleCommands"
+    ]
+   },
+   {
+    "hunk": "@@ -107,6 +109,8 @@",
+    "patchLine": 23,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -198,6 +202,7 @@",
+    "patchLine": 32,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -244,6 +249,7 @@",
+    "patchLine": 40,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -272,7 +278,7 @@",
+    "patchLine": 49,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/dedicated/DedicatedServer.java.patch"
+ },
+ "net/minecraft/server/dedicated/ServerHangWatchdog": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/server/dedicated/ServerHangWatchdog.java.patch"
+ },
+ "net/minecraft/server/gui/MinecraftServerGui": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/server/gui/MinecraftServerGui.java.patch"
+ },
+ "net/minecraft/server/integrated/IntegratedServer": {
+  "hooks": [
+   {
+    "hunk": "@@ -86,44 +84,24 @@",
+    "patchLine": 24,
+    "symbols": [
+     "DimensionManager.getStaticDimensionIDs"
+    ]
+   },
+   {
+    "hunk": "@@ -86,44 +84,24 @@",
+    "patchLine": 58,
+    "symbols": [
+     "EVENT_BUS.post",
+     "WorldEvent.Load",
+     "new event.world.WorldEvent.Load"
+    ]
+   },
+   {
+    "hunk": "@@ -141,9 +119,10 @@",
+    "patchLine": 73,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -141,9 +119,10 @@",
+    "patchLine": 77,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/integrated/IntegratedServer.java.patch"
+ },
+ "net/minecraft/server/management/ItemInWorldManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -130,6 +132,14 @@",
+    "patchLine": 25,
+    "symbols": [
+     "ForgeEventFactory.onPlayerInteract"
+    ]
+   },
+   {
+    "hunk": "@@ -130,6 +132,14 @@",
+    "patchLine": 26,
+    "symbols": [
+     "ForgeHooks.rayTraceEyeHitVec"
+    ]
+   },
+   {
+    "hunk": "@@ -239,7 +270,8 @@",
+    "patchLine": 105,
+    "symbols": [
+     "ForgeHooks.onBlockBreakEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -332,6 +351,7 @@",
+    "patchLine": 179,
+    "symbols": [
+     "ForgeEventFactory.onPlayerDestroyItem"
+    ]
+   },
+   {
+    "hunk": "@@ -380,33 +400,51 @@",
+    "patchLine": 188,
+    "symbols": [
+     "ForgeEventFactory.onPlayerInteract"
+    ]
+   },
+   {
+    "hunk": "@@ -380,33 +400,51 @@",
+    "patchLine": 206,
+    "symbols": [
+     "ForgeEventFactory.onPlayerDestroyItem"
+    ]
+   },
+   {
+    "hunk": "@@ -380,33 +400,51 @@",
+    "patchLine": 247,
+    "symbols": [
+     "ForgeEventFactory.onPlayerDestroyItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/management/ItemInWorldManager.java.patch"
+ },
+ "net/minecraft/server/management/PlayerManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -117,15 +117,24 @@",
+    "patchLine": 19,
+    "symbols": [
+     "new common.util.ChunkCoordComparator",
+     "util.ChunkCoordComparator"
+    ]
+   },
+   {
+    "hunk": "@@ -252,6 +262,18 @@",
+    "patchLine": 51,
+    "symbols": [
+     "new common.util.ChunkCoordComparator",
+     "util.ChunkCoordComparator"
+    ]
+   },
+   {
+    "hunk": "@@ -252,6 +262,18 @@",
+    "patchLine": 60,
+    "symbols": [
+     "new common.util.ChunkCoordComparator",
+     "util.ChunkCoordComparator"
+    ]
+   },
+   {
+    "hunk": "@@ -351,6 +399,24 @@",
+    "patchLine": 119,
+    "symbols": [
+     "ChunkIOExecutor.dropQueuedChunkLoad"
+    ]
+   },
+   {
+    "hunk": "@@ -351,6 +399,24 @@",
+    "patchLine": 125,
+    "symbols": [
+     "ChunkIOExecutor.dropQueuedChunkLoad"
+    ]
+   },
+   {
+    "hunk": "@@ -358,9 +424,12 @@",
+    "patchLine": 145,
+    "symbols": [
+     "ChunkWatchEvent.UnWatch",
+     "EVENT_BUS.post",
+     "new event.world.ChunkWatchEvent.UnWatch"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/management/PlayerManager.java.patch"
+ },
+ "net/minecraft/server/management/ServerConfigurationManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -161,6 +172,7 @@",
+    "patchLine": 43,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -262,6 +274,7 @@",
+    "patchLine": 51,
+    "symbols": [
+     "ForgeEventFactory.firePlayerLoadingEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -288,6 +316,7 @@",
+    "patchLine": 83,
+    "symbols": [
+     "ChunkIOExecutor.adjustPoolSize"
+    ]
+   },
+   {
+    "hunk": "@@ -305,6 +334,7 @@",
+    "patchLine": 91,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -326,6 +356,7 @@",
+    "patchLine": 99,
+    "symbols": [
+     "ChunkIOExecutor.adjustPoolSize"
+    ]
+   },
+   {
+    "hunk": "@@ -470,19 +512,25 @@",
+    "patchLine": 141,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -493,17 +541,27 @@",
+    "patchLine": 169,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/management/ServerConfigurationManager.java.patch"
+ },
+ "net/minecraft/server/network/NetHandlerHandshakeTCP": {
+  "hooks": [
+   {
+    "hunk": "@@ -22,6 +22,8 @@",
+    "patchLine": 7,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/network/NetHandlerHandshakeTCP.java.patch"
+ },
+ "net/minecraft/server/network/NetHandlerLoginServer": {
+  "hooks": [
+   {
+    "hunk": "@@ -66,12 +66,12 @@",
+    "patchLine": 8,
+    "symbols": [
+     "FMLNetworkHandler.fmlServerHandshake"
+    ]
+   },
+   {
+    "hunk": "@@ -130,7 +130,7 @@",
+    "patchLine": 23,
+    "symbols": [
+     "FMLNetworkHandler.fmlServerHandshake"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/server/network/NetHandlerLoginServer.java.patch"
+ },
+ "net/minecraft/stats/StatList": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/stats/StatList.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntity": {
+  "hooks": [
+   {
+    "hunk": "@@ -102,7 +107,17 @@",
+    "patchLine": 52,
+    "symbols": [
+     "FMLLog.log"
+    ]
+   },
+   {
+    "hunk": "@@ -279,4 +293,183 @@",
+    "patchLine": 227,
+    "symbols": [
+     "ForgeEventFactory.gatherCapabilities"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntity.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityBeacon": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityBeacon.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityBrewingStand": {
+  "hooks": [
+   {
+    "hunk": "@@ -145,19 +145,22 @@",
+    "patchLine": 26,
+    "symbols": [
+     "BrewingRecipeRegistry.canBrew"
+    ]
+   },
+   {
+    "hunk": "@@ -145,19 +145,22 @@",
+    "patchLine": 32,
+    "symbols": [
+     "ForgeEventFactory.onPotionAttemptBreaw"
+    ]
+   },
+   {
+    "hunk": "@@ -145,19 +145,22 @@",
+    "patchLine": 35,
+    "symbols": [
+     "BrewingRecipeRegistry.brewPotions"
+    ]
+   },
+   {
+    "hunk": "@@ -191,6 +195,7 @@",
+    "patchLine": 64,
+    "symbols": [
+     "ForgeEventFactory.onPotionBrewed"
+    ]
+   },
+   {
+    "hunk": "@@ -310,7 +315,9 @@",
+    "patchLine": 73,
+    "symbols": [
+     "BrewingRecipeRegistry.isValidIngredient"
+    ]
+   },
+   {
+    "hunk": "@@ -310,7 +315,9 @@",
+    "patchLine": 74,
+    "symbols": [
+     "BrewingRecipeRegistry.isValidInput"
+    ]
+   },
+   {
+    "hunk": "@@ -386,4 +393,18 @@",
+    "patchLine": 84,
+    "symbols": [
+     "new items.wrapper.SidedInvWrapper",
+     "wrapper.SidedInvWrapper"
+    ]
+   },
+   {
+    "hunk": "@@ -386,4 +393,18 @@",
+    "patchLine": 85,
+    "symbols": [
+     "new items.wrapper.SidedInvWrapper",
+     "wrapper.SidedInvWrapper"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityBrewingStand.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityChest": {
+  "hooks": [
+   {
+    "hunk": "@@ -468,4 +469,24 @@",
+    "patchLine": 24,
+    "symbols": [
+     "VanillaDoubleChestItemHandler.get"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityChest.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityFurnace": {
+  "hooks": [
+   {
+    "hunk": "@@ -342,7 +345,15 @@",
+    "patchLine": 74,
+    "symbols": [
+     "GameRegistry.getFuelValue"
+    ]
+   },
+   {
+    "hunk": "@@ -451,4 +462,21 @@",
+    "patchLine": 83,
+    "symbols": [
+     "new items.wrapper.SidedInvWrapper",
+     "wrapper.SidedInvWrapper"
+    ]
+   },
+   {
+    "hunk": "@@ -451,4 +462,21 @@",
+    "patchLine": 84,
+    "symbols": [
+     "new items.wrapper.SidedInvWrapper",
+     "wrapper.SidedInvWrapper"
+    ]
+   },
+   {
+    "hunk": "@@ -451,4 +462,21 @@",
+    "patchLine": 85,
+    "symbols": [
+     "new items.wrapper.SidedInvWrapper",
+     "wrapper.SidedInvWrapper"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityFurnace.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityHopper": {
+  "hooks": [
+   {
+    "hunk": "@@ -260,6 +260,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "VanillaInventoryCodeHooks.insertHook"
+    ]
+   },
+   {
+    "hunk": "@@ -366,6 +367,7 @@",
+    "patchLine": 15,
+    "symbols": [
+     "VanillaInventoryCodeHooks.extractHook"
+    ]
+   },
+   {
+    "hunk": "@@ -668,4 +684,10 @@",
+    "patchLine": 60,
+    "symbols": [
+     "items.VanillaHopperItemHandler",
+     "new items.VanillaHopperItemHandler"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityHopper.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityLockable": {
+  "hooks": [
+   {
+    "hunk": "@@ -47,4 +47,25 @@",
+    "patchLine": 12,
+    "symbols": [
+     "new items.wrapper.InvWrapper",
+     "wrapper.InvWrapper"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityLockable.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityNote": {
+  "hooks": [
+   {
+    "hunk": "@@ -27,7 +27,9 @@",
+    "patchLine": 9,
+    "symbols": [
+     "ForgeHooks.onNoteChange"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityNote.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntityPiston": {
+  "hooks": [
+   {
+    "hunk": "@@ -148,7 +148,8 @@",
+    "patchLine": 8,
+    "symbols": [
+     "ForgeEventFactory.onNeighborNotify"
+    ]
+   },
+   {
+    "hunk": "@@ -166,7 +167,8 @@",
+    "patchLine": 18,
+    "symbols": [
+     "ForgeEventFactory.onNeighborNotify"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntityPiston.java.patch"
+ },
+ "net/minecraft/tileentity/TileEntitySign": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/tileentity/TileEntitySign.java.patch"
+ },
+ "net/minecraft/util/BlockPos": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/BlockPos.java.patch"
+ },
+ "net/minecraft/util/ChatComponentStyle": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/ChatComponentStyle.java.patch"
+ },
+ "net/minecraft/util/ChatStyle": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/ChatStyle.java.patch"
+ },
+ "net/minecraft/util/EnumFacing": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/EnumFacing.java.patch"
+ },
+ "net/minecraft/util/EnumWorldBlockLayer": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/EnumWorldBlockLayer.java.patch"
+ },
+ "net/minecraft/util/IChatComponent": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/IChatComponent.java.patch"
+ },
+ "net/minecraft/util/MouseHelper": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/MouseHelper.java.patch"
+ },
+ "net/minecraft/util/MovingObjectPosition": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/MovingObjectPosition.java.patch"
+ },
+ "net/minecraft/util/ResourceLocation": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/ResourceLocation.java.patch"
+ },
+ "net/minecraft/util/Session": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/Session.java.patch"
+ },
+ "net/minecraft/util/StringTranslate": {
+  "hooks": [
+   {
+    "hunk": "@@ -23,9 +23,29 @@",
+    "patchLine": 29,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/util/StringTranslate.java.patch"
+ },
+ "net/minecraft/util/Vec3": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/util/Vec3.java.patch"
+ },
+ "net/minecraft/util/WeightedRandomChestContent": {
+  "hooks": [
+   {
+    "hunk": "@@ -36,48 +36,39 @@",
+    "patchLine": 39,
+    "symbols": [
+     "ChestGenHooks.generateStacks"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/util/WeightedRandomChestContent.java.patch"
+ },
+ "net/minecraft/world/ChunkCache": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/ChunkCache.java.patch"
+ },
+ "net/minecraft/world/Explosion": {
+  "hooks": [
+   {
+    "hunk": "@@ -126,6 +128,7 @@",
+    "patchLine": 32,
+    "symbols": [
+     "ForgeEventFactory.onExplosionDetonate"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/Explosion.java.patch"
+ },
+ "net/minecraft/world/IBlockAccess": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/IBlockAccess.java.patch"
+ },
+ "net/minecraft/world/SpawnerAnimals": {
+  "hooks": [
+   {
+    "hunk": "@@ -134,8 +135,10 @@",
+    "patchLine": 27,
+    "symbols": [
+     "ForgeEventFactory.canEntitySpawn"
+    ]
+   },
+   {
+    "hunk": "@@ -134,8 +135,10 @@",
+    "patchLine": 30,
+    "symbols": [
+     "ForgeEventFactory.doSpecialSpawn"
+    ]
+   },
+   {
+    "hunk": "@@ -144,7 +147,7 @@",
+    "patchLine": 39,
+    "symbols": [
+     "ForgeEventFactory.getMaxSpawnPackSize"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/SpawnerAnimals.java.patch"
+ },
+ "net/minecraft/world/World": {
+  "hooks": [
+   {
+    "hunk": "@@ -284,39 +301,63 @@",
+    "patchLine": 93,
+    "symbols": [
+     "BlockSnapshot.getBlockSnapshot"
+    ]
+   },
+   {
+    "hunk": "@@ -404,6 +445,9 @@",
+    "patchLine": 162,
+    "symbols": [
+     "ForgeEventFactory.onNeighborNotify"
+    ]
+   },
+   {
+    "hunk": "@@ -414,6 +458,11 @@",
+    "patchLine": 174,
+    "symbols": [
+     "ForgeEventFactory.onNeighborNotify"
+    ]
+   },
+   {
+    "hunk": "@@ -972,6 +1021,12 @@",
+    "patchLine": 193,
+    "symbols": [
+     "ForgeEventFactory.onPlaySoundAtEntity"
+    ]
+   },
+   {
+    "hunk": "@@ -980,6 +1035,12 @@",
+    "patchLine": 206,
+    "symbols": [
+     "ForgeEventFactory.onPlaySoundAtEntity"
+    ]
+   },
+   {
+    "hunk": "@@ -1055,6 +1119,8 @@",
+    "patchLine": 229,
+    "symbols": [
+     "EVENT_BUS.post",
+     "entity.EntityJoinWorldEvent",
+     "new event.entity.EntityJoinWorldEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -1305,9 +1395,7 @@",
+    "patchLine": 300,
+    "symbols": [
+     "ForgeHooksClient.getSkyBlendColour"
+    ]
+   },
+   {
+    "hunk": "@@ -1494,7 +1599,15 @@",
+    "patchLine": 361,
+    "symbols": [
+     "FMLLog.severe"
+    ]
+   },
+   {
+    "hunk": "@@ -1554,7 +1667,15 @@",
+    "patchLine": 378,
+    "symbols": [
+     "FMLLog.severe"
+    ]
+   },
+   {
+    "hunk": "@@ -1601,7 +1722,16 @@",
+    "patchLine": 395,
+    "symbols": [
+     "FMLLog.severe"
+    ]
+   },
+   {
+    "hunk": "@@ -1699,9 +1835,13 @@",
+    "patchLine": 449,
+    "symbols": [
+     "ForgeEventFactory.canEntityUpdate"
+    ]
+   },
+   {
+    "hunk": "@@ -2034,6 +2191,7 @@",
+    "patchLine": 506,
+    "symbols": [
+     "ForgeEventFactory.onExplosionStart"
+    ]
+   },
+   {
+    "hunk": "@@ -2905,11 +3096,13 @@",
+    "patchLine": 703,
+    "symbols": [
+     "EVENT_BUS.post",
+     "entity.EntityJoinWorldEvent",
+     "new event.entity.EntityJoinWorldEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -3186,12 +3381,18 @@",
+    "patchLine": 774,
+    "symbols": [
+     "EVENT_BUS.post",
+     "entity.EntityJoinWorldEvent",
+     "new event.entity.EntityJoinWorldEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -3528,4 +3724,81 @@",
+    "patchLine": 902,
+    "symbols": [
+     "ForgeChunkManager.getPersistentChunksFor"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/World.java.patch"
+ },
+ "net/minecraft/world/WorldProvider": {
+  "hooks": [
+   {
+    "hunk": "@@ -153,13 +139,13 @@",
+    "patchLine": 37,
+    "symbols": [
+     "DimensionManager.createProviderFor"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/WorldProvider.java.patch"
+ },
+ "net/minecraft/world/WorldServer": {
+  "hooks": [
+   {
+    "hunk": "@@ -94,30 +94,46 @@",
+    "patchLine": 14,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -94,30 +94,46 @@",
+    "patchLine": 29,
+    "symbols": [
+     "common.WorldSpecificSaveHandler",
+     "new common.WorldSpecificSaveHandler"
+    ]
+   },
+   {
+    "hunk": "@@ -94,30 +94,46 @@",
+    "patchLine": 34,
+    "symbols": [
+     "DimensionManager.setWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -217,12 +237,14 @@",
+    "patchLine": 67,
+    "symbols": [
+     "ForgeEventFactory.getPotentialSpawns"
+    ]
+   },
+   {
+    "hunk": "@@ -217,12 +237,14 @@",
+    "patchLine": 74,
+    "symbols": [
+     "ForgeEventFactory.getPotentialSpawns"
+    ]
+   },
+   {
+    "hunk": "@@ -777,6 +819,7 @@",
+    "patchLine": 189,
+    "symbols": [
+     "ForgeEventFactory.onCreateWorldSpawn"
+    ]
+   },
+   {
+    "hunk": "@@ -822,7 +865,7 @@",
+    "patchLine": 198,
+    "symbols": [
+     "ForgeHooks.getBonusChest"
+    ]
+   },
+   {
+    "hunk": "@@ -859,6 +902,7 @@",
+    "patchLine": 206,
+    "symbols": [
+     "EVENT_BUS.post",
+     "WorldEvent.Save",
+     "new event.world.WorldEvent.Save"
+    ]
+   },
+   {
+    "hunk": "@@ -947,6 +992,7 @@",
+    "patchLine": 222,
+    "symbols": [
+     "ForgeEventFactory.onExplosionStart"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/WorldServer.java.patch"
+ },
+ "net/minecraft/world/WorldServerMulti": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/WorldServerMulti.java.patch"
+ },
+ "net/minecraft/world/WorldType": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/WorldType.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeColorHelper": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeColorHelper.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeDecorator": {
+  "hooks": [
+   {
+    "hunk": "@@ -105,8 +105,10 @@",
+    "patchLine": 7,
+    "symbols": [
+     "DecorateBiomeEvent.Pre",
+     "EVENT_BUS.post",
+     "new event.terraingen.DecorateBiomeEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -105,8 +105,10 @@",
+    "patchLine": 10,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -114,6 +116,7 @@",
+    "patchLine": 18,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -121,6 +124,7 @@",
+    "patchLine": 26,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -135,6 +139,7 @@",
+    "patchLine": 34,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -149,6 +154,7 @@",
+    "patchLine": 42,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -156,6 +162,7 @@",
+    "patchLine": 50,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -177,6 +184,7 @@",
+    "patchLine": 58,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -190,6 +198,7 @@",
+    "patchLine": 66,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -203,6 +212,7 @@",
+    "patchLine": 74,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -229,6 +239,8 @@",
+    "patchLine": 82,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -279,7 +291,9 @@",
+    "patchLine": 93,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -305,7 +319,8 @@",
+    "patchLine": 104,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -319,6 +334,7 @@",
+    "patchLine": 112,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -334,6 +350,7 @@",
+    "patchLine": 120,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -348,6 +365,7 @@",
+    "patchLine": 128,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -357,6 +375,7 @@",
+    "patchLine": 136,
+    "symbols": [
+     "DecorateBiomeEvent.Post",
+     "EVENT_BUS.post",
+     "new event.terraingen.DecorateBiomeEvent.Post"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 144,
+    "symbols": [
+     "ORE_GEN_BUS.post",
+     "OreGenEvent.Pre",
+     "new event.terraingen.OreGenEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 145,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 147,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 149,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 151,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 153,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 155,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 157,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 159,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 161,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 163,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 165,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -397,16 +416,29 @@",
+    "patchLine": 167,
+    "symbols": [
+     "ORE_GEN_BUS.post",
+     "OreGenEvent.Post",
+     "new event.terraingen.OreGenEvent.Post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeDecorator.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeGenBase": {
+  "hooks": [
+   {
+    "hunk": "@@ -497,6 +503,84 @@",
+    "patchLine": 63,
+    "symbols": [
+     "new event.terraingen.DeferredBiomeDecorator",
+     "terraingen.DeferredBiomeDecorator"
+    ]
+   },
+   {
+    "hunk": "@@ -497,6 +503,84 @@",
+    "patchLine": 68,
+    "symbols": [
+     "BiomeEvent.GetWaterColor",
+     "new event.terraingen.BiomeEvent.GetWaterColor"
+    ]
+   },
+   {
+    "hunk": "@@ -497,6 +503,84 @@",
+    "patchLine": 69,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -497,6 +503,84 @@",
+    "patchLine": 75,
+    "symbols": [
+     "BiomeEvent.GetGrassColor",
+     "new event.terraingen.BiomeEvent.GetGrassColor"
+    ]
+   },
+   {
+    "hunk": "@@ -497,6 +503,84 @@",
+    "patchLine": 76,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -497,6 +503,84 @@",
+    "patchLine": 82,
+    "symbols": [
+     "BiomeEvent.GetFoliageColor",
+     "new event.terraingen.BiomeEvent.GetFoliageColor"
+    ]
+   },
+   {
+    "hunk": "@@ -497,6 +503,84 @@",
+    "patchLine": 83,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeGenBase.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeGenForest": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeGenForest.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeGenHills": {
+  "hooks": [
+   {
+    "hunk": "@@ -40,28 +40,20 @@",
+    "patchLine": 8,
+    "symbols": [
+     "ORE_GEN_BUS.post",
+     "OreGenEvent.Pre",
+     "new event.terraingen.OreGenEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -40,28 +40,20 @@",
+    "patchLine": 10,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -40,28 +40,20 @@",
+    "patchLine": 32,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -40,28 +40,20 @@",
+    "patchLine": 35,
+    "symbols": [
+     "ORE_GEN_BUS.post",
+     "OreGenEvent.Post",
+     "new event.terraingen.OreGenEvent.Post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeGenHills.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeGenJungle": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeGenJungle.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeGenPlains": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeGenPlains.java.patch"
+ },
+ "net/minecraft/world/biome/BiomeGenSwamp": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/biome/BiomeGenSwamp.java.patch"
+ },
+ "net/minecraft/world/biome/WorldChunkManager": {
+  "hooks": [
+   {
+    "hunk": "@@ -249,4 +245,11 @@",
+    "patchLine": 41,
+    "symbols": [
+     "WorldTypeEvent.InitBiomeGens",
+     "new event.terraingen.WorldTypeEvent.InitBiomeGens"
+    ]
+   },
+   {
+    "hunk": "@@ -249,4 +245,11 @@",
+    "patchLine": 42,
+    "symbols": [
+     "TERRAIN_GEN_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/biome/WorldChunkManager.java.patch"
+ },
+ "net/minecraft/world/border/WorldBorder": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/border/WorldBorder.java.patch"
+ },
+ "net/minecraft/world/chunk/Chunk": {
+  "hooks": [
+   {
+    "hunk": "@@ -792,6 +788,7 @@",
+    "patchLine": 104,
+    "symbols": [
+     "EVENT_BUS.post",
+     "EntityEvent.EnteringChunk",
+     "new event.entity.EntityEvent.EnteringChunk"
+    ]
+   },
+   {
+    "hunk": "@@ -910,8 +910,9 @@",
+    "patchLine": 170,
+    "symbols": [
+     "ChunkEvent.Load",
+     "EVENT_BUS.post",
+     "new event.world.ChunkEvent.Load"
+    ]
+   },
+   {
+    "hunk": "@@ -927,6 +928,7 @@",
+    "patchLine": 178,
+    "symbols": [
+     "ChunkEvent.Unload",
+     "EVENT_BUS.post",
+     "new event.world.ChunkEvent.Unload"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/chunk/Chunk.java.patch"
+ },
+ "net/minecraft/world/chunk/storage/AnvilChunkLoader": {
+  "hooks": [
+   {
+    "hunk": "@@ -105,6 +163,7 @@",
+    "patchLine": 99,
+    "symbols": [
+     "ChunkDataEvent.Save",
+     "EVENT_BUS.post",
+     "new event.world.ChunkDataEvent.Save"
+    ]
+   },
+   {
+    "hunk": "@@ -281,11 +340,20 @@",
+    "patchLine": 117,
+    "symbols": [
+     "FMLLog.log"
+    ]
+   },
+   {
+    "hunk": "@@ -295,8 +363,17 @@",
+    "patchLine": 135,
+    "symbols": [
+     "FMLLog.log"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/chunk/storage/AnvilChunkLoader.java.patch"
+ },
+ "net/minecraft/world/chunk/storage/AnvilSaveHandler": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/chunk/storage/AnvilSaveHandler.java.patch"
+ },
+ "net/minecraft/world/chunk/storage/ExtendedBlockStorage": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/chunk/storage/ExtendedBlockStorage.java.patch"
+ },
+ "net/minecraft/world/chunk/storage/RegionFile": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/chunk/storage/RegionFile.java.patch"
+ },
+ "net/minecraft/world/gen/ChunkProviderEnd": {
+  "hooks": [
+   {
+    "hunk": "@@ -42,6 +45,14 @@",
+    "patchLine": 19,
+    "symbols": [
+     "TerrainGen.getModdedNoiseGenerators"
+    ]
+   },
+   {
+    "hunk": "@@ -114,6 +125,9 @@",
+    "patchLine": 32,
+    "symbols": [
+     "ChunkProviderEvent.ReplaceBiomeBlocks",
+     "new event.terraingen.ChunkProviderEvent.ReplaceBiomeBlocks"
+    ]
+   },
+   {
+    "hunk": "@@ -114,6 +125,9 @@",
+    "patchLine": 33,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -184,6 +199,10 @@",
+    "patchLine": 50,
+    "symbols": [
+     "ChunkProviderEvent.InitNoiseField",
+     "new event.terraingen.ChunkProviderEvent.InitNoiseField"
+    ]
+   },
+   {
+    "hunk": "@@ -184,6 +199,10 @@",
+    "patchLine": 51,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -273,8 +292,10 @@",
+    "patchLine": 61,
+    "symbols": [
+     "EVENT_BUS.post",
+     "PopulateChunkEvent.Pre",
+     "new event.terraingen.PopulateChunkEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -273,8 +292,10 @@",
+    "patchLine": 64,
+    "symbols": [
+     "EVENT_BUS.post",
+     "PopulateChunkEvent.Post",
+     "new event.terraingen.PopulateChunkEvent.Post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/ChunkProviderEnd.java.patch"
+ },
+ "net/minecraft/world/gen/ChunkProviderGenerate": {
+  "hooks": [
+   {
+    "hunk": "@@ -58,6 +58,15 @@",
+    "patchLine": 8,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -58,6 +58,15 @@",
+    "patchLine": 9,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -58,6 +58,15 @@",
+    "patchLine": 10,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -58,6 +58,15 @@",
+    "patchLine": 11,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -58,6 +58,15 @@",
+    "patchLine": 12,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -58,6 +58,15 @@",
+    "patchLine": 13,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -58,6 +58,15 @@",
+    "patchLine": 14,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -87,6 +96,16 @@",
+    "patchLine": 25,
+    "symbols": [
+     "TerrainGen.getModdedNoiseGenerators"
+    ]
+   },
+   {
+    "hunk": "@@ -160,6 +179,10 @@",
+    "patchLine": 40,
+    "symbols": [
+     "ChunkProviderEvent.ReplaceBiomeBlocks",
+     "new event.terraingen.ChunkProviderEvent.ReplaceBiomeBlocks"
+    ]
+   },
+   {
+    "hunk": "@@ -160,6 +179,10 @@",
+    "patchLine": 41,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -366,6 +389,8 @@",
+    "patchLine": 51,
+    "symbols": [
+     "EVENT_BUS.post",
+     "PopulateChunkEvent.Pre",
+     "new event.terraingen.PopulateChunkEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -391,7 +416,8 @@",
+    "patchLine": 62,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -399,7 +425,8 @@",
+    "patchLine": 72,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -413,7 +440,8 @@",
+    "patchLine": 81,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -423,10 +451,14 @@",
+    "patchLine": 90,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -423,10 +451,14 @@",
+    "patchLine": 97,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -445,6 +477,8 @@",
+    "patchLine": 106,
+    "symbols": [
+     "EVENT_BUS.post",
+     "PopulateChunkEvent.Post",
+     "new event.terraingen.PopulateChunkEvent.Post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/ChunkProviderGenerate.java.patch"
+ },
+ "net/minecraft/world/gen/ChunkProviderHell": {
+  "hooks": [
+   {
+    "hunk": "@@ -59,16 +59,29 @@",
+    "patchLine": 18,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -59,16 +59,29 @@",
+    "patchLine": 19,
+    "symbols": [
+     "TerrainGen.getModdedMapGen"
+    ]
+   },
+   {
+    "hunk": "@@ -59,16 +59,29 @@",
+    "patchLine": 40,
+    "symbols": [
+     "TerrainGen.getModdedNoiseGenerators"
+    ]
+   },
+   {
+    "hunk": "@@ -148,6 +161,10 @@",
+    "patchLine": 55,
+    "symbols": [
+     "ChunkProviderEvent.ReplaceBiomeBlocks",
+     "new event.terraingen.ChunkProviderEvent.ReplaceBiomeBlocks"
+    ]
+   },
+   {
+    "hunk": "@@ -148,6 +161,10 @@",
+    "patchLine": 56,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -265,6 +282,10 @@",
+    "patchLine": 66,
+    "symbols": [
+     "ChunkProviderEvent.InitNoiseField",
+     "new event.terraingen.ChunkProviderEvent.InitNoiseField"
+    ]
+   },
+   {
+    "hunk": "@@ -265,6 +282,10 @@",
+    "patchLine": 67,
+    "symbols": [
+     "EVENT_BUS.post"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 77,
+    "symbols": [
+     "EVENT_BUS.post",
+     "PopulateChunkEvent.Pre",
+     "new event.terraingen.PopulateChunkEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 83,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 90,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 97,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 110,
+    "symbols": [
+     "DecorateBiomeEvent.Pre",
+     "EVENT_BUS.post",
+     "new event.terraingen.DecorateBiomeEvent.Pre"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 112,
+    "symbols": [
+     "TerrainGen.decorate"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 125,
+    "symbols": [
+     "TerrainGen.generateOre"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 132,
+    "symbols": [
+     "TerrainGen.populate"
+    ]
+   },
+   {
+    "hunk": "@@ -356,50 +377,60 @@",
+    "patchLine": 138,
+    "symbols": [
+     "EVENT_BUS.post",
+     "PopulateChunkEvent.Post",
+     "new event.terraingen.PopulateChunkEvent.Post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/ChunkProviderHell.java.patch"
+ },
+ "net/minecraft/world/gen/ChunkProviderServer": {
+  "hooks": [
+   {
+    "hunk": "@@ -57,7 +58,7 @@",
+    "patchLine": 16,
+    "symbols": [
+     "DimensionManager.shouldLoadSpawn"
+    ]
+   },
+   {
+    "hunk": "@@ -80,12 +81,64 @@",
+    "patchLine": 44,
+    "symbols": [
+     "ChunkIOExecutor.queueChunkLoad"
+    ]
+   },
+   {
+    "hunk": "@@ -80,12 +81,64 @@",
+    "patchLine": 49,
+    "symbols": [
+     "ChunkIOExecutor.syncChunkLoad"
+    ]
+   },
+   {
+    "hunk": "@@ -80,12 +81,64 @@",
+    "patchLine": 77,
+    "symbols": [
+     "FMLLog.bigWarning"
+    ]
+   },
+   {
+    "hunk": "@@ -80,12 +81,64 @@",
+    "patchLine": 79,
+    "symbols": [
+     "ForgeChunkManager.fetchDormantChunk"
+    ]
+   },
+   {
+    "hunk": "@@ -205,6 +259,7 @@",
+    "patchLine": 97,
+    "symbols": [
+     "GameRegistry.generateWorld"
+    ]
+   },
+   {
+    "hunk": "@@ -280,6 +340,12 @@",
+    "patchLine": 117,
+    "symbols": [
+     "ForgeChunkManager.putDormantChunk"
+    ]
+   },
+   {
+    "hunk": "@@ -280,6 +340,12 @@",
+    "patchLine": 118,
+    "symbols": [
+     "DimensionManager.shouldLoadSpawn",
+     "ForgeChunkManager.getPersistentChunksFor"
+    ]
+   },
+   {
+    "hunk": "@@ -280,6 +340,12 @@",
+    "patchLine": 119,
+    "symbols": [
+     "DimensionManager.unloadWorld"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/ChunkProviderServer.java.patch"
+ },
+ "net/minecraft/world/gen/MapGenCaves": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/MapGenCaves.java.patch"
+ },
+ "net/minecraft/world/gen/MapGenRavine": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/MapGenRavine.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenAbstractTree": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenAbstractTree.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenBigMushroom": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenBigMushroom.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenBigTree": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenBigTree.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenCanopyTree": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenCanopyTree.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenDeadBush": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenDeadBush.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenDungeons": {
+  "hooks": [
+   {
+    "hunk": "@@ -123,12 +123,11 @@",
+    "patchLine": 13,
+    "symbols": [
+     "ChestGenHooks.getItems"
+    ]
+   },
+   {
+    "hunk": "@@ -159,6 +158,12 @@",
+    "patchLine": 22,
+    "symbols": [
+     "DungeonHooks.getRandomDungeonMob"
+    ]
+   },
+   {
+    "hunk": "@@ -159,6 +158,12 @@",
+    "patchLine": 27,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -159,6 +158,12 @@",
+    "patchLine": 28,
+    "symbols": [
+     "ChestGenHooks.addItem"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenDungeons.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenForest": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenForest.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenHugeTrees": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenHugeTrees.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenMegaJungle": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenMegaJungle.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenMegaPineTree": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenMegaPineTree.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenMinable": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenMinable.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenSavannaTree": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenSavannaTree.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenShrub": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenShrub.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenSwamp": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenSwamp.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenTaiga1": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenTaiga1.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenTaiga2": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenTaiga2.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenTallGrass": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenTallGrass.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGenTrees": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGenTrees.java.patch"
+ },
+ "net/minecraft/world/gen/feature/WorldGeneratorBonusChest": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/feature/WorldGeneratorBonusChest.java.patch"
+ },
+ "net/minecraft/world/gen/layer/GenLayer": {
+  "hooks": [
+   {
+    "hunk": "@@ -191,7 +191,7 @@",
+    "patchLine": 24,
+    "symbols": [
+     "oceanBiomes.contains"
+    ]
+   },
+   {
+    "hunk": "@@ -203,4 +203,27 @@",
+    "patchLine": 50,
+    "symbols": [
+     "WorldTypeEvent.BiomeSize",
+     "new event.terraingen.WorldTypeEvent.BiomeSize"
+    ]
+   },
+   {
+    "hunk": "@@ -203,4 +203,27 @@",
+    "patchLine": 51,
+    "symbols": [
+     "TERRAIN_GEN_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/layer/GenLayer.java.patch"
+ },
+ "net/minecraft/world/gen/layer/GenLayerBiome": {
+  "hooks": [
+   {
+    "hunk": "@@ -6,10 +6,9 @@",
+    "patchLine": 12,
+    "symbols": [
+     "BiomeType.values"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 21,
+    "symbols": [
+     "BiomeType.values"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 23,
+    "symbols": [
+     "BiomeManager.getBiomes"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 30,
+    "symbols": [
+     "DESERT.ordinal"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 32,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 33,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 34,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 40,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 41,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 42,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 43,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 44,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -17,9 +16,30 @@",
+    "patchLine": 45,
+    "symbols": [
+     "BiomeManager.BiomeEntry",
+     "new common.BiomeManager.BiomeEntry"
+    ]
+   },
+   {
+    "hunk": "@@ -111,4 +131,12 @@",
+    "patchLine": 91,
+    "symbols": [
+     "BiomeManager.isTypeListModded"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/layer/GenLayerBiome.java.patch"
+ },
+ "net/minecraft/world/gen/structure/ComponentScatteredFeaturePieces": {
+  "hooks": [
+   {
+    "hunk": "@@ -40,6 +40,12 @@",
+    "patchLine": 9,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -40,6 +40,12 @@",
+    "patchLine": 10,
+    "symbols": [
+     "ChestGenHooks.addItem"
+    ]
+   },
+   {
+    "hunk": "@@ -258,7 +264,7 @@",
+    "patchLine": 21,
+    "symbols": [
+     "ChestGenHooks.getCount",
+     "ChestGenHooks.getItems"
+    ]
+   },
+   {
+    "hunk": "@@ -362,6 +368,13 @@",
+    "patchLine": 31,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -362,6 +368,13 @@",
+    "patchLine": 32,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -362,6 +368,13 @@",
+    "patchLine": 33,
+    "symbols": [
+     "ChestGenHooks.addItem"
+    ]
+   },
+   {
+    "hunk": "@@ -518,9 +531,12 @@",
+    "patchLine": 43,
+    "symbols": [
+     "ChestGenHooks.getInfo"
+    ]
+   },
+   {
+    "hunk": "@@ -518,9 +531,12 @@",
+    "patchLine": 44,
+    "symbols": [
+     "ChestGenHooks.getInfo"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/ComponentScatteredFeaturePieces.java.patch"
+ },
+ "net/minecraft/world/gen/structure/MapGenStronghold": {
+  "hooks": [
+   {
+    "hunk": "@@ -28,11 +28,18 @@",
+    "patchLine": 8,
+    "symbols": [
+     "strongHoldBiomesBlackList.contains"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/MapGenStronghold.java.patch"
+ },
+ "net/minecraft/world/gen/structure/MapGenStructure": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/MapGenStructure.java.patch"
+ },
+ "net/minecraft/world/gen/structure/StructureComponent": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/StructureComponent.java.patch"
+ },
+ "net/minecraft/world/gen/structure/StructureMineshaftPieces": {
+  "hooks": [
+   {
+    "hunk": "@@ -32,6 +32,12 @@",
+    "patchLine": 9,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -32,6 +32,12 @@",
+    "patchLine": 10,
+    "symbols": [
+     "ChestGenHooks.addItem"
+    ]
+   },
+   {
+    "hunk": "@@ -351,14 +357,15 @@",
+    "patchLine": 20,
+    "symbols": [
+     "ChestGenHooks.getInfo"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/StructureMineshaftPieces.java.patch"
+ },
+ "net/minecraft/world/gen/structure/StructureNetherBridgePieces": {
+  "hooks": [
+   {
+    "hunk": "@@ -154,7 +154,7 @@",
+    "patchLine": 8,
+    "symbols": [
+     "ChestGenHooks.getCount",
+     "ChestGenHooks.getItems"
+    ]
+   },
+   {
+    "hunk": "@@ -225,7 +225,7 @@",
+    "patchLine": 17,
+    "symbols": [
+     "ChestGenHooks.getCount",
+     "ChestGenHooks.getItems"
+    ]
+   },
+   {
+    "hunk": "@@ -943,6 +943,7 @@",
+    "patchLine": 25,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/StructureNetherBridgePieces.java.patch"
+ },
+ "net/minecraft/world/gen/structure/StructureStart": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/StructureStart.java.patch"
+ },
+ "net/minecraft/world/gen/structure/StructureStrongholdPieces": {
+  "hooks": [
+   {
+    "hunk": "@@ -240,6 +240,12 @@",
+    "patchLine": 9,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -240,6 +240,12 @@",
+    "patchLine": 10,
+    "symbols": [
+     "ChestGenHooks.addItem"
+    ]
+   },
+   {
+    "hunk": "@@ -296,7 +302,7 @@",
+    "patchLine": 21,
+    "symbols": [
+     "ChestGenHooks.getCount",
+     "ChestGenHooks.getItems"
+    ]
+   },
+   {
+    "hunk": "@@ -592,6 +598,12 @@",
+    "patchLine": 31,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -592,6 +598,12 @@",
+    "patchLine": 32,
+    "symbols": [
+     "ChestGenHooks.addItem"
+    ]
+   },
+   {
+    "hunk": "@@ -736,12 +748,13 @@",
+    "patchLine": 43,
+    "symbols": [
+     "ChestGenHooks.getInfo"
+    ]
+   },
+   {
+    "hunk": "@@ -1013,6 +1026,12 @@",
+    "patchLine": 60,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -1013,6 +1026,12 @@",
+    "patchLine": 61,
+    "symbols": [
+     "ChestGenHooks.addItem"
+    ]
+   },
+   {
+    "hunk": "@@ -1151,7 +1170,7 @@",
+    "patchLine": 72,
+    "symbols": [
+     "ChestGenHooks.getCount",
+     "ChestGenHooks.getItems"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/StructureStrongholdPieces.java.patch"
+ },
+ "net/minecraft/world/gen/structure/StructureVillagePieces": {
+  "hooks": [
+   {
+    "hunk": "@@ -57,6 +57,7 @@",
+    "patchLine": 7,
+    "symbols": [
+     "VillagerRegistry.addExtraVillageComponents"
+    ]
+   },
+   {
+    "hunk": "@@ -129,6 +130,10 @@",
+    "patchLine": 17,
+    "symbols": [
+     "VillagerRegistry.getVillageComponent"
+    ]
+   },
+   {
+    "hunk": "@@ -833,6 +838,11 @@",
+    "patchLine": 28,
+    "symbols": [
+     "ChestGenHooks.init"
+    ]
+   },
+   {
+    "hunk": "@@ -911,7 +921,7 @@",
+    "patchLine": 39,
+    "symbols": [
+     "ChestGenHooks.getCount",
+     "ChestGenHooks.getItems"
+    ]
+   },
+   {
+    "hunk": "@@ -1613,6 +1627,9 @@",
+    "patchLine": 79,
+    "symbols": [
+     "BiomeEvent.GetVillageBlockID",
+     "new event.terraingen.BiomeEvent.GetVillageBlockID"
+    ]
+   },
+   {
+    "hunk": "@@ -1613,6 +1627,9 @@",
+    "patchLine": 80,
+    "symbols": [
+     "TERRAIN_GEN_BUS.post"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/gen/structure/StructureVillagePieces.java.patch"
+ },
+ "net/minecraft/world/storage/MapData": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/storage/MapData.java.patch"
+ },
+ "net/minecraft/world/storage/SaveHandler": {
+  "hooks": [
+   {
+    "hunk": "@@ -104,20 +104,29 @@",
+    "patchLine": 17,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -104,20 +104,29 @@",
+    "patchLine": 30,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -126,7 +135,13 @@",
+    "patchLine": 40,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -143,6 +158,8 @@",
+    "patchLine": 53,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -181,6 +198,8 @@",
+    "patchLine": 62,
+    "symbols": [
+     "FMLCommonHandler.instance"
+    ]
+   },
+   {
+    "hunk": "@@ -229,6 +248,7 @@",
+    "patchLine": 71,
+    "symbols": [
+     "ForgeEventFactory.firePlayerSavingEvent"
+    ]
+   },
+   {
+    "hunk": "@@ -259,6 +279,7 @@",
+    "patchLine": 79,
+    "symbols": [
+     "ForgeEventFactory.firePlayerLoadingEvent"
+    ]
+   }
+  ],
+  "patch": "patches/minecraft/net/minecraft/world/storage/SaveHandler.java.patch"
+ },
+ "net/minecraft/world/storage/WorldInfo": {
+  "hooks": [],
+  "patch": "patches/minecraft/net/minecraft/world/storage/WorldInfo.java.patch"
+ }
+}

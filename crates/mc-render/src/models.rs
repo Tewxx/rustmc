@@ -13,10 +13,13 @@ use mc_data::{Block, BlockAccess, StateId};
 use mc_world::World;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct BlockEntry {
     /// Weighted alternatives in vanilla's sorted order.
     pub models: Vec<(i32, BakedModel)>,
     pub weights: Vec<i32>,
+    pub(crate) bounds: Vec<Vec<[crate::ao::QuadBounds; 2]>>,
+    pub(crate) tinted: Vec<bool>,
 }
 
 pub struct BlockModels {
@@ -58,6 +61,7 @@ const BUILTIN_TEXTURES: &[&str] = &[
     "items/empty_armor_slot_boots",
 ];
 
+#[derive(Clone)]
 pub struct BlockColors {
     grass: Option<ColorMap>,
     foliage: Option<ColorMap>,
@@ -79,6 +83,13 @@ impl Colorizer for BlockColors {
 }
 
 impl BlockModels {
+    /// Immutable data needed by mesh workers; no atlas pixels or item models are copied.
+    pub fn mesh_snapshot(&self) -> Self {
+        Self { atlas: self.atlas.mesh_snapshot(), entries: self.entries.clone(), baked: self.baked.clone(),
+            state_particles: Vec::new(), missing: Vec::new(), colors: self.colors.clone(),
+            items: crate::items::ItemModels::default(), item_frame: None, item_frame_map: None }
+    }
+
     pub fn load(assets: &AssetSource) -> Self {
         let mut loader = ModelLoader::new(assets);
         let mut definitions: HashMap<String, Option<BlockStateDef>> = HashMap::new();
@@ -152,7 +163,11 @@ impl BlockModels {
                 };
                 model::sort_weighted(&mut models);
                 let weights = models.iter().map(|(w, _)| *w).collect();
-                BlockEntry { models, weights }
+                let bounds = models.iter().map(|(_, m)| m.quads.iter().map(|q| [
+                    crate::ao::fill_quad_bounds(&q.pos, q.face, false), crate::ao::fill_quad_bounds(&q.pos, q.face, true),
+                ]).collect()).collect();
+                let tinted = models.iter().map(|(_, m)| m.quads.iter().any(|q| q.tint_index >= 0)).collect();
+                BlockEntry { models, weights, bounds, tinted }
             })
             .collect();
         // `BlockModelShapes.getTexture(state)`: the model's `particle` texture. Models that do

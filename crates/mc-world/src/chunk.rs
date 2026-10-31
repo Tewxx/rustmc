@@ -8,15 +8,35 @@
 use mc_core::{nbt::Compound, BlockPos};
 use mc_data::StateId;
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 pub const SECTION_VOLUME: usize = 16 * 16 * 16;
 
 #[derive(Clone)]
+/// Mesh snapshots share immutable buffers; writes detach only the affected buffer.
+pub struct SectionData<T: Clone>(Arc<[T; SECTION_VOLUME]>);
+
+impl<T: Clone> Deref for SectionData<T> {
+    type Target = [T; SECTION_VOLUME];
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl<T: Clone> SectionData<T> {
+    /// The same buffer (no write detached either copy since one was cloned from the other).
+    pub fn same(&self, other: &Self) -> bool { Arc::ptr_eq(&self.0, &other.0) }
+}
+
+impl<T: Clone> DerefMut for SectionData<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target { Arc::make_mut(&mut self.0) }
+}
+
+#[derive(Clone)]
 pub struct Section {
     /// Indexed `y << 8 | z << 4 | x`, like `ExtendedBlockStorage`.
-    pub blocks: Box<[u16; SECTION_VOLUME]>,
-    pub sky_light: Box<[u8; SECTION_VOLUME]>,
-    pub block_light: Box<[u8; SECTION_VOLUME]>,
+    pub blocks: SectionData<u16>,
+    pub sky_light: SectionData<u8>,
+    pub block_light: SectionData<u8>,
     /// `blockRefCount`: non-air blocks.
     pub block_count: u16,
     /// `tickRefCount`: blocks that tick randomly.
@@ -26,9 +46,9 @@ pub struct Section {
 impl Section {
     pub fn empty() -> Self {
         Self {
-            blocks: Box::new([0; SECTION_VOLUME]),
-            sky_light: Box::new([0; SECTION_VOLUME]),
-            block_light: Box::new([0; SECTION_VOLUME]),
+            blocks: SectionData(Arc::new([0; SECTION_VOLUME])),
+            sky_light: SectionData(Arc::new([0; SECTION_VOLUME])),
+            block_light: SectionData(Arc::new([0; SECTION_VOLUME])),
             block_count: 0,
             tick_count: 0,
         }
@@ -84,6 +104,38 @@ pub fn section_index(x: usize, y: usize, z: usize) -> usize {
     (y << 8) | (z << 4) | x
 }
 
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn shared_section_buffers_detach_independently() {
+        let mut section = Section::empty();
+        section.set(3, StateId::from_raw(16));
+        section.sky_light[3] = 15;
+        section.block_light[3] = 7;
+        let mut snapshot = section.clone();
+        assert!(Arc::ptr_eq(&section.blocks.0, &snapshot.blocks.0));
+        assert!(Arc::ptr_eq(&section.sky_light.0, &snapshot.sky_light.0));
+        assert!(Arc::ptr_eq(&section.block_light.0, &snapshot.block_light.0));
+        section.set(3, StateId::from_raw(0));
+        assert_eq!(snapshot.blocks[3], 16);
+        assert_eq!(snapshot.block_count, 1);
+        assert_eq!(section.block_count, 0);
+        assert!(!Arc::ptr_eq(&section.blocks.0, &snapshot.blocks.0));
+        assert!(Arc::ptr_eq(&section.sky_light.0, &snapshot.sky_light.0));
+        snapshot.sky_light[..4].fill(9);
+        assert_eq!(section.sky_light[3], 15);
+        assert_eq!(snapshot.sky_light[3], 9);
+        assert!(!Arc::ptr_eq(&section.sky_light.0, &snapshot.sky_light.0));
+        assert!(Arc::ptr_eq(&section.block_light.0, &snapshot.block_light.0));
+        for light in section.block_light.iter_mut() { *light = 1; }
+        assert_eq!(snapshot.block_light[3], 7);
+        assert_eq!(section.block_light[3], 1);
+        assert!(!Arc::ptr_eq(&section.block_light.0, &snapshot.block_light.0));
+    }
+}
+
 #[derive(Clone)]
 pub struct Chunk {
     pub x: i32,
@@ -110,6 +162,23 @@ pub struct Chunk {
 }
 
 impl Chunk {
+    /// Copy only the section and its vertical neighbors while retaining column metadata.
+    pub fn mesh_snapshot(&self, sy: i32) -> Self {
+        let mut c = Self::new(self.x, self.z);
+        for y in (sy - 1).max(0)..=(sy + 1).min(15) { c.sections[y as usize] = self.sections[y as usize].clone(); }
+        c.biomes = self.biomes;
+        let min_y = (sy - 1).max(0) * 16;
+        let max_y = ((sy + 2).min(16) * 16) - 1;
+        c.tile_entities = self.tile_entities.iter().filter(|(p, _)| (min_y..=max_y).contains(&p.y))
+            .map(|(p, tag)| (*p, tag.clone())).collect();
+        c.height_map = self.height_map;
+        c.height_map_minimum = self.height_map_minimum;
+        c.terrain_populated = self.terrain_populated;
+        c.light_populated = self.light_populated;
+        c.ticked = self.ticked;
+        c
+    }
+
     pub fn new(x: i32, z: i32) -> Self {
         Self {
             x,

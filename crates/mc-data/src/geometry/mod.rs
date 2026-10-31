@@ -72,6 +72,11 @@ impl BlockGeometry {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub fn reset(&mut self) {
+        for (bounds, block) in self.bounds.iter_mut().zip(Block::all()) { *bounds = Bounds(block.default_bounds); }
+        self.stair_ray_pass.fill(None);
+    }
     pub fn bounds(&self, state: StateId) -> Bounds {
         self.bounds[state.block().id as usize]
     }
