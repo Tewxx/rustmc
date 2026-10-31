@@ -1,7 +1,6 @@
 package rustmc.forge;
 
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraftforge.fml.common.eventhandler.Event;
@@ -20,14 +19,18 @@ public final class Bus {
 
     private static final List<Listener> listeners = new ArrayList<>();
 
-    /** An object registers its @SubscribeEvent methods; a Class registers its static ones. */
+    /** An object registers every @SubscribeEvent method of its own class (Forge 1.8.9 has no `register(Class)`). */
     public static synchronized void register(Object target) {
-        boolean statics = target instanceof Class;
-        for (Method m : (statics ? (Class<?>) target : target.getClass()).getMethods()) {
+        for (Method m : target.getClass().getMethods()) {
             SubscribeEvent a = m.getAnnotation(SubscribeEvent.class);
-            if (a == null || m.getParameterTypes().length != 1 || !Event.class.isAssignableFrom(m.getParameterTypes()[0])) continue;
-            if (statics && !Modifier.isStatic(m.getModifiers())) continue;
-            Listener l = new Listener(statics ? null : target, m, a);
+            if (a == null) continue;
+            // Forge refuses a handler that is not `void (SomeEvent)` instead of silently ignoring it.
+            if (m.getParameterTypes().length != 1 || !Event.class.isAssignableFrom(m.getParameterTypes()[0]))
+                throw new IllegalArgumentException("Invalid event handler " + m);
+            Listener l = new Listener(target, m, a);
+            boolean duplicate = false;
+            for (Listener o : listeners) if (o.target == l.target && o.method.equals(l.method)) duplicate = true;
+            if (duplicate) continue;
             int i = listeners.size();
             while (i > 0 && listeners.get(i - 1).priority.ordinal() > l.priority.ordinal()) i--;
             listeners.add(i, l);
@@ -54,6 +57,10 @@ public final class Bus {
         return t;
     }
 
+    /** Throws a checked exception without wrapping it (Forge's behaviour for a throwing handler). */
+    @SuppressWarnings("unchecked")
+    private static <T extends Throwable> void sneakyThrow(Throwable t) throws T { throw (T) t; }
+
     public static boolean cancelable(Event e) { return traits(e.getClass())[0]; }
     public static boolean hasResult(Event e) { return traits(e.getClass())[1]; }
 
@@ -70,7 +77,8 @@ public final class Bus {
                 Throwable cause = t instanceof java.lang.reflect.InvocationTargetException ? t.getCause() : t;
                 System.err.println("[forge] exception in " + l.method + " handling " + e.getClass().getName());
                 cause.printStackTrace();
-                throw new RuntimeException(cause);
+                // Forge propagates the handler's own exception, not a wrapper.
+                Bus.<RuntimeException>sneakyThrow(cause);
             }
         }
         return cancelable(e) && e.isCanceled();

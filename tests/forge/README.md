@@ -6,7 +6,9 @@
 
 This is an incomplete suite: the recorded traces are not yet validated as deterministic, there is no rustmc trace runner or Mixin test mod, and the tests do not establish Forge compatibility. The Forge client and server artifacts, JDK 8, MCP classes and Prism libraries must already be installed locally.
 
-`tools/forgetest/run-rustmc.sh` lists trace IDs in the source as not implemented and exits nonzero. It is a progress inventory, not a compatibility test: it neither runs mods nor compares traces. To add a test, add a mod directory to `mods/ORDER`, use `ft.Trace` with a stable ID, and add it to `SERVER_MODS` only if its server side is needed. Build and validate its traces in real Forge before treating them as an oracle.
+`tools/forgetest/run-rustmc.sh [--no-build]` is the rustmc side: it boots the built jars on rustmc's Forge API (`crates/mc-forge/tests/forge_traces.rs`), loads every mod in `mods/ORDER`, drives 20 client ticks and frames, writes the mods' `ft.Trace` groups to `tests/forge/build/rustmc-trace/`, and diffs each group whose trace was recorded in real Forge against `oracle/`. It exits nonzero on any difference. A group with no recorded trace is not compared. To add a test, add a mod directory to `mods/ORDER`, use `ft.Trace` with a stable ID, and add it to `SERVER_MODS` only if its server side is needed. Build and validate its traces in real Forge before treating them as an oracle.
+
+The runner drives no world or player, so mod scripts that wait for `ScriptEvent` steps (`ftclient`, `ftgui`, `ftchat`, `ftnet`) only emit their pre-init/init lines, and the recorded `lifecycle` trace is a four-mod subset whose mod list cannot match a full run. The `bus` group is the oracle-verified one; it still differs at `EV-05`: the two recorded sessions disagree with each other (one has an `instance` handler line, the other none), so that case needs a fresh real-Forge recording before it can gate anything.
 
 The intended future corpus smoke tier checks load, GUI and HUD behavior for user-selected jars. Third-party mods are not run by this suite; `.mc-tools/mod-corpus/` contains the local scan inputs described in `docs/FORGE_COMPAT.md`.
 
