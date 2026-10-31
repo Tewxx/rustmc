@@ -2,6 +2,22 @@
 use crate::*;
 use serde_json::{json, Value};
 
+/// `RUSTMC_FORGE_TIMING=1`: total time and call count per Rust-to-Java boundary, printed every 600 frames.
+pub(crate) fn timed<R>(label: &'static str, f: impl FnOnce() -> R) -> R {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    static T: std::sync::Mutex<std::collections::BTreeMap<&'static str, (u128, u64)>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+    if !*ON.get_or_init(|| std::env::var_os("RUSTMC_FORGE_TIMING").is_some()) { return f(); }
+    let t = std::time::Instant::now();
+    let r = f();
+    let mut m = T.lock().unwrap();
+    let e = m.entry(label).or_default();
+    e.0 += t.elapsed().as_nanos(); e.1 += 1;
+    if (label == "frame" && e.1 % 600 == 0) || (label == "screen_java" && e.1 % 60 == 0) {
+        for (k, (ns, n)) in m.iter() { eprintln!("[timing] {k:<14} {:>8.1} ms total  {:>7.3} ms/call  {n} calls", *ns as f64 / 1e6, *ns as f64 / 1e6 / *n as f64); }
+    }
+    r
+}
+
 thread_local! { static LAST_PUBLISHED: std::cell::RefCell<Option<Value>> = const { std::cell::RefCell::new(None) }; }
 /// Forces the next `forge_publish` to sync Java even if the snapshot is unchanged.
 pub(crate) fn forge_republish() { LAST_PUBLISHED.with(|l|*l.borrow_mut()=None); }
@@ -213,9 +229,9 @@ impl App {
     /// an unchanged snapshot is not re-sent (Live.sync parses it and walks every entity by reflection).
     pub(crate) fn forge_publish(&mut self) {
         if !self.forge_on { return; }
-        let snapshot=self.forge_snapshot();
+        let snapshot=timed("snapshot",||self.forge_snapshot());
         if LAST_PUBLISHED.with(|l|l.borrow().as_ref()==Some(&snapshot)) { return; }
-        if self.forge_result(mc_forge::runtime::with_env(|env|mc_forge::live::publish(env,&snapshot))).is_some() {
+        if self.forge_result(timed("publish",||mc_forge::runtime::with_env(|env|mc_forge::live::publish(env,&snapshot)))).is_some() {
             LAST_PUBLISHED.with(|l|*l.borrow_mut()=Some(snapshot));
             // `Minecraft.loadWorld(WorldClient)`: the mirror already holds the new world, so the Java method only
             // runs mods' Mixin handlers. Cancelling it still counts as delivered. While out of a world a reset
@@ -256,7 +272,7 @@ impl App {
 
     pub(crate) fn forge_apply(&mut self) {
         if !self.forge_on { return; }
-        let Some(changes)=self.forge_result(mc_forge::runtime::with_env(mc_forge::live::changes))else{return};
+        let Some(changes)=self.forge_result(timed("apply",||mc_forge::runtime::with_env(mc_forge::live::changes)))else{return};
         if changes["generation"].as_u64()!=Some(self.forge_generation){return;}
         // Java changed state Rust may have clamped or refused: the next publish must overwrite it even if equal.
         if changes["player"].as_object().is_some_and(|p|!p.is_empty()) { forge_republish(); }
@@ -374,15 +390,15 @@ impl App {
     /// `Minecraft.runGameLoop` around one frame (update and draw): mods' render-tick hooks fire at its HEAD.
     pub(crate) fn forge_frame(&mut self,body:impl FnOnce(&mut Self)){
         if !self.forge_on {body(self);return;}
-        self.forge_hooked(mc_forge::hooks::game_loop,body);
+        timed("frame",||self.forge_hooked(mc_forge::hooks::game_loop,body));
     }
 
     pub(crate) fn forge_run_client_tick(&mut self,paused:bool){
         if !self.forge_on {self.client_tick_body(paused);return;}
         self.forge_publish();
         // Once a tick, after the publish that may have reset the Java world for a new generation.
-        if let Err(e)=self.forge_sync_world(){eprintln!("forge world mirror: {e}");}
-        let result=mc_forge::hooks::run_tick(&mut ||self.client_tick_body(paused));
+        if let Err(e)=timed("sync_world",||self.forge_sync_world()){eprintln!("forge world mirror: {e}");}
+        let result=timed("run_tick",||mc_forge::hooks::run_tick(&mut ||self.client_tick_body(paused)));
         self.forge_result(result);
         self.forge_apply();
     }

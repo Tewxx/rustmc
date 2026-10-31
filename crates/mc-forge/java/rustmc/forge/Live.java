@@ -209,6 +209,8 @@ public final class Live {
             set(timer,"field_74278_d",1.0f); set(timer,"field_74282_a",20.0f);
             set(mc,"field_71428_T",timer);
         }
+        // ingameGUI: its getChatGUI is a Rust handler, but mods read the field first (LunarForge's HypixelLocation ticks).
+        if(get(mc,"field_71456_v")==null) set(mc,"field_71456_v",allocate("net.minecraft.client.gui.GuiIngame"));
         // entityRenderer: its methods are Rust handlers (shaders, fov, lightmap); mods dereference the field directly.
         if(get(mc,"field_71460_t")==null) set(mc,"field_71460_t",allocate("net.minecraft.client.renderer.EntityRenderer"));
     }

@@ -34,6 +34,9 @@ public final class AwtShim {
     /** Replaces Toolkit.getSystemClipboard() (the receiver is passed as the argument). */
     public static Clipboard clipboard(Toolkit toolkit) { return CLIPBOARD; }
 
+    /** Replaces Toolkit.getScreenSize(), which throws HeadlessException (Meowtils' LogFrame reads it in its static initializer, which then poisons every log4j call). */
+    public static java.awt.Dimension screenSize(Toolkit toolkit) { return new java.awt.Dimension(1920, 1080); }
+
     /** Replaces Desktop.getDesktop()/isDesktopSupported(): there is no AWT Desktop, only {@link #browse}. */
     public static Desktop getDesktop() { return null; }
     public static boolean isDesktopSupported() { return true; }

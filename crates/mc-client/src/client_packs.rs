@@ -30,14 +30,19 @@ impl App {
                 r.register_gui_texture(&path, w, h, &rgba);
             }
         }
-        // DynamicTexture uploads from Forge mods (fonts, capes, images), before this frame replays their draws.
-        if self.forge_on {
-            for u in mc_forge::impls::take_texture_uploads() {
-                if let Some(r) = &mut self.renderer {
-                    r.register_gui_texture(&u.path, u.width, u.height, &u.rgba);
-                }
-                self.forge_textures.insert(u.path.clone(), u);
+        self.apply_forge_uploads();
+    }
+
+    /// DynamicTexture uploads from Forge mods (fonts, capes, images). Also run after the frame's Java code, so a texture
+    /// a mod creates and draws in the same frame (Lunar's home screen) exists when the GUI pass binds it, instead of
+    /// showing the missing-texture checker for a frame.
+    pub(crate) fn apply_forge_uploads(&mut self) {
+        if !self.forge_on { return; }
+        for u in mc_forge::impls::take_texture_uploads() {
+            if let Some(r) = &mut self.renderer {
+                r.register_gui_texture(&u.path, u.width, u.height, &u.rgba);
             }
+            self.forge_textures.insert(u.path.clone(), u);
         }
     }
 

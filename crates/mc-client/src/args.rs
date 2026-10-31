@@ -210,6 +210,7 @@ pub(crate) fn launcher_args() -> Option<(Args, Option<auth::Session>)> {
     a.asset_index = li.asset_index.clone();
     a.name = li.username.clone();
     a.window = li.width.zip(li.height);
+    a.bench = std::env::var("RUSTMC_BENCH").ok().and_then(|s| s.parse().ok());
     a.connect = li.server.as_ref().map(|s| match li.port {
         Some(p) => format!("{s}:{p}"),
         None => s.clone(),

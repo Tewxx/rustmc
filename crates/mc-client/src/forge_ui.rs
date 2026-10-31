@@ -26,6 +26,11 @@ static CATALOGUE: std::sync::Mutex<Option<std::sync::Arc<inventory::Catalogue>>>
 /// Replays what mod code drew (text, tessellator quads and lines) into the client's GUI batch.
 fn replay(ui: &mut Ui, b: &mut GuiBatch) {
     let cmds = impls::take_draw();
+    if cmds.is_empty() { return; }
+    crate::forge_live::timed("replay", || replay_cmds(ui, b, cmds));
+}
+
+fn replay_cmds(ui: &mut Ui, b: &mut GuiBatch, cmds: Vec<impls::Draw>) {
     let ppu = *PIXELS_PER_UNIT.lock().unwrap();
     // Editable fields may contain credentials. Never copy rendered text into logs.
     for cmd in cmds {
@@ -54,6 +59,12 @@ fn replay(ui: &mut Ui, b: &mut GuiBatch) {
                 }
             }
             Draw::Vertices { mode: 7, texture, verts, blend } => {
+                if std::env::var_os("RUSTMC_FORGE_TIMING").is_some() {
+                    static SEEN: std::sync::Mutex<Vec<(Option<String>, usize)>> = std::sync::Mutex::new(Vec::new());
+                    let mut seen = SEEN.lock().unwrap();
+                    let key = (texture.clone(), verts.len());
+                    if !seen.contains(&key) { eprintln!("[draw] quads texture={:?} verts={} first=({:.0},{:.0}) blend={:?}", texture, verts.len(), verts[0].pos[0], verts[0].pos[1], blend); seen.push(key); }
+                }
                 // The GUI batch blends with alpha by default; (ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_COLOR) is its Invert.
                 let saved = b.blend;
                 if blend == Some((0x0307, 0x0301)) { b.blend = mc_gui::batch::Blend::Invert; }
@@ -106,23 +117,41 @@ fn replay(ui: &mut Ui, b: &mut GuiBatch) {
 }
 
 fn draw_java(ui: &mut Ui, b: &mut GuiBatch, mx: i32, my: i32) {
-    java(|env| game::draw_screen(env, mx, my, 0.0));
+    crate::forge_live::timed("screen_java", || java(|env| game::draw_screen(env, mx, my, 0.0)));
     replay(ui, b);
 }
 
 /// A screen a mod opened with `displayGuiScreen`: the Java object draws and handles input; this just forwards.
-/// Remembers the last pointer position, since `scroll` carries none.
-pub(crate) struct ModScreen(pub i32, pub i32);
+/// Remembers the last pointer position, since `scroll` carries none. Pointer moves are queued and delivered once per
+/// frame, just before drawing: the window reports them at the mouse's polling rate, and each one costs a full Java
+/// `handleMouseInput` (display sync, then the mod's drag handler), which made dragging mod windows stutter.
+pub(crate) struct ModScreen(pub i32, pub i32, pub bool, pub i32);
+
+impl ModScreen {
+    /// Sends what is queued to the Java screen: the latest pointer position, and a key that carried no character
+    /// (F-keys, modifiers), which `keyTyped` still needs for key-bind capture.
+    fn flush_move(&mut self) {
+        let key = std::mem::take(&mut self.3);
+        if key != 0 { java(|env| game::key_typed(env, '\0', key)); }
+        if !std::mem::take(&mut self.2) { return; }
+        let (mx, my) = (self.0, self.1);
+        java(|env| game::mouse_event(env, mx, my, -1, false, 0));
+    }
+}
 
 impl Screen for ModScreen {
     fn init(&mut self, _ui: &Ui, w: i32, h: i32) { java(|env| game::resize(env, w, h)); }
-    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, _w: i32, _h: i32, mx: i32, my: i32) { draw_java(ui, b, mx, my); }
-    fn click(&mut self, _ui: &mut Ui, mx: i32, my: i32) -> Action { java(|env| game::mouse_event(env, mx, my, 0, true, 0)); Action::None }
-    fn right_click(&mut self, _ui: &mut Ui, mx: i32, my: i32) -> Action { java(|env| game::mouse_event(env, mx, my, 1, true, 0)); Action::None }
-    fn release_at(&mut self, _ui: &mut Ui, mx: i32, my: i32, button: u8) { java(|env| game::mouse_event(env, mx, my, button as i32, false, 0)); }
-    fn mouse_move(&mut self, _ui: &mut Ui, mx: i32, my: i32) { self.0 = mx; self.1 = my; java(|env| game::mouse_event(env, mx, my, -1, false, 0)); }
+    fn draw(&mut self, ui: &mut Ui, b: &mut GuiBatch, _w: i32, _h: i32, mx: i32, my: i32) {
+        self.flush_move();
+        draw_java(ui, b, mx, my);
+    }
+    fn click(&mut self, _ui: &mut Ui, mx: i32, my: i32) -> Action { self.flush_move(); java(|env| game::mouse_event(env, mx, my, 0, true, 0)); Action::None }
+    fn right_click(&mut self, _ui: &mut Ui, mx: i32, my: i32) -> Action { self.flush_move(); java(|env| game::mouse_event(env, mx, my, 1, true, 0)); Action::None }
+    fn release_at(&mut self, _ui: &mut Ui, mx: i32, my: i32, button: u8) { self.flush_move(); java(|env| game::mouse_event(env, mx, my, button as i32, false, 0)); }
+    fn mouse_move(&mut self, _ui: &mut Ui, mx: i32, my: i32) { self.0 = mx; self.1 = my; self.2 = true; }
     fn scroll(&mut self, delta: i32) {
         // `delta` is one notch (+1 up); LWJGL reports 120 per notch.
+        self.flush_move();
         let (mx, my) = (self.0, self.1);
         java(|env| game::mouse_event(env, mx, my, -1, false, delta * 120));
     }
@@ -140,14 +169,17 @@ impl Screen for ModScreen {
                 let code = ROWS.iter().zip([16, 30, 44]).find_map(|(row, first)| row.find(c).map(|i| first + i as i32)).unwrap_or(0);
                 (((c as u8).wrapping_sub(b'a') + 1) as char, code)
             }
-            _ => return Action::None,
+            // No character of its own (or one `typed` is about to deliver): `typed` cancels this, else the next frame sends it.
+            _ => { self.3 = ui.key_code; return Action::None }
         };
         java(|env| game::key_typed(env, ch, code));
         Action::None
     }
     fn typed(&mut self, ui: &mut Ui, c: char) {
         impls::set_modifiers(ui.ctrl_down, ui.shift_down, false);
-        if !c.is_control() { java(|env| game::key_typed(env, c, 0)); }
+        // A printable key arrives right after `key`: it is this character, with its LWJGL code (bind capture reads it).
+        self.3 = 0;
+        if !c.is_control() { let code = ui.key_code; java(|env| game::key_typed(env, c, code)); }
     }
 }
 
@@ -195,7 +227,7 @@ impl App {
                 // A vanilla screen class the client draws itself: open the native one (its stub draws nothing).
                 if self.forge_open_vanilla(false) { return; }
                 self.forge_mod_screen = true;
-                self.open(Box::new(ModScreen(0, 0)), true);
+                self.open(Box::new(ModScreen(0, 0, false, 0)), true);
             }
             // A mod screen opened a vanilla one (Lunar's home -> GuiMultiplayer).
             (true, true) => { self.forge_open_vanilla(true); }
@@ -263,14 +295,14 @@ impl App {
     pub(crate) fn forge_tick_begin(&mut self) {
         if !self.forge_on { return; }
         self.forge_prepare();
-        java(|env| game::client_tick(env, true));
+        crate::forge_live::timed("tick_start",||java(|env| game::client_tick(env, true)));
         self.forge_apply();
     }
 
     pub(crate) fn forge_tick_end(&mut self) {
         if !self.forge_on { return; }
         self.forge_publish();
-        java(|env| game::client_tick(env, false));
+        crate::forge_live::timed("tick_end",||java(|env| game::client_tick(env, false)));
         self.forge_apply();
         self.forge_sync();
         self.forge_sync_session();
@@ -294,7 +326,7 @@ impl App {
         let modelview = self.camera.view() * glam::Mat4::from_translation(feet - self.camera.pos);
         let f64s = |m: glam::Mat4| m.to_cols_array().map(|v| v as f64);
         let (p, m, gui) = (f64s(projection), f64s(modelview), (sr.width_f, sr.height_f));
-        java(|env| game::world_last(env, pt, p, m, gui));
+        crate::forge_live::timed("world_last",||java(|env| game::world_last(env, pt, p, m, gui)));
         replay(&mut self.ui, &mut self.batch);
         self.forge_apply();
     }
@@ -304,7 +336,7 @@ impl App {
         if !self.forge_on { return false; }
         self.forge_prepare();
         let pt = self.tick_accum;
-        let cancelled = java(|env| game::overlay(env, pt, true, "ALL")).unwrap_or(false);
+        let cancelled = crate::forge_live::timed("hud_pre",||java(|env| game::overlay(env, pt, true, "ALL"))).unwrap_or(false);
         replay(&mut self.ui, &mut self.batch);
         cancelled
     }
@@ -314,7 +346,7 @@ impl App {
     pub(crate) fn forge_hud_post(&mut self, sr: Scaled) {
         if !self.forge_on { return; }
         let pt = self.tick_accum;
-        if let Some((left, right)) = java(|env| game::overlay_text(env, pt, &[], &[])).flatten() {
+        if let Some((left, right)) = crate::forge_live::timed("hud_text",||java(|env| game::overlay_text(env, pt, &[], &[]))).flatten() {
             for (i, line) in left.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
                 let (w, top) = (self.ui.font.width(line), 2 + i as i32 * 9);
                 self.batch.rect(1, top - 1, 2 + w + 1, top + 8, 0x9050_5050);
@@ -327,7 +359,7 @@ impl App {
                 self.ui.font.draw(&mut self.batch, line, left as f32, top as f32, 0xffe0_e0e0);
             }
         }
-        java(|env| game::overlay(env, pt, false, "ALL"));
+        crate::forge_live::timed("hud_post",||java(|env| game::overlay(env, pt, false, "ALL")));
         replay(&mut self.ui, &mut self.batch);
         self.forge_apply();
     }
@@ -371,7 +403,7 @@ impl App {
         if !self.forge_on { return; }
         self.forge_prepare();
         self.forge_sync();
-        java(|env| game::render_tick(env, true, partial_ticks));
+        crate::forge_live::timed("render_start",||java(|env| game::render_tick(env, true, partial_ticks)));
         self.forge_apply();
     }
 
@@ -379,7 +411,7 @@ impl App {
     pub(crate) fn forge_frame_end(&mut self, mx: i32, my: i32, partial_ticks: f32) {
         if !self.forge_on { return; }
         if !self.forge_mod_screen && java(game::focus) == Some(Focus::Shadow) { draw_java(&mut self.ui, &mut self.batch, mx, my); }
-        java(|env| game::render_tick(env, false, partial_ticks));
+        crate::forge_live::timed("render_end",||java(|env| game::render_tick(env, false, partial_ticks)));
         self.forge_apply();
         replay(&mut self.ui, &mut self.batch); // anything mods drew in RenderTickEvent
     }

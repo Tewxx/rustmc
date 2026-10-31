@@ -15,7 +15,7 @@ pub(crate) fn register_all() {
         ("net/minecraft/scoreboard/Scoreboard", &["func_96508_e", "func_96509_i", "func_96525_g", "func_96531_f"]),
         ("net/minecraft/scoreboard/Team", &["func_142053_d", "func_96667_a", "func_142054_a", "func_96661_b"]),
         ("net/minecraft/scoreboard/ScorePlayerTeam", &[
-            "func_96661_b", "func_96669_c", "func_96668_e", "func_96663_f", "func_96670_d",
+            "func_96661_b", "func_96669_c", "func_96668_e", "func_96663_f", "func_96670_d", "func_178775_l",
         ]),
         ("net/minecraft/entity/EntityLivingBase", &["func_96124_cp", "func_142014_c"]),
         ("net/minecraft/entity/player/EntityPlayer", &["func_96124_cp"]),

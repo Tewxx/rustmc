@@ -32,9 +32,46 @@ public final class ModLoader {
             net.minecraft.block.Block.func_149671_p();
             net.minecraft.block.BlockFire.func_149843_e();
             net.minecraft.item.Item.func_150900_l();
+            entityList();
         } catch (Throwable t) {
             System.err.println("[forge] vanilla registries failed to build");
             t.printStackTrace();
+        }
+    }
+
+    /**
+     * EntityList is stubbed (its static initializer needs StatList), so its name/class maps are null and mods that read
+     * them reflectively (LunarForge's mob-size module) crash. Fill the two maps with vanilla's mob registrations.
+     */
+    private static void entityList() throws Exception {
+        String[][] mobs = {
+            {"Creeper", "monster.EntityCreeper"}, {"Skeleton", "monster.EntitySkeleton"}, {"Spider", "monster.EntitySpider"},
+            {"Giant", "monster.EntityGiantZombie"}, {"Zombie", "monster.EntityZombie"}, {"Slime", "monster.EntitySlime"},
+            {"Ghast", "monster.EntityGhast"}, {"PigZombie", "monster.EntityPigZombie"}, {"Enderman", "monster.EntityEnderman"},
+            {"CaveSpider", "monster.EntityCaveSpider"}, {"Silverfish", "monster.EntitySilverfish"}, {"Blaze", "monster.EntityBlaze"},
+            {"LavaSlime", "monster.EntityMagmaCube"}, {"EnderDragon", "boss.EntityDragon"}, {"WitherBoss", "boss.EntityWither"},
+            {"Bat", "passive.EntityBat"}, {"Witch", "monster.EntityWitch"}, {"Endermite", "monster.EntityEndermite"},
+            {"Guardian", "monster.EntityGuardian"}, {"Pig", "passive.EntityPig"}, {"Sheep", "passive.EntitySheep"},
+            {"Cow", "passive.EntityCow"}, {"Chicken", "passive.EntityChicken"}, {"Squid", "passive.EntitySquid"},
+            {"Wolf", "passive.EntityWolf"}, {"MushroomCow", "passive.EntityMooshroom"}, {"SnowMan", "monster.EntitySnowman"},
+            {"Ozelot", "passive.EntityOcelot"}, {"VillagerGolem", "monster.EntityIronGolem"}, {"EntityHorse", "passive.EntityHorse"},
+            {"Rabbit", "passive.EntityRabbit"}, {"Villager", "passive.EntityVillager"}};
+        java.util.Map<String, Class<?>> byName = new java.util.HashMap<>();
+        java.util.Map<Class<?>, String> byClass = new java.util.HashMap<>();
+        ClassLoader loader = ModLoader.class.getClassLoader();
+        for (String[] m : mobs) {
+            Class<?> c = Class.forName("net.minecraft.entity." + m[1], false, loader);
+            byName.put(m[0], c);
+            byClass.put(c, m[0]);
+        }
+        Class<?> list = Class.forName("net.minecraft.entity.EntityList", false, loader);
+        for (String[] f : new String[][] {{"field_75625_b", "name"}, {"field_75626_c", "class"}}) {
+            java.lang.reflect.Field field = list.getDeclaredField(f[0]);
+            field.setAccessible(true);
+            java.lang.reflect.Field modifiers = java.lang.reflect.Field.class.getDeclaredField("modifiers");
+            modifiers.setAccessible(true);
+            modifiers.setInt(field, field.getModifiers() & ~java.lang.reflect.Modifier.FINAL);
+            if (field.get(null) == null) field.set(null, f[1].equals("name") ? byName : byClass);
         }
     }
 

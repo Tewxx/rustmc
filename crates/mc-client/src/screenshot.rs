@@ -376,15 +376,17 @@ impl App {
             // RUSTMC_SHOT_WAIT_MS: let opening animations finish (frames keep drawing) before clicking.
             let wait = std::env::var("RUSTMC_SHOT_WAIT_MS").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
             let until = std::time::Instant::now() + std::time::Duration::from_millis(wait);
-            let (mut n, mut spent) = (0u32, std::time::Duration::ZERO);
+            let (mut n, mut spent, mut worst) = (0u32, std::time::Duration::ZERO, std::time::Duration::ZERO);
             while std::time::Instant::now() < until {
                 let t = std::time::Instant::now();
                 self.build_gui();
                 spent += t.elapsed();
+                worst = worst.max(t.elapsed());
                 n += 1;
             }
-            if n > 0 { eprintln!("shot: {n} gui frames, avg {:.2} ms", spent.as_secs_f64() * 1000.0 / n as f64); }
+            if n > 0 { eprintln!("shot: {n} gui frames, avg {:.2} ms, worst {:.2} ms", spent.as_secs_f64() * 1000.0 / n as f64, worst.as_secs_f64() * 1000.0); }
             for click in clicks.split_whitespace() {
+                let click_start = std::time::Instant::now();
                 let v: Vec<i32> = click.split(',').filter_map(|n| n.parse().ok()).collect();
                 let [x, y, button] = v[..] else { continue };
                 // The pointer is there first, as a real click is (screens hit-test with Mouse.getX/getY).
@@ -397,9 +399,12 @@ impl App {
                     self.forge_frame(|_| {});
                 }
                 self.forge_run_client_tick(false);
+                eprintln!("shot: click {click} took {:.1} ms", click_start.elapsed().as_secs_f64() * 1000.0);
             }
             // A click may have opened another screen (a frame's forge_sync).
+            let sync_start = std::time::Instant::now();
             self.forge_sync();
+            eprintln!("shot: forge_sync after clicks took {:.1} ms", sync_start.elapsed().as_secs_f64() * 1000.0);
             if std::env::var_os("RUSTMC_SHOT_DEBUG").is_some() {
                 let f = mc_forge::runtime::with_env(|env| (mc_forge::game::focus(env).ok(), mc_forge::game::vanilla_screen(env).ok()));
                 let css = mc_forge::runtime::with_env(|env| -> Option<(f32, f32, i32)> {

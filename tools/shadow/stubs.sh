@@ -25,5 +25,5 @@ STUBC="$FT_BUILD/stub-class"; rm -rf "$STUBC"; mkdir -p "$STUBC"
 
 # The glue needs Forge and LaunchWrapper types, so it compiles against the stub jar itself. LaunchWrapper is not
 # stubbed: it is the real class loader that Mixin and the stubs run under.
-"$FT_JAVAC" -nowarn -cp "$1:$PL/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar:$ASM" -d "$STUBC" "$FT_REPO"/crates/mc-forge/java/rustmc/*/*.java
+"$FT_JAVAC" -nowarn -encoding UTF-8 -cp "$1:$(ft_libs)" -d "$STUBC" "$FT_REPO"/crates/mc-forge/java/rustmc/*/*.java
 "$JDK8/bin/jar" uf "$1" -C "$STUBC" rustmc

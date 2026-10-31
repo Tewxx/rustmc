@@ -169,6 +169,11 @@ fn chat() {
         match c.string(0)? { Some(m) => push(ClientAction::AddSentMessage(m)), None => {} }
         Ok(Ret::Null)
     });
+    // getSentMessages: the history belongs to the client, so Java sees an empty list rather than a null.
+    register(&format!("{CHAT}func_146238_c"), |c| {
+        let list = c.env.new_object("java/util/ArrayList", "()V", &[])?;
+        Ok(Ret::Obj(c.env.new_global_ref(list)?))
+    });
     // GuiIngame.getChatGUI: the one GuiNewChat, allocated on first use.
     register("net/minecraft/client/gui/GuiIngame.func_146158_b", |c| {
         static CHAT_GUI: Mutex<Option<GlobalRef>> = Mutex::new(None);

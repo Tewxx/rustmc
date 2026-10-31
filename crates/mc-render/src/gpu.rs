@@ -270,7 +270,9 @@ impl Renderer {
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode,
-            desired_maximum_frame_latency: std::env::var("RUSTMC_FRAME_LATENCY").ok().and_then(|s| s.parse::<u32>().ok()).unwrap_or(2).clamp(1, 3),
+            desired_maximum_frame_latency: std::env::var("RUSTMC_FRAME_LATENCY").ok().and_then(|s| s.parse::<u32>().ok())
+                // Metal with latency 2 pins even Immediate presentation to 60 fps (measured: 60.0 vs 159 fps with 1).
+                .unwrap_or(if cfg!(target_os = "macos") { 1 } else { 2 }).clamp(1, 3),
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
         };

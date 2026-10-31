@@ -501,6 +501,7 @@ impl App {
         if self.in_game {
             self.hud.achievement.draw(&mut self.ui, &mut self.batch, sr);
         }
+        self.apply_forge_uploads();
         sr
     }
 

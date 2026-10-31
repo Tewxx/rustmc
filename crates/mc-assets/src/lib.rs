@@ -30,6 +30,17 @@ pub fn register_dynamic(path: &str, bytes: Vec<u8>) {
     }
 }
 
+/// Forge mod jars: `domain:path` textures (`lunarforge:ui/icons/x.png`) come from `assets/<domain>/<path>` in these,
+/// behind every resource pack layer.
+static MOD_JARS: Mutex<Vec<Layer>> = Mutex::new(Vec::new());
+
+/// Makes a mod jar's `assets/` folder readable through `AssetSource::read` with a `domain:` prefix.
+pub fn register_mod_jar(path: &Path) -> std::io::Result<()> {
+    let zip = zip::ZipArchive::new(BufReader::new(File::open(path)?)).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    MOD_JARS.lock().unwrap().push(Layer::Zip(Mutex::new(zip)));
+    Ok(())
+}
+
 /// Ordered resource pack stack. Later layers override earlier ones, like the
 /// resource pack screen's top-of-list-wins order.
 #[derive(Default)]
@@ -62,7 +73,13 @@ impl AssetSource {
                 return Some(b.clone());
             }
         }
-        self.read_root(&format!("assets/minecraft/{path}"))
+        match path.split_once(':') {
+            Some((domain, rest)) if domain != "minecraft" => {
+                let full = format!("assets/{domain}/{rest}");
+                self.read_root(&full).or_else(|| MOD_JARS.lock().unwrap().iter().rev().find_map(|l| read_layer(l, &full)))
+            }
+            _ => self.read_root(&format!("assets/minecraft/{path}")),
+        }
     }
 
     /// Reads a file by its full path inside the layers (`pack.png`, `pack.mcmeta`).

@@ -74,6 +74,7 @@ pub fn start_runtime(font: &mc_gui::font::FontRenderer, lang: &mc_gui::lang::Lan
     };
     let jars: Vec<_> = std::fs::read_dir("mods-forge").into_iter().flatten().flatten().map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|e| e == "jar")).collect();
+    for jar in &jars { if let Err(e) = mc_assets::register_mod_jar(jar) { eprintln!("mod assets unavailable from {}: {e}", jar.display()); } }
     let mut classpath = vec![std::path::PathBuf::from(stubs)];
     classpath.extend(jars.iter().cloned());
     classpath.extend(std::env::var_os("RUSTMC_FORGE_CP").iter().flat_map(std::env::split_paths));

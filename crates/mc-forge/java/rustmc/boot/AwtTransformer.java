@@ -34,6 +34,9 @@ public final class AwtTransformer implements IClassTransformer {
                     if (c.owner.equals("java/awt/Toolkit") && c.name.equals("getSystemClipboard")) {
                         redirect(c, "clipboard", "(Ljava/awt/Toolkit;)Ljava/awt/datatransfer/Clipboard;");
                         changed = true;
+                    } else if (c.owner.equals("java/awt/Toolkit") && c.name.equals("getScreenSize")) {
+                        redirect(c, "screenSize", "(Ljava/awt/Toolkit;)Ljava/awt/Dimension;");
+                        changed = true;
                     } else if (c.owner.equals("java/awt/Desktop") && c.name.equals("getDesktop")) {
                         redirect(c, "getDesktop", "()Ljava/awt/Desktop;");
                         changed = true;

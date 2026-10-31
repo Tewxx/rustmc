@@ -502,6 +502,19 @@ fn handle(stream: TcpStream) {
                         });
                     }
                     // MOCK_EDITS=N: N random stone/air block changes per tick (20 Hz) within 12 blocks of spawn.
+                    // MOCK_DEATH=S: the player dies S seconds after joining (the death screen's Respawn is answered below).
+                    let death = env_n("MOCK_DEATH");
+                    if death > 0 {
+                        let wd = w.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(Duration::from_secs(death as u64));
+                            send(&wd, threshold, &PlayClientbound::UpdateHealth(UpdateHealth { health: 0.0, food: 17, saturation: 0.0 }).to_bytes());
+                            std::thread::sleep(Duration::from_secs(3));
+                            send(&wd, threshold, &PlayClientbound::Respawn(Respawn { dimension: 0, difficulty: 0, game_mode: 1, level_type: "flat".into() }).to_bytes());
+                            send(&wd, threshold, &PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 4.0, z: 8.5, yaw: 0.0, pitch: 0.0, flags: 0 }).to_bytes());
+                            send(&wd, threshold, &PlayClientbound::UpdateHealth(UpdateHealth { health: 20.0, food: 17, saturation: 0.0 }).to_bytes());
+                        });
+                    }
                     let edits = env_n("MOCK_EDITS");
                     if edits > 0 {
                         let we = w.clone();
@@ -550,6 +563,12 @@ fn handle(stream: TcpStream) {
                         println!("[{:>6} ms] chat: {}", start.elapsed().as_millis(), c.message);
                         let json = format!(r#"{{"translate":"chat.type.text","with":["Player",{}]}}"#, serde_json_escape(&c.message));
                         send(&w, threshold, &PlayClientbound::ChatS(ChatS { json, position: 0 }).to_bytes());
+                    }
+                    Ok(PlayServerbound::ClientStatus(c)) if matches!(c.status, ClientStatusKind::PerformRespawn) => {
+                        println!("[{:>6} ms] respawn", start.elapsed().as_millis());
+                        send(&w, threshold, &PlayClientbound::Respawn(Respawn { dimension: 0, difficulty: 0, game_mode: 1, level_type: "flat".into() }).to_bytes());
+                        send(&w, threshold, &PlayClientbound::PlayerPosLookS(PlayerPosLookS { x: 8.5, y: 4.0, z: 8.5, yaw: 0.0, pitch: 0.0, flags: 0 }).to_bytes());
+                        send(&w, threshold, &PlayClientbound::UpdateHealth(UpdateHealth { health: 20.0, food: 17, saturation: 0.0 }).to_bytes());
                     }
                     Ok(PlayServerbound::PlayerGround(_)) | Ok(PlayServerbound::KeepAliveC(_)) => {}
                     Ok(p) => println!("[{:>6} ms] {p:?}", start.elapsed().as_millis()),

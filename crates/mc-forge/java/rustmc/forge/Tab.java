@@ -133,6 +133,7 @@ public final class Tab {
         if (method.equals("func_96668_e")) return colorPrefix(self); // getColorPrefix
         if (method.equals("func_96663_f")) return colorSuffix(self); // getColorSuffix
         if (method.equals("func_96670_d")) return get(self, "field_96676_c"); // getMembershipCollection
+        if (method.equals("func_178775_l")) return get(self, "field_178777_k"); // getChatFormat
         if (method.equals("func_142053_d")) return colorPrefix(self) + args[0] + colorSuffix(self); // formatString
         if (method.equals("func_96667_a")) // static Team.formatPlayerName(Team, String)
             return args[0] == null ? args[1] : colorPrefix(args[0]) + args[1] + colorSuffix(args[0]);
